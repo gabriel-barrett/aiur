@@ -1,0 +1,56 @@
+name: Build and Test
+
+on:
+  merge_group:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  linux-test:
+    # Change to warp-ubuntu-latest-x64-16x for a more powerful runner (GitHub App must be enabled for this repo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: argumentcomputer/ci-workflows
+      - uses: ./.github/actions/ci-env
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux Tests
+        run: |
+          cargo nextest run --profile ci --cargo-profile dev-ci --workspace
+
+  lints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: argumentcomputer/ci-workflows
+      - uses: ./.github/actions/ci-env
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check Rustfmt code style
+        run: cargo fmt --all --check
+      - name: Check *everything* compiles
+        run: cargo check --all-targets --all-features --workspace
+      - name: Check clippy lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Doctests
+        run: cargo test --doc --workspace
+      - name: Get Rust version
+        run: |
+          echo "RUST_VERSION=$(awk -F '"' '/^channel/ {print $2}' rust-toolchain.toml)" | tee -a $GITHUB_ENV
+      # Lint dependencies for licensing and auditing issues as per `deny.toml`
+      - name: Cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: ${{ env.RUST_VERSION }}
