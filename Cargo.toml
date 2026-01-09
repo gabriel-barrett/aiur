@@ -1,5 +1,5 @@
 [package]
-name = "template"
+name = "aiur"
 version = "0.1.0"
 edition = "2024"
 authors = ["Argument Engineering <engineering@argument.xyz>"]

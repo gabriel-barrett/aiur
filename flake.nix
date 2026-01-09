@@ -73,7 +73,7 @@
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-        template = craneLib.buildPackage (commonArgs
+        aiur = craneLib.buildPackage (commonArgs
           // {
             inherit cargoArtifacts;
             # Prevents tests from running on build
@@ -81,7 +81,7 @@
           });
 
         # Run tests with cargo-nextest
-        template-nextest = craneLib.cargoNextest (
+        aiur-nextest = craneLib.cargoNextest (
           commonArgs
           // {
             inherit cargoArtifacts;
@@ -114,11 +114,11 @@
         # Then run `nix flake check -L` again
         # Alternatively, run `nix build --rebuild` and ignore the non-determinism error
         checks = {
-          inherit template template-nextest;
+          inherit aiur aiur-nextest;
         };
 
         packages = {
-          default = template;
+          default = aiur;
 
           # Workspace example
           # server = serverPkg;
