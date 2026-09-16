@@ -15,6 +15,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   field specialization, checking, evaluation defaults, and validation.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
   fresh call results, and abstract channel balance.
+- [Correctness](correctness.md): relational evaluation, closed circuit
+  derivations, and the compiler's soundness and completeness statement.
 
 The circuit pipeline begins with one chip per function and abstracts channel
 interactions independently of the eventual cryptographic protocol.
