@@ -1,9 +1,9 @@
 # Aiur
 
 A Lean formalization of a first-order language for zero-knowledge circuits. The
-initial implementation includes a parameterized AST, a typechecker, a reference
-evaluator, a Rust-like string elaborator, and compilation to chips with local
-polynomial equations and abstract channel messages.
+initial implementation includes a parameterized AST, a typechecker, executable
+and relational evaluation, a Rust-like string elaborator, and compilation to
+chips with local polynomial equations and abstract channel messages.
 
 ## Build and test
 
@@ -60,6 +60,12 @@ with field-valued arguments. Its optional `fuel` argument defaults to 1000 and
 bounds evaluation depth. Division by zero, unmatched values, and exhausted fuel
 produce explicit errors.
 
+For proofs, `EvalCall program function arguments result` is the inductive
+evaluation predicate. It requires no fuel and only describes successful finite
+evaluations. `EvalExpr` and `EvalArgs` give the corresponding expression and
+argument-list judgments. These relations require `Field F` without decidable
+equality. Expression and function evaluation are proved deterministic.
+
 ## Syntax
 
 Function bodies are expressions. Parameters and return types may be annotated
@@ -89,7 +95,24 @@ It does not generate a witness. A runnable example is in
 lake env lean Examples/Circuit.lean
 ```
 
+`Derivation system message` is a finite closed tree of valid chip instances.
+Every enabled outgoing call occurrence requires a child derivation. Local
+equations are side conditions on each node. `CircuitEvaluates` asserts the
+existence of such a tree for a function's arguments and result. An example with
+both a source evaluation proof and a chip derivation is in
+[Examples/Semantics.lean](Examples/Semantics.lean):
+
+```sh
+lake env lean Examples/Semantics.lean
+```
+
+`CompilerCorrect F` states the desired equivalence between relational evaluation
+and circuit derivability after successful compilation. The general compiler
+proof and the bridge to `System.check` remain to be established.
+
 See [the language design](design/language.md) for the agreed scope and
 [implementation notes](design/implementation.md) for current semantic defaults.
 The [circuit design](design/circuits.md) gives the equations, channel model, and
 current proof status.
+The [correctness design](design/correctness.md) records the two relations and
+the soundness and completeness statements.
