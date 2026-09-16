@@ -41,9 +41,11 @@ its output to the compiled body. Calls retain the callee's name as their channel
 the compiler never unfolds callee bodies. This makes compilation of mutually
 recursive definitions finite.
 
-The reference evaluator remains the source semantics. Circuit witness generation
-is a separate, future task. The current pipeline checks manually supplied
-assignments; it does not execute constraints to produce assignments.
+The agreed proof-level source semantics is an inductive evaluation relation,
+described in [the correctness design](correctness.md). The existing evaluator is
+an executable reference. Circuit witness generation is a separate, future task.
+The current pipeline checks manually supplied assignments; it does not execute
+constraints to produce assignments.
 
 ## Division
 
@@ -145,6 +147,11 @@ need two matching receives.
 global balance. Its order of checking affects only which error is reported first.
 `System.Accepts` states that this check succeeds.
 
+The correctness model defines the circuit relation through closed, finite
+derivations of chip rules. Connecting flat assignments and channel balance to
+that derivation relation requires a separate theorem; see
+[the correctness design](correctness.md).
+
 ## Proof and validation status
 
 Lean proofs establish that local satisfaction is unchanged by equation
@@ -158,6 +165,6 @@ pattern collisions in a finite field. The runnable
 [circuit example](../Examples/Circuit.lean) checks assignments for division followed
 by a function call and compares its output with the reference evaluator.
 
-Full compiler soundness and completeness with respect to the reference evaluator
-remain to be proved. The model makes no claim about a concrete lookup or
-fingerprinting protocol.
+Full compiler soundness and completeness between relational evaluation and closed
+circuit derivations remain to be proved. The model makes no claim about a
+concrete lookup or fingerprinting protocol.
