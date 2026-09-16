@@ -18,9 +18,16 @@ are provisional and can be revised as the language design develops.
    pass.
 5. `Aiur/Eval.lean` evaluates a `Program F` using Mathlib's `Field F` operations and
    decidable equality. The public entry point is `eval program function args fuel`.
-6. `Aiur/Circuit.lean` exposes compilation to chips and checking of supplied
+6. `Aiur/Semantics.lean` defines the fuel-free inductive predicates `EvalExpr`,
+   `EvalArgs`, and `EvalCall`, and proves expression and call determinism.
+7. `Aiur/Circuit.lean` exposes compilation to chips and checking of supplied
    assignments against polynomial equations and abstract channel balance. See
    [the circuit design](circuits.md).
+8. `Aiur/Circuit/Derivation.lean` defines finite closed trees of chip rule
+   instances, with local equations as side conditions and enabled calls as
+   premises. `Aiur/Correctness.lean` states the compiler equivalence as a
+   proposition, whose general proof is still pending. See
+   [the correctness design](correctness.md).
 
 The checker, conversion pass, and evaluator are total Lean definitions. Syntax
 lowering is metaprogramming code and does not define the language's semantics.
@@ -88,10 +95,14 @@ ASTs, including programs that the circuit compiler rejects.
 
 These defaults provide an executable reference point for compiler correctness.
 Circuit compilation represents recursion through channel interactions.
+The inductive predicates are the proof-level source semantics; agreement with
+the executable evaluator is a separate, pending theorem.
 
 ## Validation
 
 `lake build` checks the library, kernel examples, and frontend diagnostics.
+This includes evaluation and circuit derivation proofs, as well as impossibility
+proofs for division by zero, uncovered matches, and circular justification.
 `lake test` runs arithmetic, recursion, matching, field conversion, checker, and
 runtime error cases. The same frontend AST is exercised over the rationals and
 the field with seven elements.

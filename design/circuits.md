@@ -41,7 +41,7 @@ its output to the compiled body. Calls retain the callee's name as their channel
 the compiler never unfolds callee bodies. This makes compilation of mutually
 recursive definitions finite.
 
-The agreed proof-level source semantics is an inductive evaluation relation,
+The proof-level source semantics is an inductive evaluation relation,
 described in [the correctness design](correctness.md). The existing evaluator is
 an executable reference. Circuit witness generation is a separate, future task.
 The current pipeline checks manually supplied assignments; it does not execute
@@ -147,7 +147,7 @@ need two matching receives.
 global balance. Its order of checking affects only which error is reported first.
 `System.Accepts` states that this check succeeds.
 
-The correctness model defines the circuit relation through closed, finite
+`Aiur/Circuit/Derivation.lean` defines the circuit relation through closed, finite
 derivations of chip rules. Connecting flat assignments and channel balance to
 that derivation relation requires a separate theorem; see
 [the correctness design](correctness.md).
