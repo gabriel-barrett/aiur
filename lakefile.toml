@@ -1,0 +1,19 @@
+name = "aiur"
+version = "0.1.0"
+defaultTargets = ["Aiur", "AiurTests"]
+testDriver = "aiur_tests"
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.29.0"
+
+[[lean_lib]]
+name = "Aiur"
+
+[[lean_lib]]
+name = "AiurTests"
+
+[[lean_exe]]
+name = "aiur_tests"
+root = "AiurTests"

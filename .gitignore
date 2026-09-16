@@ -12,3 +12,6 @@ target/
 # Nix
 .direnv
 result
+
+# Lean
+/.lake/
