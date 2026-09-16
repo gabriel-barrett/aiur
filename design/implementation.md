@@ -18,10 +18,14 @@ are provisional and can be revised as the language design develops.
    pass.
 5. `Aiur/Eval.lean` evaluates a `Program F` using Mathlib's `Field F` operations and
    decidable equality. The public entry point is `eval program function args fuel`.
+6. `Aiur/Circuit.lean` exposes compilation to chips and checking of supplied
+   assignments against polynomial equations and abstract channel balance. See
+   [the circuit design](circuits.md).
 
 The checker, conversion pass, and evaluator are total Lean definitions. Syntax
 lowering is metaprogramming code and does not define the language's semantics.
-No circuit compilation is implemented yet.
+The circuit compiler is also a total Lean definition; its equation lists have no
+execution order.
 
 ## Checking
 
@@ -78,9 +82,12 @@ Field conversion may make distinct natural-number patterns equal: for example,
 `0` and `7` both denote zero in characteristic seven. Matching compares the
 converted field elements and still follows source order. The frontend therefore
 does not reject overlapping patterns or infer coverage from natural literals.
+The circuit compiler rejects duplicate retained patterns after conversion; it
+discards the suffix following a wildcard. The evaluator remains usable on raw
+ASTs, including programs that the circuit compiler rejects.
 
-These defaults provide an executable reference point. They do not prescribe how
-programs or recursive computations will be compiled to circuits.
+These defaults provide an executable reference point for compiler correctness.
+Circuit compilation represents recursion through channel interactions.
 
 ## Validation
 

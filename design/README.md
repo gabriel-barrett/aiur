@@ -13,6 +13,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   semantic questions.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
+- [Circuits](circuits.md): chips, polynomial equations, selector constraints,
+  fresh call results, and abstract channel balance.
 
-The compilation of this language to circuits will be introduced later. No
-compilation strategy has been specified yet.
+The circuit pipeline begins with one chip per function and abstracts channel
+interactions independently of the eventual cryptographic protocol.

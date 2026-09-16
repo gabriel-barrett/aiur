@@ -2,7 +2,8 @@
 
 A Lean formalization of a first-order language for zero-knowledge circuits. The
 initial implementation includes a parameterized AST, a typechecker, a reference
-evaluator, and a Rust-like string elaborator.
+evaluator, a Rust-like string elaborator, and compilation to chips with local
+polynomial equations and abstract channel messages.
 
 ## Build and test
 
@@ -72,5 +73,23 @@ There are no tuples, higher-order functions, local declarations, or mutation in
 this initial subset. Definitions may call each other in any order, including
 mutually recursively.
 
+## Circuit pipeline
+
+`Aiur.Circuit.compile (source.toField F)` produces one chip per function. Chip
+constraints are simultaneous polynomial equations. Division uses inverse
+witnesses, calls use fresh output variables and channel messages, and matches use
+mutually exclusive branch selectors. Duplicate patterns are rejected in the
+chosen field, and arms following a wildcard are discarded during lowering.
+
+`System.check` validates supplied assignments and exact channel-message balance.
+It does not generate a witness. A runnable example is in
+[Examples/Circuit.lean](Examples/Circuit.lean):
+
+```sh
+lake env lean Examples/Circuit.lean
+```
+
 See [the language design](design/language.md) for the agreed scope and
 [implementation notes](design/implementation.md) for current semantic defaults.
+The [circuit design](design/circuits.md) gives the equations, channel model, and
+current proof status.

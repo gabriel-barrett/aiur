@@ -1,4 +1,5 @@
 import Aiur
+import AiurTests.Circuit
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -121,6 +122,7 @@ run_cmd do
     "fn f() { match 0 { } }",
     "fn f() { match 0 { x => 1 } }",
     "fn f(x: Nat) { x }",
+    "fn f() -> Nat { 0 }",
     "fn f() { (1, 2) }",
     "fn f() { 1 + }",
     "fn f() { 1 /* comment */ 2 }",
@@ -148,4 +150,6 @@ def run : IO Unit := do
 
 end AiurTests
 
-def main : IO Unit := AiurTests.run
+def main : IO Unit := do
+  AiurTests.run
+  AiurCircuitTests.run
