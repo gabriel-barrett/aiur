@@ -51,14 +51,21 @@ A match examines a single field value. Each pattern is either:
 - A wildcard, matching any field element.
 
 Natural-number patterns in the frontend are converted to elements of the chosen
-field before evaluation. Current branch selection and error behavior are recorded
-as provisional choices in [the implementation notes](implementation.md).
+field before evaluation. Circuit compilation rejects duplicate field patterns.
+The first wildcard ends the effective match; later branches are discarded during
+lowering. The default branch excludes every retained explicit pattern.
+
+The reference evaluator's first-match behavior agrees with the selector model on
+these accepted programs. Current error behavior is recorded in
+[the implementation notes](implementation.md).
 
 ### Circuit compilation
 
-The language targets zero-knowledge circuits. How programs compile to circuits
-will be described later; the current design makes no commitment to a compilation
-scheme.
+Each function compiles to a chip with local polynomial equations. Calls send
+channel messages and allocate fresh result variables. Division introduces an
+inverse witness, and matches use branch selectors with mutually exclusive
+conditions. See [the circuit design](circuits.md) for the equations and abstract
+channel model; lookup arguments and fingerprinting are not modeled yet.
 
 ## Open questions
 
@@ -67,8 +74,7 @@ The following are unresolved, rather than implicit language rules:
 - Which concrete fields will be used by applications and circuit backends.
 - Whether division by zero should remain an evaluation error.
 - The eventual treatment of recursive computations and termination in circuits.
-- Whether the initial first-match rule and allowance for partial matches should
-  be retained or restricted.
+- Whether partial matches should remain permitted.
 - How the language will extend variable binding and compose computations beyond
   the initial expression syntax.
 

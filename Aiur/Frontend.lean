@@ -27,9 +27,9 @@ syntax (name := wildcardPattern) "_" : aiur_pattern
 syntax (name := arm) aiur_pattern "=>" aiur_expr : aiur_arm
 syntax (name := matchValue) "match" aiur_expr "{"
   sepBy1(aiur_arm, ",", ",", allowTrailingSep) "}" : aiur_expr
-syntax (name := param) ident (":" "Field")? : aiur_param
+syntax (name := param) ident (":" ident)? : aiur_param
 syntax (name := function) "fn" ident "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")"
-  ("->" "Field")? "{" aiur_expr "}" : aiur_function
+  ("->" ident)? "{" aiur_expr "}" : aiur_function
 syntax (name := program) aiur_function* : aiur_program
 
 private def readName (stx : Syntax) : Except String String :=
@@ -72,10 +72,17 @@ private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := 
   else
     throw s!"unsupported expression syntax: {kind}"
 
+private def checkAnnotation (stx : Syntax) : Except String Unit := do
+  if !stx.getArgs.isEmpty then
+    if stx[1].getId != `Field then throw "expected type 'Field'"
+
 private def lowerFunction (stx : Syntax) : Except String (Aiur.Function Nat) := do
+  checkAnnotation stx[5]
   return {
     name := ← readName stx[1]
-    params := ← stx[3].getSepArgs.toList.mapM (fun param => readName param[0])
+    params := ← stx[3].getSepArgs.toList.mapM (fun param => do
+      checkAnnotation param[1]
+      readName param[0])
     body := ← lowerExpr stx[7]
   }
 
