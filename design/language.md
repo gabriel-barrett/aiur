@@ -10,8 +10,11 @@ formalized in Lean.
 Initially, the language has a single field type. There are no derived data
 structures at this stage; they will be introduced later.
 
-The choice of field and the representation of field elements have not yet been
-specified.
+The frontend is field agnostic and represents literals as natural numbers. The
+AST is parameterized by its literal type: the frontend produces `Program Nat`,
+and a separate pass converts literals to obtain `Program F` for a chosen field
+`F`. This conversion includes literals in match patterns. `Nat` is an AST
+representation choice, not an additional language type.
 
 ### Operations
 
@@ -24,8 +27,8 @@ The initial language supports:
 - Function calls.
 - A simple match statement.
 
-Concrete syntax and the structure of function definitions have not yet been
-specified.
+The syntax is Rust-like. A Lean elaborator accepts a source-code string containing
+the whole program and produces its top-level AST, including all functions.
 
 ### Functions and recursion
 
@@ -38,6 +41,8 @@ other, including mutually recursive groups of functions.
 Functions may take multiple arguments and return exactly one field element. Each
 argument is also a field element. Tuples are not available at this stage.
 
+Evaluation starts by specifying a function and its field-valued arguments.
+
 ### Pattern matching
 
 A match examines a single field value. Each pattern is either:
@@ -45,8 +50,9 @@ A match examines a single field value. Each pattern is either:
 - A field element, matching that element.
 - A wildcard, matching any field element.
 
-Branch selection rules and requirements on the collection of patterns remain to
-be specified.
+Natural-number patterns in the frontend are converted to elements of the chosen
+field before evaluation. Current branch selection and error behavior are recorded
+as provisional choices in [the implementation notes](implementation.md).
 
 ### Circuit compilation
 
@@ -58,15 +64,12 @@ scheme.
 
 The following are unresolved, rather than implicit language rules:
 
-- Which field is used, or whether the formalization is parameterized by a field.
-- How field elements are written in source programs.
-- The meaning of division by zero.
-- Concrete function syntax, parameter naming, and variable binding.
-- The execution semantics of recursion, including any termination requirements.
-- How a match selects a branch when more than one pattern matches, including
-  repeated field elements or a wildcard alongside a matching element.
-- Whether matches must be exhaustive and what happens when no pattern matches.
-- Whether match branches produce values, and how programs sequence or compose
-  computations.
+- Which concrete fields will be used by applications and circuit backends.
+- Whether division by zero should remain an evaluation error.
+- The eventual treatment of recursive computations and termination in circuits.
+- Whether the initial first-match rule and allowance for partial matches should
+  be retained or restricted.
+- How the language will extend variable binding and compose computations beyond
+  the initial expression syntax.
 
 These questions can be resolved incrementally as the design develops.
