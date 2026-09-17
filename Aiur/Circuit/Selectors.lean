@@ -9,6 +9,44 @@ structure SelectorsValid [Field F] (parent : F) (selectors : List F) : Prop wher
   exclusive : selectors.Pairwise (fun left right => left * right = 0)
   sum : selectors.sum = parent
 
+/-- Adding a disabled branch preserves all selector equations. -/
+theorem SelectorsValid.zero_cons [Field F] {parent : F} {selectors : List F}
+    (valid : SelectorsValid parent selectors) : SelectorsValid parent (0 :: selectors) := by
+  refine ⟨?_, List.pairwise_cons.mpr ⟨by simp, valid.exclusive⟩, by simpa using valid.sum⟩
+  intro selector member
+  rcases List.mem_cons.mp member with rfl | member
+  · simp
+  · exact valid.boolean selector member
+
+/-- All-zero selectors supply a witness for an inactive match. -/
+theorem SelectorsValid.zeros [Field F] {selectors : List F}
+    (zeros : ∀ selector ∈ selectors, selector = 0) : SelectorsValid (0 : F) selectors := by
+  induction selectors with
+  | nil => exact ⟨by simp, by simp, rfl⟩
+  | cons head tail ih =>
+      have headZero := zeros head (by simp)
+      subst head
+      exact (ih (fun selector member => zeros selector (by simp [member]))).zero_cons
+
+/-- A chosen branch and zeroes elsewhere supply a witness for an active match. -/
+theorem SelectorsValid.single [Field F] {before after : List F}
+    (beforeZero : ∀ selector ∈ before, selector = 0)
+    (afterZero : ∀ selector ∈ after, selector = 0) :
+    SelectorsValid (1 : F) (before ++ 1 :: after) := by
+  induction before with
+  | nil =>
+      have tail := SelectorsValid.zeros afterZero
+      refine ⟨?_, List.pairwise_cons.mpr ⟨by simpa using afterZero, tail.exclusive⟩, ?_⟩
+      · intro selector member
+        rcases List.mem_cons.mp member with rfl | member
+        · simp
+        · exact tail.boolean selector member
+      · simp [tail.sum]
+  | cons head tail ih =>
+      have headZero := beforeZero head (by simp)
+      subst head
+      exact (ih (fun selector member => beforeZero selector (by simp [member]))).zero_cons
+
 /-- An inactive match forces every selector to zero, in any field characteristic. -/
 theorem SelectorsValid.inactive [Field F] {selectors : List F}
     (valid : SelectorsValid (0 : F) selectors) : ∀ selector ∈ selectors, selector = 0 := by

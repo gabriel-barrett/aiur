@@ -7,10 +7,18 @@ open Aiur Aiur.Circuit
 
 namespace AiurSemanticsTests
 
--- Soundness must remain independent of the admitted completeness case.
+-- Both directions of compiler correctness must remain free of admitted proofs.
 /-- info: 'Aiur.compiler_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.compiler_sound
+
+/-- info: 'Aiur.evaluation_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.evaluation_complete
+
+/-- info: 'Aiur.compiler_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.compiler_correct
 
 -- The source relation needs field laws, but no decidable equality or fuel.
 example [Field F] (x : F) :
@@ -93,13 +101,55 @@ private theorem odd_one : EvalCall (recursive.toField Rat) "odd" [1] 1 := by
   rw [show (0 : Rat) = 1 - 1 by norm_num]
   exact .sub (.var rfl) .literal
 
-example : EvalCall (recursive.toField Rat) "even" [2] 1 := by
+theorem even_two : EvalCall (recursive.toField Rat) "even" [2] 1 := by
   apply EvalCall.intro (defn := (recursive.toField Rat).functions[0]) rfl rfl
   conv => arg 3; simp [recursive, Program.toField, Program.map, Function.map, Expr.map, Pattern.map]
   refine EvalExpr.matchValue (.var rfl) (.skip (by decide) .wildcard) ?_
   refine EvalExpr.call (values := [1]) (.cons ?_ .nil) odd_one
   conv => arg 4; equals (2 : Rat) - 1 => norm_num
   exact .sub (.var rfl) .literal
+
+-- Completeness builds the recursive tree, including active wildcard inverses.
+example : ∃ system, compile (recursive.toField Rat) = .ok system ∧
+    CircuitEvaluates system "even" [2] 1 := by
+  have succeeds : (compile (recursive.toField Rat)).isOk = true := by decide +kernel
+  cases compiled : compile (recursive.toField Rat) with
+  | error error => simp [compiled, Except.isOk, Except.toBool] at succeeds
+  | ok system => exact ⟨system, rfl, evaluation_complete compiled even_two⟩
+
+def inactiveBranches : Program Nat := aiur% "
+fn choose(x) {
+  match x {
+    0 => match x { 0 => 1 / 0, _ => looping(x) },
+    1 => 7,
+    2 => 1 / 0,
+    _ => 9,
+  }
+}
+fn looping(x) { looping(x) }
+"
+
+private theorem choose_literal : EvalCall (inactiveBranches.toField Rat) "choose" [1] 7 := by
+  apply EvalCall.intro (defn := (inactiveBranches.toField Rat).functions[0]) rfl rfl
+  conv => arg 3; simp [inactiveBranches, Program.toField, Program.map, Function.map, Expr.map, Pattern.map]
+  exact .matchValue (.var rfl) (.skip (by decide) .literal) .literal
+
+private theorem choose_default : EvalCall (inactiveBranches.toField Rat) "choose" [3] 9 := by
+  apply EvalCall.intro (defn := (inactiveBranches.toField Rat).functions[0]) rfl rfl
+  conv => arg 3; simp [inactiveBranches, Program.toField, Program.map, Function.map, Expr.map, Pattern.map]
+  exact .matchValue (.var rfl)
+    (.skip (by decide) (.skip (by decide) (.skip (by decide) .wildcard))) .literal
+
+-- Inactive arms before and after the selected arm need no evaluation proofs,
+-- even when they contain nested matches, division by zero, and nontermination.
+example : ∃ system, compile (inactiveBranches.toField Rat) = .ok system ∧
+    CircuitEvaluates system "choose" [1] 7 ∧ CircuitEvaluates system "choose" [3] 9 := by
+  have succeeds : (compile (inactiveBranches.toField Rat)).isOk = true := by decide +kernel
+  cases compiled : compile (inactiveBranches.toField Rat) with
+  | error error => simp [compiled, Except.isOk, Except.toBool] at succeeds
+  | ok system =>
+      exact ⟨system, rfl, evaluation_complete compiled choose_literal,
+        evaluation_complete compiled choose_default⟩
 
 def loopProgram : Program Rat := ⟨[⟨"loop", [], .call "loop" []⟩]⟩
 

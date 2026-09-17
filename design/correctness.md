@@ -1,8 +1,9 @@
 # Compiler correctness
 
-This document records the agreed semantic model and correctness goal. Compiler
-soundness is proved in Lean without admitted steps. The reverse direction has one
-remaining `sorry`, in the construction of witnesses for matches.
+This document records the agreed semantic model and compiler correctness proof.
+Both soundness and completeness are proved in Lean without admitted steps:
+source evaluation is equivalent to a finite closed derivation in the successfully
+compiled chip system.
 
 ## Evaluation as a relation
 
@@ -106,8 +107,7 @@ compiled chip system `C`. In particular, compilation has checked the program and
 rejected duplicate retained patterns in `K`. Let `F` be the chip corresponding to
 a function `f` in `P`; here `F` denotes the chip, not the underlying field.
 
-For every argument list `xs` of the function's arity and field result `y`, the
-target theorem is:
+For every argument list `xs` and field result `y`, the theorem is:
 
 ```text
 EvalCall(P, f, xs, y)  iff  CircuitEvaluates(C, f, xs, y)
@@ -142,14 +142,14 @@ every successful compilation over `K` satisfies this equivalence.
 The theorem `compiler_sound` proves the circuit-to-source direction for every
 successfully compiled program. `derivation_sound` performs induction on the
 closed tree and supplies each enabled call's source evaluation to the local
-soundness lemma. These theorems have no `sorryAx` dependency.
+soundness lemma.
 
 `evaluation_complete` supplies the other induction, from a source evaluation to
 a closed circuit tree. `compiler_correct : CompilerCorrect K` combines the two
-directions. **These two theorems still depend on `sorryAx` through the match case
-of `Compiler.lowerExpr_complete`; the full equivalence is not yet proved.**
+directions. All three theorems depend only on Lean's standard `propext`,
+`Classical.choice`, and `Quot.sound`, with no `sorryAx` dependency.
 
-## Local proof architecture and remaining work
+## Local proof architecture
 
 [Aiur/Semantics/WithCalls.lean](../Aiur/Semantics/WithCalls.lean) defines
 `EvalExprWith calls` and `EvalArgsWith calls`: ordinary expression evaluation,
@@ -167,31 +167,53 @@ lemmas ensure distinct literals after field specialization, allowing the proof
 to recover the source's first matching arm.
 
 [Selectors.lean](../Aiur/Circuit/Selectors.lean) proves that an active selector
-list contains exactly one `1`, and an inactive list contains only zeroes.
+list contains exactly one `1`, and an inactive list contains only zeroes. Its
+`SelectorsValid.single`, `.zeros`, and `.zero_cons` lemmas construct satisfying
+selector lists for the completeness proof.
 [CompileFacts.lean](../Aiur/Circuit/CompileFacts.lean) connects those conditions to
 the actual emitted equations and proves the compiler's pattern checks, parameter
 bindings, and function/chip lookup correspondence.
 
-[WitnessCorrectness.lean](../Aiur/Circuit/WitnessCorrectness.lean) constructs
-assignments by extending a finite list of existing variable values. Its invariants
-preserve earlier polynomial values, call premises, and variable bounds. The
-literal, variable, negation, arithmetic, division, argument-list, and call cases
-are supplied. Division assigns the denominator's inverse to its fresh variable;
-a call assigns the result provided by its call premise to its fresh output.
-These are steps in constructing a witness, not an evaluation order for equations.
+[WitnessBasic.lean](../Aiur/Circuit/WitnessBasic.lean) proves that extending a
+finite assignment preserves all earlier variable values, bounded polynomial
+values, and justified call premises. Its `InactiveExtension` records exactly the
+equations and sends appended by a compiler run: the equations vanish and every
+new send is disabled. These extensions compose and preserve earlier validity.
 
-The single remaining `sorry` is the `matchValue` case of `lowerExpr_complete`.
-It must assign the match result and selectors, use the chosen arm's evaluation,
-provide inverses for a chosen wildcard, and satisfy every inactive arm without
-evaluating it. The intended auxiliary lemma extends an assignment for an
-expression whose enable is zero, making its newly introduced selectors and call
-enables zero even for nested matches. This is necessary for untaken branches
-containing division by zero or nonterminating calls.
+[InactiveCorrectness.lean](../Aiur/Circuit/InactiveCorrectness.lean) proves
+`lowerExpr_inactive` and the companion argument-list and arm-list lemmas by mutual
+structural induction. If an expression's enable is zero, setting all fresh
+variables to zero satisfies its new constraints and disables all its calls.
+Nested matches receive all-zero selectors. Guarded inverse equations vanish,
+even when their denominators are zero. No source evaluation premise is required.
+
+`lowerExpr_inactive_complete` and `lowerArms_inactive_complete` turn that fact
+into a finite witness of the compiler's exact final size by appending zeroes.
+They preserve the existing assignment, including the reserved match result.
+This handles untaken branches containing division by zero or nonterminating
+calls.
+
+[MatchWitness.lean](../Aiur/Circuit/MatchWitness.lean) proves
+`excludeLiterals_complete`: if a selected wildcard's scrutinee differs from every
+retained literal, appending the inverses of those differences satisfies its
+exclusion equations and preserves earlier validity.
+
+[WitnessCorrectness.lean](../Aiur/Circuit/WitnessCorrectness.lean) uses these
+lemmas in the mutual `lowerExpr_complete`, `lowerArgs_complete`, and
+`lowerArms_complete` proofs. Division appends the denominator's inverse; a call
+appends the result justified by its premise. A match first reserves its evaluated
+result. A skipped literal arm gets selector zero and an inactive witness. The
+selected literal arm gets selector one and its evaluation witness, followed by
+inactive witnesses for the remaining arms. A selected wildcard uses the
+inverse-witness lemma and its body's evaluation. The arm induction tracks which
+literals have already been excluded so that the wildcard excludes all of them.
+Finally, the selector lemmas satisfy the Boolean, exclusion, and sum equations.
+These steps construct a simultaneous satisfying assignment.
 
 [LocalCorrectness.lean](../Aiur/Circuit/LocalCorrectness.lean) lifts the expression
 lemmas to chips, including the reserved output variable and argument interface.
-The outer tree inductions and both function-level wrappers are supplied, so this
-local match construction is the remaining dependency of the full equivalence.
+The outer tree inductions then establish both directions for arbitrary recursive
+call graphs whenever the corresponding finite derivation exists.
 
 ## Established properties and examples
 
@@ -200,17 +222,21 @@ evaluation are deterministic, argument evaluation preserves list length, and a
 successful call resolves to a function of the correct arity. For circuits, every
 derivation contains a row, and a system in which every valid rule requires
 another call has no closed derivations.
-The test suite checks the axiom report for `compiler_sound`: only Lean's standard
-`propext`, `Classical.choice`, and `Quot.sound` appear, with no `sorryAx`.
+The test suite checks the axiom reports for `compiler_sound`,
+`evaluation_complete`, and `compiler_correct`: only Lean's standard `propext`,
+`Classical.choice`, and `Quot.sound` appear, with no `sorryAx`.
 
 [Examples/Semantics.lean](../Examples/Semantics.lean) builds an evaluation proof
 and a closed chip derivation for an identity function over an arbitrary field,
 and uses compiler soundness to show that every closed derivation has that result.
 [AiurTests/Semantics.lean](../AiurTests/Semantics.lean) checks division and calls,
-mutual recursion, wildcard behavior, and repeated call occurrences. It also
-proves that division by zero, uncovered matches, wrong arity, a directly looping
-source function, and an always-calling circuit cannot produce the corresponding
-successful derivations.
+mutual recursion, wildcard behavior, and repeated call occurrences. Completeness
+examples construct closed derivations for a mutually recursive program and for
+matches with inactive nested matches, division by zero, and nonterminating calls.
+They cover selection after skipped arms and wildcard exclusion of several
+literals. The tests also prove that division by zero, uncovered matches, wrong
+arity, a directly looping source function, and an always-calling circuit cannot
+produce the corresponding successful derivations.
 
 ## Relationship to the current implementation
 
