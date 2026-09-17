@@ -25,9 +25,18 @@ are provisional and can be revised as the language design develops.
    [the circuit design](circuits.md).
 8. `Aiur/Circuit/Derivation.lean` defines finite closed trees of chip rule
    instances, with local equations as side conditions and enabled calls as
-   premises. `Aiur/Correctness.lean` states the compiler equivalence as a
-   proposition, whose general proof is still pending. See
-   [the correctness design](correctness.md).
+   premises.
+9. `Aiur/Semantics/WithCalls.lean` interprets calls using a supplied relation,
+   so local expression proofs can treat callee evaluations as premises.
+10. `Aiur/Circuit/Selectors.lean` and `CompileFacts.lean` prove selector,
+    pattern-checking, variable-bound, and function-lookup properties.
+    `ExpressionCorrectness.lean` proves local soundness; `WitnessCorrectness.lean`
+    constructs local witnesses, with one admitted match case.
+    `LocalCorrectness.lean` lifts these expression results to function chips.
+11. `Aiur/Correctness.lean` proves compiler soundness by induction on closed
+    derivations. It also supplies the source-evaluation induction for completeness,
+    which still depends on the admitted local match construction. See
+    [the correctness design](correctness.md) for the exact proof status.
 
 The checker, conversion pass, and evaluator are total Lean definitions. Syntax
 lowering is metaprogramming code and does not define the language's semantics.
@@ -103,6 +112,9 @@ the executable evaluator is a separate, pending theorem.
 `lake build` checks the library, kernel examples, and frontend diagnostics.
 This includes evaluation and circuit derivation proofs, as well as impossibility
 proofs for division by zero, uncovered matches, and circular justification.
+An axiom-report regression check ensures that `compiler_sound` does not depend on
+`sorryAx`. The example also uses soundness to exclude every incorrect circuit
+result for a division followed by a call.
 `lake test` runs arithmetic, recursion, matching, field conversion, checker, and
 runtime error cases. The same frontend AST is exercised over the rationals and
 the field with seven elements.

@@ -1,8 +1,8 @@
 # Compiler correctness
 
-This document records the agreed semantic model and correctness goal. The source
-relation and closed circuit derivations are implemented in Lean. The general
-compiler soundness and completeness theorem remains to be proved.
+This document records the agreed semantic model and correctness goal. Compiler
+soundness is proved in Lean without admitted steps. The reverse direction has one
+remaining `sorry`, in the construction of witnesses for matches.
 
 ## Evaluation as a relation
 
@@ -54,6 +54,19 @@ The chip belongs to `C`, and the assignment respects its variable layout and
 input/output interface. The equations are simultaneous side conditions on the
 rule instance. They have no order and are not instructions for computing the
 assignment.
+
+A chip therefore describes a family of rules, indexed by valid assignments. The
+premise list can change with the assignment. For example,
+
+```rust
+fn choose(x) { match x { 0 => g(x), _ => h(x) + k(x) } }
+```
+
+has an instance with just the `g` premise when `x = 0`, and an instance with the
+`h` and `k` premises when `x ≠ 0`. The inactive sends are absent from that instance's
+premise list. A node chooses one assignment and must discharge precisely its
+enabled call occurrences. It cannot omit an enabled call or choose a branch
+inconsistent with the equations.
 
 ## Closed circuit derivations
 
@@ -123,9 +136,62 @@ for mutually recursive functions. Neither direction requires a fuel bound.
 [Aiur/Correctness.lean](../Aiur/Correctness.lean) defines
 `CompilationComplete`, `CompilationSound`, and `CompilationCorrect` for a source
 program and chip system. It proves that the equivalence is exactly the
-conjunction of the two directions. `CompilerCorrect K` states that every
-successful compilation over `K` satisfies this equivalence. This is a
-specification, not an assumed axiom or a proved compiler theorem.
+conjunction of the two directions. `CompilerCorrect K` is the specification that
+every successful compilation over `K` satisfies this equivalence.
+
+The theorem `compiler_sound` proves the circuit-to-source direction for every
+successfully compiled program. `derivation_sound` performs induction on the
+closed tree and supplies each enabled call's source evaluation to the local
+soundness lemma. These theorems have no `sorryAx` dependency.
+
+`evaluation_complete` supplies the other induction, from a source evaluation to
+a closed circuit tree. `compiler_correct : CompilerCorrect K` combines the two
+directions. **These two theorems still depend on `sorryAx` through the match case
+of `Compiler.lowerExpr_complete`; the full equivalence is not yet proved.**
+
+## Local proof architecture and remaining work
+
+[Aiur/Semantics/WithCalls.lean](../Aiur/Semantics/WithCalls.lean) defines
+`EvalExprWith calls` and `EvalArgsWith calls`: ordinary expression evaluation,
+with calls interpreted by a supplied relation. Instantiating that relation with
+`EvalCall P` recovers the source semantics. This separates structural induction
+over a function body from induction over recursive call derivations.
+
+The local soundness proof in
+[ExpressionCorrectness.lean](../Aiur/Circuit/ExpressionCorrectness.lean) is complete
+for every constructor. It reads a single simultaneous assignment satisfying all
+the emitted equations and justifies the active expression. In a match, the
+selector equations guarantee a selected arm; a literal arm forces equality, and
+the wildcard's inverse equations exclude every retained literal. Pattern-checking
+lemmas ensure distinct literals after field specialization, allowing the proof
+to recover the source's first matching arm.
+
+[Selectors.lean](../Aiur/Circuit/Selectors.lean) proves that an active selector
+list contains exactly one `1`, and an inactive list contains only zeroes.
+[CompileFacts.lean](../Aiur/Circuit/CompileFacts.lean) connects those conditions to
+the actual emitted equations and proves the compiler's pattern checks, parameter
+bindings, and function/chip lookup correspondence.
+
+[WitnessCorrectness.lean](../Aiur/Circuit/WitnessCorrectness.lean) constructs
+assignments by extending a finite list of existing variable values. Its invariants
+preserve earlier polynomial values, call premises, and variable bounds. The
+literal, variable, negation, arithmetic, division, argument-list, and call cases
+are supplied. Division assigns the denominator's inverse to its fresh variable;
+a call assigns the result provided by its call premise to its fresh output.
+These are steps in constructing a witness, not an evaluation order for equations.
+
+The single remaining `sorry` is the `matchValue` case of `lowerExpr_complete`.
+It must assign the match result and selectors, use the chosen arm's evaluation,
+provide inverses for a chosen wildcard, and satisfy every inactive arm without
+evaluating it. The intended auxiliary lemma extends an assignment for an
+expression whose enable is zero, making its newly introduced selectors and call
+enables zero even for nested matches. This is necessary for untaken branches
+containing division by zero or nonterminating calls.
+
+[LocalCorrectness.lean](../Aiur/Circuit/LocalCorrectness.lean) lifts the expression
+lemmas to chips, including the reserved output variable and argument interface.
+The outer tree inductions and both function-level wrappers are supplied, so this
+local match construction is the remaining dependency of the full equivalence.
 
 ## Established properties and examples
 
@@ -134,9 +200,12 @@ evaluation are deterministic, argument evaluation preserves list length, and a
 successful call resolves to a function of the correct arity. For circuits, every
 derivation contains a row, and a system in which every valid rule requires
 another call has no closed derivations.
+The test suite checks the axiom report for `compiler_sound`: only Lean's standard
+`propext`, `Classical.choice`, and `Quot.sound` appear, with no `sorryAx`.
 
 [Examples/Semantics.lean](../Examples/Semantics.lean) builds an evaluation proof
-and a closed chip derivation for an identity function over an arbitrary field.
+and a closed chip derivation for an identity function over an arbitrary field,
+and uses compiler soundness to show that every closed derivation has that result.
 [AiurTests/Semantics.lean](../AiurTests/Semantics.lean) checks division and calls,
 mutual recursion, wildcard behavior, and repeated call occurrences. It also
 proves that division by zero, uncovered matches, wrong arity, a directly looping

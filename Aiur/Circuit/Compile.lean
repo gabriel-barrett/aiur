@@ -13,34 +13,37 @@ instance : ToString CompileError where
     | .invalidProgram error => toString error
     | .duplicatePattern name => s!"duplicate field pattern in function '{name}'"
 
-private structure BuildState (F : Type) where
+-- The lowering implementation is exposed here for compiler correctness proofs.
+namespace Compiler
+
+structure BuildState (F : Type) where
   nextVar : Nat
   constraints : Array (Constraint F) := #[]
   sends : Array (Send F) := #[]
 
-private abbrev Build (F : Type) := StateT (BuildState F) (Except CompileError)
+abbrev Build (F : Type) := StateT (BuildState F) (Except CompileError)
 
-private def fresh : Build F Var := do
+def fresh : Build F Var := do
   let state ← get
   set { state with nextVar := state.nextVar + 1 }
   return state.nextVar
 
-private def constrain (polynomial : ArithExpr F) : Build F Unit :=
+def constrain (polynomial : ArithExpr F) : Build F Unit :=
   modify fun state => { state with constraints := state.constraints.push polynomial }
 
-private def guarded (enable polynomial : ArithExpr F) : Build F Unit :=
+def guarded (enable polynomial : ArithExpr F) : Build F Unit :=
   constrain (.mul enable polynomial)
 
-private def boolean [Field F] (selector : ArithExpr F) : Build F Unit :=
+def boolean [Field F] (selector : ArithExpr F) : Build F Unit :=
   constrain (.mul selector (.sub selector (.const 1)))
 
 /-- Stop at the wildcard: any later arms are unreachable and are not lowered. -/
-private def literalPatterns : List (Pattern F × Expr F) → List F
+def literalPatterns : List (Pattern F × Expr F) → List F
   | [] => []
   | (.literal value, _) :: rest => value :: literalPatterns rest
   | (.wildcard, _) :: _ => []
 
-private def checkPatterns [DecidableEq F] (function : String) :
+def checkPatterns [DecidableEq F] (function : String) :
     List (Pattern F × Expr F) → List F → Except CompileError Unit
   | [], _ => pure ()
   | (.wildcard, _) :: _, _ => pure ()
@@ -48,22 +51,34 @@ private def checkPatterns [DecidableEq F] (function : String) :
       if value ∈ seen then throw (.duplicatePattern function)
       checkPatterns function rest (value :: seen)
 
+/-- One product equation for each pair of distinct selector occurrences. -/
+def exclusionConstraints : List (ArithExpr F) → List (Constraint F)
+  | [] => []
+  | selector :: rest => rest.map (ArithExpr.mul selector) ++ exclusionConstraints rest
+
+def selectionConstraints [Field F] (parent : ArithExpr F)
+    (selectors : List (ArithExpr F)) : List (Constraint F) :=
+  selectors.map (fun selector => .mul selector (.sub selector (.const 1))) ++
+    exclusionConstraints selectors ++
+    [.sub (selectors.foldl ArithExpr.add (.const 0)) parent]
+
 /-- Boolean selectors, pairwise exclusion, and exactly one when the parent is active. -/
-private def selectOne [Field F] (parent : ArithExpr F) (selectors : List (ArithExpr F)) :
-    Build F Unit := do
-  for selector in selectors do
-    boolean selector
-  let rec excludePairs : List (ArithExpr F) → Build F Unit
-    | [] => pure ()
-    | selector :: rest => do
-        for other in rest do constrain (.mul selector other)
-        excludePairs rest
-  excludePairs selectors
-  let sum := selectors.foldl ArithExpr.add (.const 0)
-  constrain (.sub sum parent)
+def selectOne [Field F] (parent : ArithExpr F) (selectors : List (ArithExpr F)) :
+    Build F Unit :=
+  modify fun state => { state with
+    constraints := state.constraints ++ (selectionConstraints parent selectors).toArray }
+
+/-- A selected default excludes each explicit literal using a fresh inverse witness. -/
+def excludeLiterals [Field F] (selector scrutinee : ArithExpr F) : List F → Build F Unit
+  | [] => pure ()
+  | value :: rest => do
+      let inverse ← fresh
+      guarded selector
+        (.sub (.mul (.sub scrutinee (.const value)) (.var inverse)) (.const 1))
+      excludeLiterals selector scrutinee rest
 
 mutual
-  private def lowerExpr [Field F] [DecidableEq F] (function : String)
+  def lowerExpr [Field F] [DecidableEq F] (function : String)
       (locals : List (String × Var)) (enable : ArithExpr F) (expr : Expr F) :
       Build F (ArithExpr F) := do
     match expr with
@@ -100,7 +115,7 @@ mutual
         return .var result
   termination_by sizeOf expr
 
-  private def lowerArgs [Field F] [DecidableEq F] (function : String)
+  def lowerArgs [Field F] [DecidableEq F] (function : String)
       (locals : List (String × Var)) (enable : ArithExpr F) (args : List (Expr F)) :
       Build F (List (ArithExpr F)) := do
     match args with
@@ -111,7 +126,7 @@ mutual
         return arg :: rest
   termination_by sizeOf args
 
-  private def lowerArms [Field F] [DecidableEq F] (function : String)
+  def lowerArms [Field F] [DecidableEq F] (function : String)
       (locals : List (String × Var)) (scrutinee : ArithExpr F) (result : Var)
       (literals : List F) (arms : List (Pattern F × Expr F)) :
       Build F (List (ArithExpr F)) := do
@@ -122,11 +137,7 @@ mutual
         match pattern with
         | .literal value => guarded selector (.sub scrutinee (.const value))
         | .wildcard =>
-            -- Selected default means every explicit equality is false.
-            for value in literals do
-              let inverse ← fresh
-              guarded selector
-                (.sub (.mul (.sub scrutinee (.const value)) (.var inverse)) (.const 1))
+            excludeLiterals selector scrutinee literals
         let body ← lowerExpr function locals selector body
         guarded selector (.sub (.var result) body)
         match pattern with
@@ -137,22 +148,23 @@ mutual
   termination_by sizeOf arms
 end
 
-private def lowerFunction [Field F] [DecidableEq F] (defn : Function F) :
+def lowerFunction [Field F] [DecidableEq F] (defn : Function F) :
     Except CompileError (Chip F) := do
   let arity := defn.params.length
   let output := arity
-  let build : Build F Unit := do
-    let body ← lowerExpr defn.name (defn.params.zip (List.range arity)) (.const 1) defn.body
-    constrain (.sub (.var output) body)
-  let (_, state) ← build.run { nextVar := arity + 1 }
+  let (body, state) ←
+    (lowerExpr defn.name (defn.params.zip (List.range arity)) (.const 1) defn.body).run
+      { nextVar := arity + 1 }
   return {
     name := defn.name
     arity
     output
     numVars := state.nextVar
-    constraints := state.constraints.toList
+    constraints := (state.constraints.push (.sub (.var output) body)).toList
     sends := state.sends.toList
   }
+
+end Compiler
 
 /--
 Compile a field-specialized program to one chip per function. Calls remain channel sends,
@@ -162,6 +174,6 @@ def compile [Field F] [DecidableEq F] (program : Program F) : Except CompileErro
   match typecheck program with
   | .error error => throw (.invalidProgram error)
   | .ok () => pure ()
-  return ⟨← program.functions.mapM lowerFunction⟩
+  return ⟨← program.functions.mapM Compiler.lowerFunction⟩
 
 end Aiur.Circuit

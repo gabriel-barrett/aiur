@@ -21,6 +21,16 @@ def identityChip (F : Type) : Chip F := {
 
 def system (F : Type) : System F := ⟨[identityChip F]⟩
 
+theorem source_compiles [Field F] [DecidableEq F] :
+    compile (source.toField F) = .ok (system F) := by
+  have checked : typecheck (source.toField F) = .ok () := by
+    simp [typecheck, source, Program.toField, Program.map, Function.map, Expr.map, inferType]
+    rfl
+  simp only [compile, checked]
+  simp [source, Program.toField, Program.map, Function.map, Expr.map,
+    Compiler.lowerFunction, Compiler.lowerExpr, StateT.run, StateT.pure,
+    bind, pure, Except.bind, Except.pure, system, identityChip]
+
 -- This is a closed leaf: the equation holds and there are no call premises.
 def identity_derivation [Field F] [DecidableEq F] (x : F) :
     Derivation (system F) ⟨"identity", [x], x⟩ :=
@@ -31,6 +41,11 @@ def identity_derivation [Field F] [DecidableEq F] (x : F) :
 theorem identity_circuit_evaluates [Field F] [DecidableEq F] (x : F) :
     CircuitEvaluates (system F) "identity" [x] x :=
   ⟨identity_derivation x⟩
+
+-- The proved compiler theorem applies to any closed tree for the compiled system.
+theorem identity_result_unique [Field F] [DecidableEq F] (x y : F)
+    (derives : CircuitEvaluates (system F) "identity" [x] y) : y = x :=
+  (compiler_sound source_compiles "identity" [x] y derives).deterministic (identity_evaluates x)
 
 -- Flattening retains the assignment used by the proof.
 example [Field F] [DecidableEq F] (x : F) :
