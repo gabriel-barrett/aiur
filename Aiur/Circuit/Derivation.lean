@@ -11,10 +11,35 @@ def Chip.ValidRow [Field F] (chip : Chip F) (row : Row F) : Prop :=
 def Chip.receive [Field F] (chip : Chip F) (row : Row F) : Message F :=
   ⟨chip.name, row.values.take chip.arity, row.assignment chip.output⟩
 
+theorem Chip.ValidRow.receive_arity [Field F] {chip : Chip F} {row : Row F}
+    (valid : chip.ValidRow row) : (chip.receive row).args.length = chip.arity := by
+  obtain ⟨layout, size, _⟩ := valid
+  have bounds : chip.arity ≤ chip.numVars := by
+    simp [Chip.wellFormed] at layout
+    exact le_trans layout.1.1.1 (Nat.le_of_lt layout.1.1.2)
+  simp [Chip.receive, size, Nat.min_eq_left bounds]
+
 /-- Keep one premise per enabled send occurrence, including repeated messages. -/
 def Chip.premises [Field F] [DecidableEq F] (chip : Chip F) (row : Row F) : List (Message F) :=
   chip.sends.filterMap fun send =>
     if send.enable.denote row.assignment = 1 then some (send.message row.assignment) else none
+
+theorem Chip.premises_forall [Field F] [DecidableEq F] (chip : Chip F) (row : Row F)
+    (property : Message F → Prop) :
+    (∀ message ∈ chip.premises row, property message) ↔
+      ∀ send ∈ chip.sends, send.enable.denote row.assignment = 1 → property (send.message row.assignment) := by
+  constructor
+  · intro valid send member enabled
+    apply valid (send.message row.assignment)
+    apply List.mem_filterMap.mpr
+    exact ⟨send, member, by simp [enabled]⟩
+  · intro valid message member
+    obtain ⟨send, sendMember, selected⟩ := List.mem_filterMap.mp member
+    split at selected
+    · rename_i enabled
+      cases selected
+      exact valid send sendMember enabled
+    · cases selected
 
 mutual
   /--
@@ -43,6 +68,29 @@ def Derives [Field F] [DecidableEq F] (system : System F) (message : Message F) 
 def CircuitEvaluates [Field F] [DecidableEq F] (system : System F)
     (function : String) (args : List F) (result : F) : Prop :=
   Derives system ⟨function, args, result⟩
+
+/-- Assemble a forest from proofs of every premise, retaining repeated occurrences. -/
+theorem derivations_nonempty_iff [Field F] [DecidableEq F] {system : System F}
+    {messages : List (Message F)} :
+    Nonempty (Derivations system messages) ↔ ∀ message ∈ messages, Derives system message := by
+  induction messages with
+  | nil =>
+      constructor
+      · intros; contradiction
+      · intro _; exact ⟨.nil⟩
+  | cons message messages ih =>
+      constructor
+      · rintro ⟨children⟩
+        cases children with
+        | cons head tail =>
+            intro next member
+            rcases List.mem_cons.mp member with same | member
+            · subst next; exact ⟨head⟩
+            · exact ih.mp ⟨tail⟩ next member
+      · intro premises
+        obtain ⟨head⟩ := premises message (by simp)
+        obtain ⟨tail⟩ := ih.mpr (fun next member => premises next (by simp [member]))
+        exact ⟨.cons head tail⟩
 
 mutual
   /-- Flatten a tree to rows, retaining separate occurrences of identical calls. -/

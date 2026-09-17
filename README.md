@@ -106,9 +106,11 @@ both a source evaluation proof and a chip derivation is in
 lake env lean Examples/Semantics.lean
 ```
 
-`CompilerCorrect F` states the desired equivalence between relational evaluation
-and circuit derivability after successful compilation. The general compiler
-proof and the bridge to `System.check` remain to be established.
+`compiler_sound` proves that every closed derivation of a successfully compiled
+program gives a source evaluation. This includes matches and mutually recursive
+calls, with no admitted proof steps. `compiler_correct` states the full
+equivalence, but its completeness direction still depends on one `sorry` in match
+witness construction. The bridge to `System.check` is also pending.
 
 See [the language design](design/language.md) for the agreed scope and
 [implementation notes](design/implementation.md) for current semantic defaults.

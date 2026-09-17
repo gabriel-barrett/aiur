@@ -157,6 +157,9 @@ that derivation relation requires a separate theorem; see
 Lean proofs establish that local satisfaction is unchanged by equation
 permutation, an inverse equation implies a nonzero denominator and the correct
 inverse, and a Boolean selector equation implies a zero-or-one selector.
+The emitted selector equations imply exactly one selected occurrence when the
+parent is active and no selected occurrences when it is inactive. Pairwise
+exclusion makes this valid in every field characteristic.
 
 `lake test` checks valid and forged assignments, default conditions, missing and
 multiple selectors, inactive nested branches, discarded arms, division by zero,
@@ -165,6 +168,9 @@ pattern collisions in a finite field. The runnable
 [circuit example](../Examples/Circuit.lean) checks assignments for division followed
 by a function call and compares its output with the reference evaluator.
 
-Full compiler soundness and completeness between relational evaluation and closed
-circuit derivations remain to be proved. The model makes no claim about a
-concrete lookup or fingerprinting protocol.
+`compiler_sound` now proves that every closed derivation for a successfully
+compiled program corresponds to source evaluation, with no admitted proof steps.
+The reverse direction still has one admitted case: constructing a match witness,
+including satisfying assignments for inactive arms. The full equivalence theorem
+therefore still depends on `sorryAx`; see [the correctness design](correctness.md).
+The model makes no claim about a concrete lookup or fingerprinting protocol.

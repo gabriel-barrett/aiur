@@ -7,6 +7,11 @@ open Aiur Aiur.Circuit
 
 namespace AiurSemanticsTests
 
+-- Soundness must remain independent of the admitted completeness case.
+/-- info: 'Aiur.compiler_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.compiler_sound
+
 -- The source relation needs field laws, but no decidable equality or fuel.
 example [Field F] (x : F) :
     EvalExpr ⟨[]⟩ [("x", x)] (.neg (.binary .add (.var "x") (.literal 1))) (-(x + 1)) :=
@@ -132,9 +137,14 @@ def mainChip : Chip Rat := {
 def system : System Rat := ⟨[squareChip, mainChip]⟩
 
 -- The trees below use the actual output of the compiler.
-example : (match compile (source.toField Rat) with
-    | .ok compiled => compiled == system
-    | .error _ => false) = true := by decide +kernel
+theorem source_compiles : compile (source.toField Rat) = .ok system := by
+  have checked : typecheck (source.toField Rat) = .ok () := by decide +kernel
+  simp only [compile, checked]
+  simp [source, Program.toField, Program.map, Function.map, Expr.map,
+    Compiler.lowerFunction, Compiler.lowerExpr, Compiler.lowerArgs, Compiler.boolean,
+    StateT.run, StateT.bind, StateT.pure, bind, pure, Except.bind, Except.pure,
+    system, squareChip, mainChip]
+  rfl
 
 def squareTree : Derivation system ⟨"square", [3], 9⟩ :=
   .node squareChip ⟨"square", [3, 9]⟩ rfl
@@ -155,6 +165,10 @@ def mainTree : Derivation system ⟨"main", [6, 2], 9⟩ :=
       decide +kernel)
 
 example : CircuitEvaluates system "main" [6, 2] 9 := ⟨mainTree⟩
+
+-- Soundness rules out a wrong result for every closed tree.
+example (result : Rat) (derives : CircuitEvaluates system "main" [6, 2] result) : result = 9 :=
+  (compiler_sound source_compiles "main" [6, 2] result derives).deterministic main_evaluates
 
 -- A disabled send requires no child proof, including a call to this same chip.
 def disabledChip : Chip Rat := {
