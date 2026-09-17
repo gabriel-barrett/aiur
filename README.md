@@ -106,11 +106,11 @@ both a source evaluation proof and a chip derivation is in
 lake env lean Examples/Semantics.lean
 ```
 
-`compiler_sound` proves that every closed derivation of a successfully compiled
-program gives a source evaluation. This includes matches and mutually recursive
-calls, with no admitted proof steps. `compiler_correct` states the full
-equivalence, but its completeness direction still depends on one `sorry` in match
-witness construction. The bridge to `System.check` is also pending.
+`compiler_correct` proves that a source function evaluates to a result exactly
+when its successfully compiled system has a closed derivation of that call.
+Both directions are proved without admitted steps, including matches, inactive
+branches, and mutually recursive calls. The bridge to `System.check` remains
+separate work.
 
 See [the language design](design/language.md) for the agreed scope and
 [implementation notes](design/implementation.md) for current semantic defaults.

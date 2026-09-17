@@ -109,10 +109,7 @@ theorem evaluation_complete [Field F] [DecidableEq F]
       rw [receive, name] at tree
       exact ⟨tree⟩
 
-/--
-Compiler correctness. The completeness direction still depends on the admitted match case
-in `Circuit.Compiler.lowerExpr_complete`; `compiler_sound` is fully proved.
--/
+/-- Successful compilation preserves and reflects evaluation as finite closed chip derivations. -/
 theorem compiler_correct [Field F] [DecidableEq F] : CompilerCorrect F := by
   intro program system compiled name args result
   constructor

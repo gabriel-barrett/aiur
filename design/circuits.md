@@ -168,9 +168,10 @@ pattern collisions in a finite field. The runnable
 [circuit example](../Examples/Circuit.lean) checks assignments for division followed
 by a function call and compares its output with the reference evaluator.
 
-`compiler_sound` now proves that every closed derivation for a successfully
-compiled program corresponds to source evaluation, with no admitted proof steps.
-The reverse direction still has one admitted case: constructing a match witness,
-including satisfying assignments for inactive arms. The full equivalence theorem
-therefore still depends on `sorryAx`; see [the correctness design](correctness.md).
+`compiler_correct` proves both directions between source evaluation and closed
+derivations for successfully compiled programs, with no admitted proof steps.
+Completeness supplies a witness for each inactive arm without requiring its body
+to evaluate. Fresh zeroes satisfy inactive code, including nested matches,
+division, and calls. Selected wildcards receive inverses of their nonzero
+differences from retained literals. See [the correctness design](correctness.md).
 The model makes no claim about a concrete lookup or fingerprinting protocol.

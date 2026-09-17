@@ -30,13 +30,16 @@ are provisional and can be revised as the language design develops.
    so local expression proofs can treat callee evaluations as premises.
 10. `Aiur/Circuit/Selectors.lean` and `CompileFacts.lean` prove selector,
     pattern-checking, variable-bound, and function-lookup properties.
-    `ExpressionCorrectness.lean` proves local soundness; `WitnessCorrectness.lean`
-    constructs local witnesses, with one admitted match case.
+    `ExpressionCorrectness.lean` proves local soundness. `WitnessBasic.lean`
+    supplies assignment-preservation lemmas; `InactiveCorrectness.lean` constructs
+    witnesses for disabled expressions and arm lists; `MatchWitness.lean`
+    constructs wildcard inverse witnesses. `WitnessCorrectness.lean` combines
+    these into local completeness for every expression constructor.
     `LocalCorrectness.lean` lifts these expression results to function chips.
 11. `Aiur/Correctness.lean` proves compiler soundness by induction on closed
-    derivations. It also supplies the source-evaluation induction for completeness,
-    which still depends on the admitted local match construction. See
-    [the correctness design](correctness.md) for the exact proof status.
+    derivations and completeness by induction on source evaluation.
+    `compiler_correct` combines them into the full equivalence, without admitted
+    steps. See [the correctness design](correctness.md) for the proof architecture.
 
 The checker, conversion pass, and evaluator are total Lean definitions. Syntax
 lowering is metaprogramming code and does not define the language's semantics.
@@ -112,9 +115,11 @@ the executable evaluator is a separate, pending theorem.
 `lake build` checks the library, kernel examples, and frontend diagnostics.
 This includes evaluation and circuit derivation proofs, as well as impossibility
 proofs for division by zero, uncovered matches, and circular justification.
-An axiom-report regression check ensures that `compiler_sound` does not depend on
-`sorryAx`. The example also uses soundness to exclude every incorrect circuit
-result for a division followed by a call.
+Axiom-report regression checks ensure that `compiler_sound`, `evaluation_complete`,
+and `compiler_correct` do not depend on `sorryAx`. The examples use soundness to
+exclude every incorrect circuit result for a division followed by a call, and
+completeness to construct closed derivations for mutual recursion and matches
+with inactive nested matches, division by zero, and nonterminating calls.
 `lake test` runs arithmetic, recursion, matching, field conversion, checker, and
 runtime error cases. The same frontend AST is exercised over the rationals and
 the field with seven elements.
