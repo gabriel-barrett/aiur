@@ -42,8 +42,10 @@ are provisional and can be revised as the language design develops.
     steps. See [the correctness design](correctness.md) for the proof architecture.
 12. `Aiur/Circuit/MemoDerivation.lean` defines a separate finite graph model with
     explicit references, sharing, and cycles. `Aiur/MemoCompleteness.lean` proves
-    completeness by embedding the original derivation trees. Its soundness
-    specification is deferred; see [memoization](memoization.md).
+    completeness by embedding the original derivation trees.
+    `Aiur/Circuit/MemoAcyclic.lean` proves that acyclic graphs unfold into ordinary
+    derivations. `Aiur/MemoSoundness.lean` uses this to prove `memo_acyclic_sound`,
+    with no source-totality assumption; see [memoization](memoization.md).
 13. `Aiur/EvalCorrectness.lean` proves that successful executable runs satisfy the
     evaluation predicate and that finite evaluation proofs run successfully with
     all sufficiently large fuel bounds, subject to the public program check.
@@ -127,8 +129,10 @@ and `compiler_correct` do not depend on `sorryAx`. The examples use soundness to
 exclude every incorrect circuit result for a division followed by a call, and
 completeness to construct closed derivations for mutual recursion and matches
 with inactive nested matches, division by zero, and nonterminating calls.
-`AiurTests/Memo.lean` checks shared nodes and an accepted self-loop for actual
-compiled programs, as well as completeness and the evaluator correspondence.
+`AiurTests/Memo.lean` checks acyclic soundness for shared nodes and rejects both
+self-loops and longer cycles under the acyclicity hypothesis. Cyclic graphs
+remain valid witnesses of memoized acceptance for actual compiled programs.
+It also checks completeness and the evaluator correspondence.
 Its axiom reports guard the new theorems against admitted proofs.
 `lake test` runs arithmetic, recursion, matching, field conversion, checker, and
 runtime error cases. The same frontend AST is exercised over the rationals and

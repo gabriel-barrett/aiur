@@ -23,8 +23,8 @@ backward references, and self-references are all allowed. Every node is locally
 valid, and every reference points inside the table. Extra components and repeated
 claim labels are permitted.
 
-There are no ranks, acyclicity conditions, or multiplicity fields. One node
-supplies its premises once and can justify any number of incoming references.
+The graph structure has no ranks, acyclicity conditions, or multiplicity fields.
+One node supplies its premises once and can justify any number of incoming references.
 The intended protocol abstraction assumes that feasible executions cannot wrap
 claim counts around the field characteristic. No field-valued balance or
 fingerprinting calculation appears in this graph model.
@@ -54,8 +54,51 @@ the tree's locally valid rule instances, proves that every premise has a provide
 in that finite table, and chooses matching node indices. The embedding retains
 tree occurrences; graph witnesses may additionally share nodes.
 
-The memoized soundness specification is deferred for the user to refine. No
-memoized soundness predicate or theorem is included in this implementation.
+## Acyclic soundness
+
+[Aiur/Circuit/MemoAcyclic.lean](../Aiur/Circuit/MemoAcyclic.lean) defines
+`graph.Dependency child parent` when an enabled premise of `parent` targets
+`child`. The relation places a provider before its caller for induction.
+`graph.Acyclic` means that no node has a nonempty directed path back to itself:
+
+```text
+∀ i, ¬ Relation.TransGen graph.Dependency i i
+```
+
+This excludes cycles of every length, while permitting shared dependencies.
+It concerns the explicit node references, not just repeated function names or
+claim labels. Only enabled calls give rise to edges. Acyclicity is a separate
+hypothesis on a particular graph; cyclic graphs still satisfy `MemoDerivation`
+and can witness `MemoAccepts`.
+
+[Aiur/MemoSoundness.lean](../Aiur/MemoSoundness.lean) proves `memo_acyclic_sound`:
+
+```text
+compile P = .ok C →
+(graph : MemoDerivation C ⟨f, xs, y⟩) →
+graph.Acyclic → EvalCall P f xs y
+```
+
+The proof has two parts. On the finite node set, the absence of directed cycles
+makes the dependency relation well founded (`Acyclic.wellFounded`). Induction
+over that relation builds an ordinary closed derivation for each node
+(`node_derives_of_acyclic`), duplicating shared providers when different premise
+occurrences require them. The root gives `derives_of_acyclic`. The existing
+`derivation_sound` theorem then supplies the finite source evaluation.
+
+No totality of the source program, prior evaluation proof, fuel bound, or depth
+parameter is assumed. Successful compilation supplies the program-check
+hypothesis needed to combine this result with `eval_complete`, so the executable
+evaluator also returns the claimed result with sufficiently large fuel.
+
+The current hypothesis excludes cycles anywhere in the supplied graph,
+including disconnected components. Requiring this only of nodes reachable from
+the root could weaken the hypothesis, but is not part of this theorem. No depth
+constraint or change to the circuit language is introduced.
+
+The completeness embedding chooses arbitrary matching providers. It proves
+unrestricted memoized acceptance and does not claim that its chosen references
+form an acyclic graph.
 
 ## Executable evaluation and its predicate
 
@@ -92,8 +135,12 @@ has a memoized graph for that result.
 ## Validation
 
 [AiurTests/Memo.lean](../AiurTests/Memo.lean) constructs a two-node graph sharing
-one square result between two calls and a one-node self-referential graph
-accepting any output. Both use actual compiler outputs. It also exercises
-completeness and the evaluator bridge, including mutual recursion and exhausted
-fuel. Axiom-report checks ensure the new completeness and evaluator theorems
-depend only on Lean's standard axioms, with no `sorryAx`.
+one square result between two calls, proves it acyclic, and obtains source
+evaluation and a successful executable run through soundness. A one-node
+self-loop and a two-node cycle accept any output for the compiled looping
+function, but both fail acyclicity. The two-node example has no self-edges.
+Soundness also rules out every acyclic graph for that nonterminating function.
+The tests exercise completeness and the evaluator bridge, including mutual
+recursion and exhausted fuel. Axiom-report checks ensure the completeness,
+acyclic soundness, and evaluator theorems depend only on Lean's standard axioms,
+with no `sorryAx`.

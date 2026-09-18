@@ -120,8 +120,10 @@ separate work.
 Every enabled call references a node with the required conclusion. There are no
 acyclicity or multiplicity fields. `memo_complete` proves that every successful
 source evaluation has such a graph, and `memo_eval_complete` supplies one from a
-successful executable run. Memoized soundness is left for a separate
-specification. See [the memoization design](design/memoization.md).
+successful executable run. `memo_acyclic_sound` proves that an acyclic graph for
+a compiled system has a source evaluation. Its hypothesis concerns the supplied
+graph and requires no source totality or depth parameter.
+See [the memoization design](design/memoization.md).
 
 See [the language design](design/language.md) for the agreed scope and
 [implementation notes](design/implementation.md) for current semantic defaults.
