@@ -28,7 +28,8 @@ def Pattern.matches [DecidableEq F] : Pattern F → F → Bool
   | .literal value, input => decide (value = input)
   | .wildcard, _ => true
 
-private def evalBinOp [Field F] [DecidableEq F] (op : BinOp) (left right : F) :
+/-- Arithmetic execution, exposed for the evaluator/semantics correspondence proof. -/
+def evalBinOp [Field F] [DecidableEq F] (op : BinOp) (left right : F) :
     Except EvalError F :=
   match op with
   | .add => .ok (left + right)

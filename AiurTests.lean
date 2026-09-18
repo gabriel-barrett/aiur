@@ -1,6 +1,7 @@
 import Aiur
 import AiurTests.Circuit
 import AiurTests.Semantics
+import AiurTests.Memo
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 

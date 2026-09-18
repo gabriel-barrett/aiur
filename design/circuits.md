@@ -175,3 +175,8 @@ to evaluate. Fresh zeroes satisfy inactive code, including nested matches,
 division, and calls. Selected wildcards receive inverses of their nonzero
 differences from retained literals. See [the correctness design](correctness.md).
 The model makes no claim about a concrete lookup or fingerprinting protocol.
+
+The additional `MemoDerivation` model uses explicit finite graphs with shared
+nodes and permitted cycles. It has a completeness theorem, while its soundness
+specification is deferred. The original tree relation and exact-balance checker
+remain available. See [memoization](memoization.md).

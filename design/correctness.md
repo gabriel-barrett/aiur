@@ -5,6 +5,10 @@ Both soundness and completeness are proved in Lean without admitted steps:
 source evaluation is equivalent to a finite closed derivation in the successfully
 compiled chip system.
 
+This equivalence concerns the original tree model. The additional memoized graph
+model and its completeness theorem are described in [memoization](memoization.md).
+Its soundness specification is deferred.
+
 ## Evaluation as a relation
 
 Source evaluation is an inductively defined relation between a computation and
@@ -240,9 +244,12 @@ produce the corresponding successful derivations.
 
 ## Relationship to the current implementation
 
-The existing fuel-based evaluator is an executable reference. The proof-level
-source semantics is now the inductive evaluation relation. Agreement between
-the executable evaluator and this relation remains to be proved separately.
+The fuel-based evaluator is an executable reference.
+[Aiur/EvalCorrectness.lean](../Aiur/EvalCorrectness.lean) proves its agreement with
+the inductive relation: every `.ok result` execution yields an evaluation proof,
+and every evaluation proof for a checked program executes successfully with all
+sufficiently large fuel bounds. `exists_eval_iff` records the exact equivalence,
+including the public evaluator's whole-program check.
 
 The existing `System.check` validates flat collections of assignments and exact
 channel-message balance; `System.Accepts` currently means that this check
