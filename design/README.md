@@ -17,6 +17,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   fresh call results, and abstract channel balance.
 - [Correctness](correctness.md): relational evaluation, closed circuit
   derivations, and the compiler's soundness and completeness statement.
+- [Memoization](memoization.md): explicit cyclic graphs with shared nodes,
+  completeness, and the executable-evaluator correspondence.
 
 The circuit pipeline begins with one chip per function and abstracts channel
 interactions independently of the eventual cryptographic protocol.

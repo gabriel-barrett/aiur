@@ -66,6 +66,10 @@ evaluations. `EvalExpr` and `EvalArgs` give the corresponding expression and
 argument-list judgments. These relations require `Field F` without decidable
 equality. Expression and function evaluation are proved deterministic.
 
+`eval_spec` proves that every `eval ... = .ok result` run satisfies `EvalCall`.
+Conversely, every successful evaluation proof for a checked program runs with all
+sufficiently large fuel bounds. `exists_eval_iff` states this correspondence.
+
 ## Syntax
 
 Function bodies are expressions. Parameters and return types may be annotated
@@ -111,6 +115,13 @@ when its successfully compiled system has a closed derivation of that call.
 Both directions are proved without admitted steps, including matches, inactive
 branches, and mutually recursive calls. The bridge to `System.check` remains
 separate work.
+
+`MemoDerivation` adds an explicit finite graph model with shared nodes and cycles.
+Every enabled call references a node with the required conclusion. There are no
+acyclicity or multiplicity fields. `memo_complete` proves that every successful
+source evaluation has such a graph, and `memo_eval_complete` supplies one from a
+successful executable run. Memoized soundness is left for a separate
+specification. See [the memoization design](design/memoization.md).
 
 See [the language design](design/language.md) for the agreed scope and
 [implementation notes](design/implementation.md) for current semantic defaults.

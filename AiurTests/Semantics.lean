@@ -153,7 +153,7 @@ example : ∃ system, compile (inactiveBranches.toField Rat) = .ok system ∧
 
 def loopProgram : Program Rat := ⟨[⟨"loop", [], .call "loop" []⟩]⟩
 
-example (name : String) (args : List Rat) (result : Rat) :
+theorem loop_never_evaluates (name : String) (args : List Rat) (result : Rat) :
     ¬ EvalCall loopProgram name args result := by
   intro evaluated
   induction evaluated using EvalCall.rec
