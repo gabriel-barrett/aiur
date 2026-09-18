@@ -6,8 +6,9 @@ source evaluation is equivalent to a finite closed derivation in the successfull
 compiled chip system.
 
 This equivalence concerns the original tree model. The additional memoized graph
-model and its completeness theorem are described in [memoization](memoization.md).
-Its soundness specification is deferred.
+model, its completeness theorem, and its soundness theorem for acyclic graphs
+are described in [memoization](memoization.md). Acyclic soundness assumes no
+totality of the source program.
 
 ## Evaluation as a relation
 

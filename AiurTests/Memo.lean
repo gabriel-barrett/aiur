@@ -14,6 +14,10 @@ namespace AiurMemoTests
 #guard_msgs in
 #print axioms Aiur.memo_eval_complete
 
+/-- info: 'Aiur.memo_acyclic_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.memo_acyclic_sound
+
 /-- info: 'Aiur.eval_spec' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.eval_spec
@@ -56,6 +60,24 @@ example : MemoAccepts twiceSystem "twice" [3] 18 := ⟨sharedGraph⟩
 example : sharedGraph.size = 2 := rfl
 example : twiceTree.rows.length = 3 := rfl
 
+theorem shared_acyclic : sharedGraph.Acyclic := by
+  have step : ∀ child parent, sharedGraph.Dependency child parent → child.val < parent.val := by
+    intro child parent ⟨j, same⟩
+    fin_cases parent
+    · exact Fin.elim0 j
+    · subst child; simp [sharedGraph]
+  have increasing {child parent} (path : Relation.TransGen sharedGraph.Dependency child parent) :
+      child.val < parent.val := by
+    induction path with
+    | single edge => exact step _ _ edge
+    | tail _ edge ih => exact Nat.lt_trans ih (step _ _ edge)
+  intro i cycle
+  exact Nat.lt_irrefl i.val (increasing cycle)
+
+-- Unfolding repeats the shared provider as needed to build an ordinary tree.
+example : Derives twiceSystem ⟨"twice", [3], 18⟩ :=
+  sharedGraph.derives_of_acyclic shared_acyclic
+
 def sharedSource : Program Nat := aiur% "
 fn square(x) { x * x }
 fn twice(x) { square(x) + square(x) }
@@ -69,6 +91,13 @@ theorem shared_compiles : compile (sharedSource.toField Rat) = .ok twiceSystem :
     StateT.run, StateT.bind, StateT.pure, bind, pure, Except.bind, Except.pure,
     twiceSystem, squareChip, twiceChip]
   rfl
+
+-- Soundness starts with the graph; no prior source evaluation is assumed.
+example : EvalCall (sharedSource.toField Rat) "twice" [3] 18 :=
+  memo_acyclic_sound shared_compiles sharedGraph shared_acyclic
+
+example : ∃ fuel, eval (sharedSource.toField Rat) "twice" [3] fuel = .ok 18 :=
+  eval_complete (by decide +kernel) (memo_acyclic_sound shared_compiles sharedGraph shared_acyclic)
 
 example : MemoAccepts twiceSystem "twice" [3] 18 :=
   memo_eval_complete shared_compiles (fuel := 10) (by decide +kernel)
@@ -116,6 +145,41 @@ def cyclicGraph (result : Rat) : MemoDerivation cyclicSystem ⟨"loop", [], resu
 
 theorem cyclic_accepts (result : Rat) : MemoAccepts cyclicSystem "loop" [] result :=
   ⟨cyclicGraph result⟩
+
+example (result : Rat) : ¬ (cyclicGraph result).Acyclic := by
+  intro acyclic
+  exact acyclic (0 : Fin 1) (.single ⟨(0 : Fin 1), rfl⟩)
+
+/-- Two distinct nodes can form a cycle even though neither has a self-edge. -/
+def twoCycleGraph (result : Rat) : MemoDerivation cyclicSystem ⟨"loop", [], result⟩ := {
+  size := 2
+  node := fun _ => cyclicRule result
+  root := 0
+  root_claim := rfl
+  target := fun i _ => if i.val = 0 then 1 else 0
+  target_claim := by
+    intro i j
+    fin_cases j
+    simp [RuleInstance.conclusion, RuleInstance.premises, cyclicRule,
+      Chip.receive, Chip.premises, cyclicChip, Send.message, ArithExpr.denote, Row.assignment]
+}
+
+example (result : Rat) (i : Fin (twoCycleGraph result).size) :
+    ¬ (twoCycleGraph result).Dependency i i := by
+  rintro ⟨j, same⟩
+  fin_cases i <;> simp [twoCycleGraph] at same
+
+example (result : Rat) : ¬ (twoCycleGraph result).Acyclic := by
+  intro acyclic
+  have first : (twoCycleGraph result).Dependency (0 : Fin 2) (1 : Fin 2) := ⟨(0 : Fin 1), rfl⟩
+  have second : (twoCycleGraph result).Dependency (1 : Fin 2) (0 : Fin 2) := ⟨(0 : Fin 1), rfl⟩
+  exact acyclic (0 : Fin 2) ((Relation.TransGen.single first).tail second)
+
+-- Nontermination rules out every acyclic witness, while cyclic ones remain accepted.
+example (result : Rat) (graph : MemoDerivation cyclicSystem ⟨"loop", [], result⟩) :
+    ¬ graph.Acyclic := by
+  intro acyclic
+  exact loop_never_evaluates _ _ _ (memo_acyclic_sound loop_compiles graph acyclic)
 
 -- The graph model intentionally admits more claims than finite evaluation or tree proofs.
 example (result : Rat) : ¬ EvalCall loopProgram "loop" [] result :=

@@ -177,6 +177,7 @@ differences from retained literals. See [the correctness design](correctness.md)
 The model makes no claim about a concrete lookup or fingerprinting protocol.
 
 The additional `MemoDerivation` model uses explicit finite graphs with shared
-nodes and permitted cycles. It has a completeness theorem, while its soundness
-specification is deferred. The original tree relation and exact-balance checker
-remain available. See [memoization](memoization.md).
+nodes and permitted cycles. It has a completeness theorem and a conditional
+soundness theorem: an acyclic graph for a compiled system gives a finite source
+evaluation. The original tree relation and exact-balance checker remain
+available. See [memoization](memoization.md).
