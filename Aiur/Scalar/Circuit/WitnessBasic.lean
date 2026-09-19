@@ -1,6 +1,6 @@
-import Aiur.Circuit.ExpressionCorrectness
+import Aiur.Scalar.Circuit.ExpressionCorrectness
 
-namespace Aiur.Circuit.Compiler
+namespace Aiur.Scalar.Circuit.Compiler
 
 /-- New equations vanish and every new send is disabled under this assignment. -/
 structure InactiveExtension [Field F] (before after : BuildState F)
@@ -245,4 +245,4 @@ theorem assignment_append_zeros [Zero F] (function : String) (initial : List F) 
       List.getElem?_eq_none (Nat.le_of_not_gt bound), List.getElem?_replicate]
     split <;> rfl
 
-end Aiur.Circuit.Compiler
+end Aiur.Scalar.Circuit.Compiler

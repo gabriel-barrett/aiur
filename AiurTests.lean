@@ -1,22 +1,23 @@
-import Aiur
+import Aiur.Scalar
 import AiurTests.Circuit
 import AiurTests.Semantics
 import AiurTests.Memo
+import AiurTests.Tuples
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
-open Aiur
+open Aiur.Scalar
 
 namespace AiurTests
 
-def identity : Program Nat := aiur% "fn identity(x) { x }"
+def identity : Program Nat := scalar_aiur% "fn identity(x) { x }"
 
 /-- Elaboration produces ordinary AST constructors, reducible by the kernel. -/
 example : identity = ⟨[⟨"identity", ["x"], .var "x"⟩]⟩ := rfl
 example : typecheck identity = .ok () := by decide +kernel
 example : eval (identity.toField Rat) "identity" [42] = .ok 42 := by decide +kernel
 
-def sample : Program Nat := aiur% "
+def sample : Program Nat := scalar_aiur% "
 // The same definitions will be evaluated in two fields.
 fn arithmetic(x: Field, y: Field) -> Field { (x + y) * (x - y) / y }
 fn negation(x) { -x * 2 + 1 }
@@ -106,15 +107,15 @@ def invalidPrograms : List (Program Nat × CheckError) := [
 -- The string elaborator runs the checker rather than merely constructing syntax.
 /-- error: function 'f' calls 'f' with 0 arguments; expected 1 -/
 #guard_msgs in
-#check (aiur% "fn f(x) { f() }" : Program Nat)
+#check (scalar_aiur% "fn f(x) { f() }" : Program Nat)
 
 /-- error: duplicate function 'f' -/
 #guard_msgs in
-#check (aiur% "fn f() { 0 } fn f() { 1 }" : Program Nat)
+#check (scalar_aiur% "fn f() { 0 } fn f() { 1 }" : Program Nat)
 
 /-- error: unbound variable 'y' in function 'f' -/
 #guard_msgs in
-#check (aiur% "fn f(x) { y }" : Program Nat)
+#check (scalar_aiur% "fn f(x) { y }" : Program Nat)
 
 -- These exercise parser failures without coupling tests to parser error formatting.
 run_cmd do
@@ -155,3 +156,4 @@ end AiurTests
 def main : IO Unit := do
   AiurTests.run
   AiurCircuitTests.run
+  AiurTupleTests.run

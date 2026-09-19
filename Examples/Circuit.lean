@@ -1,9 +1,9 @@
-import Aiur
+import Aiur.Scalar
 import Mathlib.Algebra.Field.Rat
 
-open Aiur Aiur.Circuit
+open Aiur.Scalar Aiur.Scalar.Circuit
 
-def source : Program Nat := aiur% "
+def source : Program Nat := scalar_aiur% "
 fn square(x) { x * x }
 fn main(x, y) { square(x / y) }
 "
@@ -26,5 +26,5 @@ def checkExample : Except String Unit := do
 #eval checkExample
 -- Except.ok ()
 
-#eval Aiur.eval (source.toField Rat) "main" [6, 2]
+#eval Aiur.Scalar.eval (source.toField Rat) "main" [6, 2]
 -- Except.ok 9

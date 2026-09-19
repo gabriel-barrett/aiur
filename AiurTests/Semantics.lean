@@ -1,31 +1,31 @@
-import Aiur
+import Aiur.Scalar
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Convert
 
-open Aiur Aiur.Circuit
+open Aiur.Scalar Aiur.Scalar.Circuit
 
 namespace AiurSemanticsTests
 
 -- Both directions of compiler correctness must remain free of admitted proofs.
-/-- info: 'Aiur.compiler_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Scalar.compiler_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.compiler_sound
+#print axioms Aiur.Scalar.compiler_sound
 
-/-- info: 'Aiur.evaluation_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Scalar.evaluation_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.evaluation_complete
+#print axioms Aiur.Scalar.evaluation_complete
 
-/-- info: 'Aiur.compiler_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Scalar.compiler_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.compiler_correct
+#print axioms Aiur.Scalar.compiler_correct
 
 -- The source relation needs field laws, but no decidable equality or fuel.
 example [Field F] (x : F) :
     EvalExpr ⟨[]⟩ [("x", x)] (.neg (.binary .add (.var "x") (.literal 1))) (-(x + 1)) :=
   .neg (.add (.var rfl) .literal)
 
-def source : Program Nat := aiur% "
+def source : Program Nat := scalar_aiur% "
 fn square(x) { x * x }
 fn main(x, y) { square(x / y) }
 "
@@ -83,7 +83,7 @@ example (program : Program Rat) :
         [(.wildcard, .literal 11), (.literal 0, .binary .div (.literal 1) (.literal 0))]) 11 :=
   .matchValue .literal .wildcard .literal
 
-def recursive : Program Nat := aiur% "
+def recursive : Program Nat := scalar_aiur% "
 fn even(n) { match n { 0 => 1, _ => odd(n - 1) } }
 fn odd(n) { match n { 0 => 0, _ => even(n - 1) } }
 "
@@ -117,7 +117,7 @@ example : ∃ system, compile (recursive.toField Rat) = .ok system ∧
   | error error => simp [compiled, Except.isOk, Except.toBool] at succeeds
   | ok system => exact ⟨system, rfl, evaluation_complete compiled even_two⟩
 
-def inactiveBranches : Program Nat := aiur% "
+def inactiveBranches : Program Nat := scalar_aiur% "
 fn choose(x) {
   match x {
     0 => match x { 0 => 1 / 0, _ => looping(x) },

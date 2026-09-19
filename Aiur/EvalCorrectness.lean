@@ -1,44 +1,12 @@
-import Aiur.Eval
 import Aiur.Semantics
 
 namespace Aiur
-
-theorem SelectArm.find_eq [DecidableEq F] {value : F} {arms : List (Pattern F × Expr F)}
-    {body : Expr F} (selected : SelectArm value arms body) :
-    ∃ pattern, arms.find? (fun (pat, _) => pat.matches value) = some (pattern, body) := by
-  induction selected with
-  | literal => exact ⟨.literal value, by simp [List.find?, Pattern.matches]⟩
-  | wildcard => exact ⟨.wildcard, by simp [List.find?, Pattern.matches]⟩
-  | skip different _ ih =>
-      obtain ⟨pattern, found⟩ := ih
-      exact ⟨pattern, by simpa [List.find?, Pattern.matches, different] using found⟩
-
-theorem SelectArm.of_find [DecidableEq F] {value : F} {arms : List (Pattern F × Expr F)}
-    {pattern : Pattern F} {body : Expr F}
-    (found : arms.find? (fun (pat, _) => pat.matches value) = some (pattern, body)) :
-    SelectArm value arms body := by
-  induction arms with
-  | nil => simp at found
-  | cons arm rest ih =>
-      rcases arm with ⟨headPattern, headBody⟩
-      cases headPattern with
-      | wildcard =>
-          simp [List.find?, Pattern.matches] at found
-          rcases found with ⟨rfl, rfl⟩
-          exact .wildcard
-      | literal literal =>
-          by_cases same : literal = value
-          · subst literal
-            simp [List.find?, Pattern.matches] at found
-            rcases found with ⟨rfl, rfl⟩
-            exact .literal
-          · exact .skip same (ih (by simpa [List.find?, Pattern.matches, same] using found))
 
 private theorem evalArgs_of_mapM [Field F] [DecidableEq F] {program : Program F}
     {locals : Environment F} {fuel : Nat}
     (sound : ∀ expr result, evalExpr program locals fuel expr = .ok result →
       EvalExpr program locals expr result)
-    {args : List (Expr F)} {values : List F}
+    {args : List (Expr F)} {values : List (Value F)}
     (executed : args.mapM (evalExpr program locals fuel) = .ok values) :
     EvalArgs program locals args values := by
   induction args generalizing values with
@@ -57,9 +25,9 @@ private theorem evalArgs_of_mapM [Field F] [DecidableEq F] {program : Program F}
               subst values
               exact .cons (sound head value headRun) (ih tailRun)
 
-/-- Every successful executable expression evaluation has a fuel-free derivation. -/
+/-- Every successful executable run has a finite fuel-free evaluation proof. -/
 theorem evalExpr_spec [Field F] [DecidableEq F] {program : Program F}
-    {locals : Environment F} {fuel : Nat} {expr : Expr F} {result : F}
+    {locals : Environment F} {fuel : Nat} {expr : Expr F} {result : Value F}
     (executed : evalExpr program locals fuel expr = .ok result) :
     EvalExpr program locals expr result := by
   induction fuel generalizing locals expr result with
@@ -80,13 +48,23 @@ theorem evalExpr_spec [Field F] [DecidableEq F] {program : Program F}
               simp [evalExpr, found, pure, Except.pure] at executed
               subst result
               exact .var found
-      | neg expr =>
-          cases innerRun : evalExpr program locals fuel expr with
-          | error error => simp [evalExpr, innerRun, bind, Except.bind] at executed
-          | ok value =>
-              simp [evalExpr, innerRun, bind, pure, Except.bind, Except.pure] at executed
+      | tuple items =>
+          cases run : items.mapM (evalExpr program locals fuel) with
+          | error error => simp [evalExpr, run, bind, Except.bind] at executed
+          | ok values =>
+              simp [evalExpr, run, bind, pure, Except.bind, Except.pure] at executed
               subst result
-              exact .neg (ih innerRun)
+              exact .tuple (evalArgs_of_mapM (fun _ _ run => ih run) run)
+      | project value index =>
+          cases run : evalExpr program locals fuel value with
+          | error error => simp [evalExpr, run, bind, Except.bind] at executed
+          | ok input =>
+              exact .project (ih run) (by simpa [evalExpr, run, bind, Except.bind] using executed)
+      | neg value =>
+          cases run : evalExpr program locals fuel value with
+          | error error => simp [evalExpr, run, bind, Except.bind] at executed
+          | ok input =>
+              exact .neg (ih run) (by simpa [evalExpr, run, bind, Except.bind] using executed)
       | binary op left right =>
           cases leftRun : evalExpr program locals fuel left with
           | error error => simp [evalExpr, leftRun, bind, Except.bind] at executed
@@ -94,110 +72,104 @@ theorem evalExpr_spec [Field F] [DecidableEq F] {program : Program F}
               cases rightRun : evalExpr program locals fuel right with
               | error error => simp [evalExpr, leftRun, rightRun, bind, Except.bind] at executed
               | ok rightValue =>
-                  have operation : evalBinOp op leftValue rightValue = .ok result := by
-                    simpa [evalExpr, leftRun, rightRun, bind, Except.bind] using executed
-                  cases op with
-                  | add =>
-                      simp [evalBinOp] at operation
-                      subst result
-                      exact .add (ih leftRun) (ih rightRun)
-                  | sub =>
-                      simp [evalBinOp] at operation
-                      subst result
-                      exact .sub (ih leftRun) (ih rightRun)
-                  | mul =>
-                      simp [evalBinOp] at operation
-                      subst result
-                      exact .mul (ih leftRun) (ih rightRun)
-                  | div =>
-                      by_cases zero : rightValue = 0
-                      · simp [evalBinOp, zero] at operation
-                      · simp [evalBinOp, zero] at operation
-                        subst result
-                        exact .div (ih leftRun) (ih rightRun) zero
+                  exact .binary (ih leftRun) (ih rightRun)
+                    (by simpa [evalExpr, leftRun, rightRun, bind, Except.bind] using executed)
+      | letValue pattern value body =>
+          cases run : evalExpr program locals fuel value with
+          | error error => simp [evalExpr, run, bind, Except.bind] at executed
+          | ok input =>
+              cases matched : pattern.bindings input with
+              | none => simp [evalExpr, run, matched, bind, Except.bind, throw] at executed
+              | some bindings =>
+                  exact .letValue (ih run) matched
+                    (ih (by simpa [evalExpr, run, matched, bind, Except.bind] using executed))
       | call name args =>
-          cases found : program.findFunction? name with
-          | none => simp [evalExpr, found, throw] at executed
-          | some defn =>
-              by_cases arity : defn.params.length = args.length
-              · cases argsRun : args.mapM (evalExpr program locals fuel) with
-                | error error =>
-                    simp [evalExpr, found, arity, argsRun, bind, pure, Except.bind, Except.pure] at executed
-                | ok values =>
-                    have arguments := evalArgs_of_mapM (fun _ _ run => ih run) argsRun
-                    have bodyRun : evalExpr program (defn.params.zip values) fuel defn.body = .ok result := by
-                      simpa [evalExpr, found, arity, argsRun, bind, pure, Except.bind, Except.pure] using executed
-                    exact .call arguments (.intro found (arity.trans arguments.length_eq) (ih bodyRun))
-              · simp [evalExpr, found, arity, bind, Except.bind] at executed
+          cases argsRun : args.mapM (evalExpr program locals fuel) with
+          | error error => simp [evalExpr, argsRun, bind, Except.bind] at executed
+          | ok values =>
+              cases prepared : prepareCall program name values with
+              | error error => simp [evalExpr, argsRun, prepared, bind, Except.bind] at executed
+              | ok binding =>
+                  rcases binding with ⟨calleeLocals, body⟩
+                  exact .call (evalArgs_of_mapM (fun _ _ run => ih run) argsRun)
+                    (.intro prepared
+                      (ih (by simpa [evalExpr, argsRun, prepared, bind, Except.bind] using executed)))
       | matchValue scrutinee arms =>
-          cases scrutineeRun : evalExpr program locals fuel scrutinee with
-          | error error => simp [evalExpr, scrutineeRun, bind, Except.bind] at executed
-          | ok value =>
-              cases found : arms.find? (fun (pat, _) => pat.matches value) with
-              | none => simp [evalExpr, scrutineeRun, found, bind, Except.bind, throw] at executed
-              | some arm =>
-                  rcases arm with ⟨pattern, body⟩
-                  have bodyRun : evalExpr program locals fuel body = .ok result := by
-                    simpa [evalExpr, scrutineeRun, found, bind, Except.bind] using executed
-                  exact .matchValue (ih scrutineeRun) (.of_find found) (ih bodyRun)
+          cases run : evalExpr program locals fuel scrutinee with
+          | error error => simp [evalExpr, run, bind, Except.bind] at executed
+          | ok input =>
+              cases selected : selectArm input arms with
+              | none => simp [evalExpr, run, selected, bind, Except.bind, throw] at executed
+              | some binding =>
+                  rcases binding with ⟨bindings, body⟩
+                  exact .matchValue (ih run) selected
+                    (ih (by simpa [evalExpr, run, selected, bind, Except.bind] using executed))
 
-/-- The public evaluator checks the program, resolves the entry, and executes its body. -/
 theorem eval_eq_ok_iff [Field F] [DecidableEq F] {program : Program F}
-    {name : String} {args : List F} {fuel : Nat} {result : F} :
+    {name : String} {args : List (Value F)} {fuel : Nat} {result : Value F} :
     eval program name args fuel = .ok result ↔
-      typecheck program = .ok () ∧ ∃ defn, program.findFunction? name = some defn ∧
-        defn.params.length = args.length ∧
-        evalExpr program (defn.params.zip args) fuel defn.body = .ok result := by
+      typecheck program = .ok () ∧ ∃ locals expr,
+        prepareCall program name args = .ok (locals, expr) ∧
+        evalExpr program locals fuel expr = .ok result := by
   cases checked : typecheck program with
   | error error => simp [eval, checked, bind, Except.bind]
   | ok checkedUnit =>
       cases checkedUnit
-      cases found : program.findFunction? name with
-      | none => simp [eval, checked, found, bind, pure, Except.bind, Except.pure, throw]
-      | some defn =>
-          by_cases arity : defn.params.length = args.length <;>
-            simp [eval, checked, found, arity, bind, pure, Except.bind, Except.pure]
+      cases prepared : prepareCall program name args with
+      | error error => simp [eval, checked, prepared, bind, pure, Except.bind, Except.pure]
+      | ok binding =>
+          rcases binding with ⟨locals, expr⟩
+          simp only [eval, checked, prepared, bind, pure, Except.bind, Except.pure,
+            Except.ok.injEq, Prod.mk.injEq, true_and]
+          constructor
+          · intro run; exact ⟨locals, expr, ⟨rfl, rfl⟩, run⟩
+          · rintro ⟨_, _, ⟨rfl, rfl⟩, run⟩; exact run
 
-/-- `eval = .ok result` implies the evaluation predicate, for every fuel bound. -/
 theorem eval_spec [Field F] [DecidableEq F] {program : Program F}
-    {name : String} {args : List F} {fuel : Nat} {result : F}
+    {name : String} {args : List (Value F)} {fuel : Nat} {result : Value F}
     (executed : eval program name args fuel = .ok result) : EvalCall program name args result := by
-  obtain ⟨_, defn, found, arity, body⟩ := eval_eq_ok_iff.mp executed
-  exact .intro found arity (evalExpr_spec body)
+  obtain ⟨_, locals, expr, prepared, body⟩ := eval_eq_ok_iff.mp executed
+  exact .intro prepared (evalExpr_spec body)
 
-/-- A finite expression derivation executes successfully at every sufficiently large fuel bound. -/
+/-- Every finite evaluation runs with all sufficiently large fuel bounds. -/
 theorem EvalExpr.eventually_runs [Field F] [DecidableEq F] {program : Program F}
-    {locals : Environment F} {expr : Expr F} {result : F}
+    {locals : Environment F} {expr : Expr F} {result : Value F}
     (evaluates : EvalExpr program locals expr result) :
     ∃ minimum, ∀ fuel, minimum ≤ fuel → evalExpr program locals fuel expr = .ok result := by
   induction evaluates using EvalExpr.rec
     (motive_2 := fun locals exprs values _ =>
       ∃ minimum, ∀ fuel, minimum ≤ fuel → exprs.mapM (evalExpr program locals fuel) = .ok values)
     (motive_3 := fun name args result _ =>
-      ∃ minimum, ∀ fuel, minimum ≤ fuel →
-        ∃ defn, program.findFunction? name = some defn ∧ defn.params.length = args.length ∧
-          evalExpr program (defn.params.zip args) fuel defn.body = .ok result) with
+      ∃ minimum, ∀ fuel, minimum ≤ fuel → ∃ locals expr,
+        prepareCall program name args = .ok (locals, expr) ∧
+          evalExpr program locals fuel expr = .ok result) with
   | literal =>
       refine ⟨1, ?_⟩
       intro fuel enough
       cases fuel with
       | zero => omega
-      | succ fuel => simp [evalExpr, pure, Except.pure]
+      | succ fuel => rfl
   | var lookup =>
       refine ⟨1, ?_⟩
       intro fuel enough
       cases fuel with
       | zero => omega
       | succ fuel => simp [evalExpr, lookup, pure, Except.pure]
-  | neg _ ih =>
+  | tuple _ ih =>
       obtain ⟨minimum, runs⟩ := ih
       refine ⟨minimum + 1, ?_⟩
       intro fuel enough
       cases fuel with
       | zero => omega
-      | succ fuel =>
-          simp [evalExpr, runs fuel (by omega), bind, pure, Except.bind, Except.pure]
-  | add _ _ leftIH rightIH | sub _ _ leftIH rightIH | mul _ _ leftIH rightIH =>
+      | succ fuel => simp [evalExpr, runs fuel (by omega), bind, pure, Except.bind, Except.pure]
+  | project _ projected ih | neg _ projected ih =>
+      obtain ⟨minimum, runs⟩ := ih
+      refine ⟨minimum + 1, ?_⟩
+      intro fuel enough
+      cases fuel with
+      | zero => omega
+      | succ fuel => simp [evalExpr, runs fuel (by omega), projected, bind, Except.bind]
+  | binary _ _ operation leftIH rightIH =>
       obtain ⟨leftMinimum, leftRuns⟩ := leftIH
       obtain ⟨rightMinimum, rightRuns⟩ := rightIH
       refine ⟨max leftMinimum rightMinimum + 1, ?_⟩
@@ -206,40 +178,27 @@ theorem EvalExpr.eventually_runs [Field F] [DecidableEq F] {program : Program F}
       | zero => omega
       | succ fuel =>
           simp [evalExpr, leftRuns fuel (by omega), rightRuns fuel (by omega),
-            evalBinOp, bind, Except.bind]
-  | div _ _ nonzero leftIH rightIH =>
-      obtain ⟨leftMinimum, leftRuns⟩ := leftIH
-      obtain ⟨rightMinimum, rightRuns⟩ := rightIH
-      refine ⟨max leftMinimum rightMinimum + 1, ?_⟩
+            operation, bind, Except.bind]
+  | letValue _ matched _ valueIH bodyIH | matchValue _ matched _ valueIH bodyIH =>
+      obtain ⟨valueMinimum, valueRuns⟩ := valueIH
+      obtain ⟨bodyMinimum, bodyRuns⟩ := bodyIH
+      refine ⟨max valueMinimum bodyMinimum + 1, ?_⟩
       intro fuel enough
       cases fuel with
       | zero => omega
       | succ fuel =>
-          simp [evalExpr, leftRuns fuel (by omega), rightRuns fuel (by omega),
-            evalBinOp, nonzero, bind, Except.bind]
-  | call arguments _ argumentsIH calleeIH =>
-      obtain ⟨argsMinimum, argsRuns⟩ := argumentsIH
-      obtain ⟨callMinimum, callRuns⟩ := calleeIH
+          simpa [evalExpr, valueRuns fuel (by omega), matched, bind, Except.bind]
+            using bodyRuns fuel (by omega)
+  | call _ _ argsIH callIH =>
+      obtain ⟨argsMinimum, argsRuns⟩ := argsIH
+      obtain ⟨callMinimum, callRuns⟩ := callIH
       refine ⟨max argsMinimum callMinimum + 1, ?_⟩
       intro fuel enough
       cases fuel with
       | zero => omega
       | succ fuel =>
-          obtain ⟨defn, lookup, arity, bodyRun⟩ := callRuns fuel (by omega)
-          have syntaxArity := arity.trans arguments.length_eq.symm
-          simpa [evalExpr, lookup, syntaxArity, argsRuns fuel (by omega),
-            bind, pure, Except.bind, Except.pure] using bodyRun
-  | matchValue _ selected _ scrutineeIH branchIH =>
-      obtain ⟨scrutineeMinimum, scrutineeRuns⟩ := scrutineeIH
-      obtain ⟨branchMinimum, branchRuns⟩ := branchIH
-      obtain ⟨pattern, found⟩ := selected.find_eq
-      refine ⟨max scrutineeMinimum branchMinimum + 1, ?_⟩
-      intro fuel enough
-      cases fuel with
-      | zero => omega
-      | succ fuel =>
-          simpa [evalExpr, scrutineeRuns fuel (by omega), found, bind, Except.bind]
-            using branchRuns fuel (by omega)
+          obtain ⟨locals, expr, prepared, bodyRun⟩ := callRuns fuel (by omega)
+          simpa [evalExpr, argsRuns fuel (by omega), prepared, bind, Except.bind] using bodyRun
   | nil => exact ⟨0, fun _ _ => rfl⟩
   | cons _ _ headIH tailIH =>
       obtain ⟨headMinimum, headRuns⟩ := headIH
@@ -248,31 +207,28 @@ theorem EvalExpr.eventually_runs [Field F] [DecidableEq F] {program : Program F}
       intro fuel enough
       simp [List.mapM_cons, headRuns fuel (by omega), tailRuns fuel (by omega),
         bind, pure, Except.bind, Except.pure]
-  | intro lookup arity _ bodyIH =>
-      obtain ⟨minimum, bodyRuns⟩ := bodyIH
-      exact ⟨minimum, fun fuel enough => ⟨_, lookup, arity, bodyRuns fuel enough⟩⟩
+  | intro prepared _ bodyIH =>
+      obtain ⟨minimum, runs⟩ := bodyIH
+      exact ⟨minimum, fun fuel enough => ⟨_, _, prepared, runs fuel enough⟩⟩
 
-/-- The program check is the only extra condition imposed by the public evaluator. -/
 theorem EvalCall.eventually_eval [Field F] [DecidableEq F] {program : Program F}
-    (checked : typecheck program = .ok ()) {name : String} {args : List F} {result : F}
-    (evaluates : EvalCall program name args result) :
+    (checked : typecheck program = .ok ()) {name : String}
+    {args : List (Value F)} {result : Value F} (evaluates : EvalCall program name args result) :
     ∃ minimum, ∀ fuel, minimum ≤ fuel → eval program name args fuel = .ok result := by
   cases evaluates with
-  | intro lookup arity body =>
+  | intro prepared body =>
       obtain ⟨minimum, runs⟩ := body.eventually_runs
-      exact ⟨minimum, fun fuel enough => eval_eq_ok_iff.mpr ⟨checked, _, lookup, arity, runs fuel enough⟩⟩
+      exact ⟨minimum, fun fuel enough => eval_eq_ok_iff.mpr ⟨checked, _, _, prepared, runs fuel enough⟩⟩
 
-/-- Every successful source call in a checked program can be run with enough fuel. -/
 theorem eval_complete [Field F] [DecidableEq F] {program : Program F}
-    (checked : typecheck program = .ok ()) {name : String} {args : List F} {result : F}
-    (evaluates : EvalCall program name args result) :
+    (checked : typecheck program = .ok ()) {name : String}
+    {args : List (Value F)} {result : Value F} (evaluates : EvalCall program name args result) :
     ∃ fuel, eval program name args fuel = .ok result := by
   obtain ⟨minimum, runs⟩ := evaluates.eventually_eval checked
   exact ⟨minimum, runs minimum (Nat.le_refl _)⟩
 
-/-- Exact correspondence for the checked public evaluator, quantifying over sufficient fuel. -/
 theorem exists_eval_iff [Field F] [DecidableEq F] {program : Program F}
-    {name : String} {args : List F} {result : F} :
+    {name : String} {args : List (Value F)} {result : Value F} :
     (∃ fuel, eval program name args fuel = .ok result) ↔
       typecheck program = .ok () ∧ EvalCall program name args result := by
   constructor
@@ -280,5 +236,25 @@ theorem exists_eval_iff [Field F] [DecidableEq F] {program : Program F}
     exact ⟨(eval_eq_ok_iff.mp executed).1, eval_spec executed⟩
   · rintro ⟨checked, evaluated⟩
     exact eval_complete checked evaluated
+
+theorem EvalExpr.deterministic [Field F] [DecidableEq F] {program : Program F}
+    {locals : Environment F} {expr : Expr F} {left right : Value F}
+    (first : EvalExpr program locals expr left) (second : EvalExpr program locals expr right) :
+    left = right := by
+  obtain ⟨a, leftRuns⟩ := first.eventually_runs
+  obtain ⟨b, rightRuns⟩ := second.eventually_runs
+  exact Except.ok.inj ((leftRuns (max a b) (Nat.le_max_left _ _)).symm.trans
+    (rightRuns (max a b) (Nat.le_max_right _ _)))
+
+theorem EvalCall.deterministic [Field F] [DecidableEq F] {program : Program F}
+    {name : String} {args : List (Value F)} {left right : Value F}
+    (first : EvalCall program name args left) (second : EvalCall program name args right) :
+    left = right := by
+  cases first with
+  | intro prepared body =>
+      cases second with
+      | intro otherPrepared otherBody =>
+          cases Except.ok.inj (prepared.symm.trans otherPrepared)
+          exact body.deterministic otherBody
 
 end Aiur

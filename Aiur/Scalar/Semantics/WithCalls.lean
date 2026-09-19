@@ -1,6 +1,6 @@
-import Aiur.Semantics
+import Aiur.Scalar.Semantics
 
-namespace Aiur
+namespace Aiur.Scalar
 
 /-- Interpret a call by a supplied relation while evaluating the surrounding body. -/
 abbrev CallRelation (F : Type) := String → List F → F → Prop
@@ -81,4 +81,4 @@ theorem evalExprWith_iff_evalExpr [Field F] {program : Program F}
     EvalExprWith (EvalCall program) locals expr result ↔ EvalExpr program locals expr result :=
   ⟨EvalExprWith.toEvalExpr, EvalExpr.toEvalExprWith⟩
 
-end Aiur
+end Aiur.Scalar

@@ -1,6 +1,6 @@
-import Aiur.Circuit.WitnessBasic
+import Aiur.Scalar.Circuit.WitnessBasic
 
-namespace Aiur.Circuit.Compiler
+namespace Aiur.Scalar.Circuit.Compiler
 
 /-- Default inverse equations need no nonzero differences when the selector is zero. -/
 theorem excludeLiterals_inactive [Field F] {selector scrutinee : ArithExpr F} {literals : List F}
@@ -407,4 +407,4 @@ theorem lowerArms_inactive_complete [Field F] [DecidableEq F]
   · rw [assignment_append_zeros]
     exact extension
 
-end Aiur.Circuit.Compiler
+end Aiur.Scalar.Circuit.Compiler

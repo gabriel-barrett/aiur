@@ -1,81 +1,95 @@
 # Language
 
-## Agreed initial design
+Aiur is a first-order programming language for zero-knowledge circuits, formalized
+in Lean. Source programs use arithmetic, calls, and pattern matching rather than
+gates or wires. A Lean elaborator accepts a Rust-like source string containing all
+the function definitions.
 
-The language is intended to look like a normal programming language and is to be
-formalized in Lean.
+## Values and signatures
 
-### Values and types
+Types are `Field` and finite tuples of types, nested to any depth. Tuples may have
+any arity. `()` is unit; `(x,)` is a singleton tuple; `(x)` is grouping. Tuple
+shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
+arrays, structs, sum types, or higher-order values.
 
-Initially, the language has a single field type. There are no derived data
-structures at this stage; they will be introduced later.
+Every parameter and return type must be explicit, including `Field` and `()`:
 
-The frontend is field agnostic and represents literals as natural numbers. The
-AST is parameterized by its literal type: the frontend produces `Program Nat`,
-and a separate pass converts literals to obtain `Program F` for a chosen field
-`F`. This conversion includes literals in match patterns. `Nat` is an AST
-representation choice, not an additional language type.
+```rust
+fn swap(p: (Field, Field)) -> (Field, Field) {
+  match p { (x, y) => (y, x) }
+}
 
-### Operations
+fn sum((x, (y, z)): (Field, (Field, Field))) -> Field {
+  x + y + z
+}
+```
 
-The initial language supports:
+Functions take any number of arguments and return one value, which may be a
+tuple. All signatures are available while checking every body. Forward calls and
+mutual recursion work with tuple arguments and results. Functions are called by
+name and cannot themselves be passed or returned as values.
 
-- Field addition (`+`).
-- Field subtraction (`-`).
-- Field multiplication (`*`).
-- Field division (`/`).
-- Function calls.
-- A simple match statement.
+The frontend remains field agnostic: `Program Nat` contains natural literals.
+`Program.toField F` casts literals in expressions and patterns into the chosen
+field. `Nat` is a representation choice, not a source-language type.
 
-The syntax is Rust-like. A Lean elaborator accepts a source-code string containing
-the whole program and produces its top-level AST, including all functions.
+## Expressions and binding
 
-### Functions and recursion
+Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
+tuple construction, zero-based projection (`p.0`, `p.1.0`), blocks, `let`, and
+`match`. Arithmetic requires field operands. There is no implicit componentwise
+arithmetic or tuple flattening.
 
-The language is first order: functions are called by name and are not values that
-can be passed as arguments or returned from other functions.
+```rust
+fn combine(p: (Field, (Field, Field))) -> (Field, Field) {
+  let (tag, (x, y)) = p;
+  (tag + x, y)
+}
+```
 
-A program may define many functions. Functions may call themselves and each
-other, including mutually recursive groups of functions.
+`let` and parameter patterns must be irrefutable: bindings, wildcards, or tuples
+of irrefutable patterns. A name may occur only once within a pattern or the
+complete parameter list. `let` bindings may shadow outer variables and are
+visible in their continuation. Match bindings are visible only in their arm.
 
-Functions may take multiple arguments and return exactly one field element. Each
-argument is also a field element. Tuples are not available at this stage.
+## Matching
 
-Evaluation starts by specifying a function and its field-valued arguments.
+A pattern is a field literal, `_`, a binding name, or a tuple of patterns.
+Patterns must have the scrutinee's shape. Literals test leaves; wildcards and
+names accept entire subtrees. Tuple patterns match componentwise.
 
-### Pattern matching
+Overlapping patterns use first-match order:
 
-A match examines a single field value. Each pattern is either:
+```rust
+fn choose(p: (Field, Field)) -> Field {
+  match p { (0, _) => 11, (_, 0) => 22, _ => 33 }
+}
+```
 
-- A field element, matching that element.
-- A wildcard, matching any field element.
+`choose((0, 0))` returns `11`. The default excludes every earlier complete
+pattern, not each literal occurring in those patterns independently.
 
-Natural-number patterns in the frontend are converted to elements of the chosen
-field before evaluation. Circuit compilation rejects duplicate field patterns.
-The first wildcard ends the effective match; later branches are discarded during
-lowering. The default branch excludes every retained explicit pattern.
+Compilation rejects duplicate retained matching conditions after field conversion.
+Binder names are ignored: `(0, x)` duplicates `(0, _)`, including when different
+natural literals become equal in the field. The first irrefutable pattern ends
+the effective match; later arms are discarded during lowering. Every arm is
+still typechecked. Partial matches are allowed and fail if no arm matches.
 
-The reference evaluator's first-match behavior agrees with the selector model on
-these accepted programs. Current error behavior is recorded in
-[the implementation notes](implementation.md).
+## Evaluation and circuits
 
-### Circuit compilation
+Evaluation is eager in operands, tuple components, call arguments, and `let`
+values. Only the selected match body runs. Discarding or projecting a tuple does
+not skip its components. Division by zero and exhausted fuel are explicit errors.
+Entry arguments are checked against their declared tuple shapes. The inductive
+evaluation predicate describes finite successful evaluation without fuel.
 
-Each function compiles to a chip with local polynomial equations. Calls send
-channel messages and allocate fresh result variables. Division introduces an
-inverse witness, and matches use branch selectors with mutually exclusive
-conditions. See [the circuit design](circuits.md) for the equations and abstract
-channel model; lookup arguments and fingerprinting are not modeled yet.
+Each function compiles to one chip. Tuple interfaces preserve shape; rows contain
+only field elements. Local equations remain polynomials equal to zero. See
+[tuples](tuples.md), [circuits](circuits.md), and [correctness](correctness.md).
 
 ## Open questions
 
-The following are unresolved, rather than implicit language rules:
-
-- Which concrete fields will be used by applications and circuit backends.
-- Whether division by zero should remain an evaluation error.
-- The eventual treatment of recursive computations and termination in circuits.
-- Whether partial matches should remain permitted.
-- How the language will extend variable binding and compose computations beyond
-  the initial expression syntax.
-
-These questions can be resolved incrementally as the design develops.
+- Concrete fields and circuit backends for applications.
+- Whether division by zero and partial matches remain runtime errors.
+- Additional data structures and binding forms beyond immutable tuples.
+- Constraints enforcing depth or other termination measures, deliberately deferred.

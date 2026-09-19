@@ -2,29 +2,29 @@ import AiurTests.Semantics
 import Mathlib.Tactic.FinCases
 import Mathlib.Data.Fintype.Fin
 
-open Aiur Aiur.Circuit AiurSemanticsTests
+open Aiur.Scalar Aiur.Scalar.Circuit AiurSemanticsTests
 
 namespace AiurMemoTests
 
-/-- info: 'Aiur.memo_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Scalar.memo_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.memo_complete
+#print axioms Aiur.Scalar.memo_complete
 
-/-- info: 'Aiur.memo_eval_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Scalar.memo_eval_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.memo_eval_complete
+#print axioms Aiur.Scalar.memo_eval_complete
 
-/-- info: 'Aiur.memo_acyclic_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Scalar.memo_acyclic_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.memo_acyclic_sound
+#print axioms Aiur.Scalar.memo_acyclic_sound
 
-/-- info: 'Aiur.eval_spec' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Aiur.Scalar.eval_spec' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.eval_spec
+#print axioms Aiur.Scalar.eval_spec
 
-/-- info: 'Aiur.exists_eval_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Scalar.exists_eval_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.exists_eval_iff
+#print axioms Aiur.Scalar.exists_eval_iff
 
 def squareRule : RuleInstance twiceSystem := {
   chip := squareChip
@@ -78,7 +78,7 @@ theorem shared_acyclic : sharedGraph.Acyclic := by
 example : Derives twiceSystem ⟨"twice", [3], 18⟩ :=
   sharedGraph.derives_of_acyclic shared_acyclic
 
-def sharedSource : Program Nat := aiur% "
+def sharedSource : Program Nat := scalar_aiur% "
 fn square(x) { x * x }
 fn twice(x) { square(x) + square(x) }
 "

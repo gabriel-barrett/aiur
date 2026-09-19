@@ -1,6 +1,6 @@
-import Aiur.Circuit.MatchWitness
+import Aiur.Scalar.Circuit.MatchWitness
 
-namespace Aiur.Circuit.Compiler
+namespace Aiur.Scalar.Circuit.Compiler
 
 set_option maxHeartbeats 800000 in
 set_option maxRecDepth 2048 in
@@ -580,4 +580,4 @@ mutual
 
 end
 
-end Aiur.Circuit.Compiler
+end Aiur.Scalar.Circuit.Compiler

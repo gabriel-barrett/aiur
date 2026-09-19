@@ -1,7 +1,7 @@
-import Aiur.Circuit.Compile
-import Aiur.Circuit.Selectors
+import Aiur.Scalar.Circuit.Compile
+import Aiur.Scalar.Circuit.Selectors
 
-namespace Aiur.Circuit
+namespace Aiur.Scalar.Circuit
 
 /-- Fresh variables never invalidate the bounds of an earlier expression. -/
 theorem ArithExpr.inBounds_mono {expr : ArithExpr F} {before after : Nat}
@@ -271,4 +271,4 @@ theorem findFunction_name {program : Program F} {name : String} {defn : Function
   have := List.find?_some found
   simpa using this
 
-end Aiur.Circuit
+end Aiur.Scalar.Circuit

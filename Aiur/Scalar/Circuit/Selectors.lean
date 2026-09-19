@@ -1,7 +1,7 @@
-import Aiur.Circuit.Basic
+import Aiur.Scalar.Circuit.Basic
 import Mathlib.Algebra.BigOperators.Group.List.Basic
 
-namespace Aiur.Circuit
+namespace Aiur.Scalar.Circuit
 
 /-- Values satisfying the Boolean, pairwise exclusion, and sum selector equations. -/
 structure SelectorsValid [Field F] (parent : F) (selectors : List F) : Prop where
@@ -103,4 +103,4 @@ theorem default_excludes_literal [Field F] {value pattern inverse : F}
   have nonzero := inverse_nonzero equation
   exact nonzero (sub_eq_zero.mpr same)
 
-end Aiur.Circuit
+end Aiur.Scalar.Circuit

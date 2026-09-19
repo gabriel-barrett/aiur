@@ -1,8 +1,8 @@
-import Aiur.Correctness
-import Aiur.Circuit.MemoDerivation
-import Aiur.EvalCorrectness
+import Aiur.Scalar.Correctness
+import Aiur.Scalar.Circuit.MemoDerivation
+import Aiur.Scalar.EvalCorrectness
 
-namespace Aiur
+namespace Aiur.Scalar
 
 /-- Every successful source evaluation admits a finite memoized circuit graph. -/
 theorem memo_complete [Field F] [DecidableEq F]
@@ -21,4 +21,4 @@ theorem memo_eval_complete [Field F] [DecidableEq F]
     Circuit.MemoAccepts system name args result :=
   memo_complete compiled (eval_spec executed)
 
-end Aiur
+end Aiur.Scalar

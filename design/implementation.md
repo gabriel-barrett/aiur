@@ -1,139 +1,70 @@
-# Initial Lean implementation
+# Lean implementation
 
-This document records the current implementation choices. Semantic defaults below
-are provisional and can be revised as the language design develops.
+## Current modules
 
-## Modules and data flow
+- `Aiur/AST.lean`: recursive types, values, patterns, expressions, explicitly typed
+  signatures, and field specialization.
+- `Aiur/Typecheck.lean`: expression inference against declared signatures; tuple
+  shapes, projections, scoped bindings, and result agreement.
+- `Aiur/Frontend.lean`: `aiur%` elaborates a string into a checked `Program Nat`.
+  Parameter destructuring lowers to lets with generated parameter names that
+  cannot collide with source identifiers.
+- `Aiur/Eval.lean`: matching, bindings, argument-shape checks, and fuel-bounded
+  execution returning `Value F`.
+- `Aiur/Semantics.lean`: fuel-free `EvalExpr`, `EvalArgs`, and `EvalCall`.
+- `Aiur/EvalCorrectness.lean`: both directions of evaluator correspondence and
+  expression and call determinism.
+- `Aiur/Circuit/Basic.lean`: tuple-shaped interfaces and messages, flat rows, and
+  exact channel balance. Polynomial syntax and rows reuse the scalar reference.
+- `Aiur/Circuit/Compile.lean`: one chip per function, fresh result leaves, tuple
+  pattern indicators, and first-match branch selectors.
+- `Aiur/Circuit/PatternFacts.lean`: the literal equality-test equations are sound
+  and have witnesses in every field.
+- `Aiur/Circuit/Derivation.lean`, `MemoDerivation.lean`, and `MemoAcyclic.lean`:
+  finite trees, explicit graphs, tree embedding, and acyclic graph unfolding,
+  all with structured messages.
 
-1. `Aiur/AST.lean` defines `Pattern α`, `Expr α`, `Function α`, and `Program α`.
-   A program stores all named function definitions. A function has a list of
-   parameter names and a single expression body.
-2. `Aiur/Frontend.lean` registers syntax categories with Lean. The `aiur%` term
-   elaborator reads a string literal, parses the entire string, checks the
-   resulting program, and emits a `Program Nat` as Lean constructor expressions.
-3. `Aiur/Typecheck.lean` checks the entire program without inspecting literal
-   values or choosing a field.
-4. `Program.toField F` maps natural-number literals to field elements in both
-   expressions and patterns. `Program.map` exposes the general literal-mapping
-   pass.
-5. `Aiur/Eval.lean` evaluates a `Program F` using Mathlib's `Field F` operations and
-   decidable equality. The public entry point is `eval program function args fuel`.
-6. `Aiur/Semantics.lean` defines the fuel-free inductive predicates `EvalExpr`,
-   `EvalArgs`, and `EvalCall`, and proves expression and call determinism.
-7. `Aiur/Circuit.lean` exposes compilation to chips and checking of supplied
-   assignments against polynomial equations and abstract channel balance. See
-   [the circuit design](circuits.md).
-8. `Aiur/Circuit/Derivation.lean` defines finite closed trees of chip rule
-   instances, with local equations as side conditions and enabled calls as
-   premises.
-9. `Aiur/Semantics/WithCalls.lean` interprets calls using a supplied relation,
-   so local expression proofs can treat callee evaluations as premises.
-10. `Aiur/Circuit/Selectors.lean` and `CompileFacts.lean` prove selector,
-    pattern-checking, variable-bound, and function-lookup properties.
-    `ExpressionCorrectness.lean` proves local soundness. `WitnessBasic.lean`
-    supplies assignment-preservation lemmas; `InactiveCorrectness.lean` constructs
-    witnesses for disabled expressions and arm lists; `MatchWitness.lean`
-    constructs wildcard inverse witnesses. `WitnessCorrectness.lean` combines
-    these into local completeness for every expression constructor.
-    `LocalCorrectness.lean` lifts these expression results to function chips.
-11. `Aiur/Correctness.lean` proves compiler soundness by induction on closed
-    derivations and completeness by induction on source evaluation.
-    `compiler_correct` combines them into the full equivalence, without admitted
-    steps. See [the correctness design](correctness.md) for the proof architecture.
-12. `Aiur/Circuit/MemoDerivation.lean` defines a separate finite graph model with
-    explicit references, sharing, and cycles. `Aiur/MemoCompleteness.lean` proves
-    completeness by embedding the original derivation trees.
-    `Aiur/Circuit/MemoAcyclic.lean` proves that acyclic graphs unfold into ordinary
-    derivations. `Aiur/MemoSoundness.lean` uses this to prove `memo_acyclic_sound`,
-    with no source-totality assumption; see [memoization](memoization.md).
-13. `Aiur/EvalCorrectness.lean` proves that successful executable runs satisfy the
-    evaluation predicate and that finite evaluation proofs run successfully with
-    all sufficiently large fuel bounds, subject to the public program check.
+The previously proved field-only implementation remains under `Aiur/Scalar/`,
+imported with `Aiur.Scalar`, using that namespace and `scalar_aiur%`. It is a
+reference snapshot, not the tuple language's entry point. Its full compiler and
+memoized correctness proofs remain checked. Those compiler proofs have not yet
+been generalized to tuples; see [correctness](correctness.md).
 
-The checker, conversion pass, and evaluator are total Lean definitions. Syntax
-lowering is metaprogramming code and does not define the language's semantics.
-The circuit compiler is also a total Lean definition; its equation lists have no
-execution order.
+## Syntax and checking
 
-## Checking
+All function parameter and return annotations are mandatory. Expression types
+are inferred from signatures and lexical bindings; signatures are not inferred.
+Projections bind tighter than unary negation, which binds tighter than
+multiplication and division, then addition and subtraction. Binary operators
+associate left. Tuples, parameters, arguments, and arms allow trailing commas.
 
-The only language type is `Ty.field`. In particular, storing frontend literals as
-`Nat` does not introduce a natural-number type into the source language.
+Rust-style line and nested block comments are masked before parsing. Whitespace
+normalization supports tabs, CRLF, adjacent operators, and chained tuple indices.
+Parser columns refer to the normalized string.
 
-The checker first rejects duplicate function names, then checks every body
-against all function signatures. It rejects duplicate parameters, unbound
-variables, unknown callees, incorrect argument counts, and empty matches.
-Forward calls and mutual recursion are permitted. All match arms are checked,
-including arms that an earlier wildcard would make unreachable.
+The checker examines every body and arm. It rejects duplicate definitions and
+bindings, unknown names, wrong call arity, type mismatches, wrong tuple pattern
+shapes, invalid projections, refutable lets, and inconsistent arm result types.
+It does not establish termination, exhaustiveness, or nonzero denominators.
+Field-specific pattern duplicates are checked by compilation.
 
-The current checker does not establish termination, match exhaustiveness, or the
-absence of division by zero. The evaluator reports these runtime failures as
-described below. Its public entry point checks even manually constructed ASTs.
+## Evaluation and validation
 
-## Syntax choices
+Evaluation runs left to right and calls use fresh parameter environments.
+Bindings precede outer bindings to implement shadowing. A match evaluates its
+scrutinee once. Discarded values are still fully evaluated.
 
-The initial Rust-like subset uses `fn name(arg, ...) { expression }`. Optional
-annotations are `arg: Field` and `-> Field`. A function returns its body's value.
-There is no tuple return, explicit `return`, local declaration, or mutation yet.
+Each expression gives one less fuel to its children; siblings share the remaining
+bound. The bound measures nesting and recursive call depth rather than total
+steps. The entry point starts at the function body and defaults to 1000 fuel.
 
-Multiplication and division bind more tightly than addition and subtraction;
-these binary operations associate to the left. Unary negation binds more tightly
-than multiplication. Parentheses and expression blocks provide grouping. Unary
-negation is an operation on an expression, so the frontend still stores only
-natural-number literals.
+The semantic definitions and compiler are total Lean definitions. Only frontend
+traversal uses metaprogramming. Constraints have no execution order. Automatic
+circuit witness generation remains separate work.
 
-Matches have the form `match value { 0 => expression, _ => expression }`. The
-scrutinee and each branch are expressions. Patterns are natural-number literals
-or wildcards. Trailing commas are accepted in parameters, call arguments, and
-match arms. Rust-style line and nested block comments are masked before parsing,
-preserving line breaks and separation between tokens. Whitespace is normalized
-for Lean's lexer so tabs, CRLF, and adjacent operators such as `x--1` and `x/-2`
-work. Parser error columns refer to this normalized source string.
-
-## Evaluation defaults
-
-- Evaluation is deterministic and uses call by value. Operands and call arguments
-  are evaluated from left to right. Each call binds its arguments in a fresh
-  parameter environment.
-- A match evaluates its scrutinee once, chooses the first matching arm in source
-  order, and evaluates only that arm. Wildcards match every field element.
-- A match with no applicable arm returns `EvalError.noMatchingArm`.
-- Division by zero returns `EvalError.divisionByZero`, rather than using the
-  totalized value supplied by Mathlib's field division.
-- Fuel bounds evaluation depth. Zero fuel returns `EvalError.outOfFuel`; each
-  expression node passes one less fuel to its children and any called function
-  body. Siblings receive the same remaining fuel. Fuel is not an exact count of
-  total execution steps. The public entry point starts directly at the entry
-  function body and defaults to 1000 fuel.
-
-Field conversion may make distinct natural-number patterns equal: for example,
-`0` and `7` both denote zero in characteristic seven. Matching compares the
-converted field elements and still follows source order. The frontend therefore
-does not reject overlapping patterns or infer coverage from natural literals.
-The circuit compiler rejects duplicate retained patterns after conversion; it
-discards the suffix following a wildcard. The evaluator remains usable on raw
-ASTs, including programs that the circuit compiler rejects.
-
-These defaults provide an executable reference point for compiler correctness.
-Circuit compilation represents recursion through channel interactions.
-The inductive predicates are the proof-level source semantics. Their agreement
-with successful executable evaluation is proved in `EvalCorrectness.lean`.
-
-## Validation
-
-`lake build` checks the library, kernel examples, and frontend diagnostics.
-This includes evaluation and circuit derivation proofs, as well as impossibility
-proofs for division by zero, uncovered matches, and circular justification.
-Axiom-report regression checks ensure that `compiler_sound`, `evaluation_complete`,
-and `compiler_correct` do not depend on `sorryAx`. The examples use soundness to
-exclude every incorrect circuit result for a division followed by a call, and
-completeness to construct closed derivations for mutual recursion and matches
-with inactive nested matches, division by zero, and nonterminating calls.
-`AiurTests/Memo.lean` checks acyclic soundness for shared nodes and rejects both
-self-loops and longer cycles under the acyclicity hypothesis. Cyclic graphs
-remain valid witnesses of memoized acceptance for actual compiled programs.
-It also checks completeness and the evaluator correspondence.
-Its axiom reports guard the new theorems against admitted proofs.
-`lake test` runs arithmetic, recursion, matching, field conversion, checker, and
-runtime error cases. The same frontend AST is exercised over the rationals and
-the field with seven elements.
+`lake build` checks the tuple implementation and the preserved scalar proofs.
+`AiurTests/Tuples.lean` exercises nested, wide, empty, and singleton tuples,
+bindings, projections, strictness, recursion, shape errors, finite-field pattern
+collisions, structured messages, and forged branch selectors. Axiom reports guard
+the evaluator correspondence and the scalar compiler theorems against admitted
+proofs. `lake test` runs both sets of runtime checks.

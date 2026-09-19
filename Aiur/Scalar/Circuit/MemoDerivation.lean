@@ -1,6 +1,6 @@
-import Aiur.Circuit.Derivation
+import Aiur.Scalar.Circuit.Derivation
 
-namespace Aiur.Circuit
+namespace Aiur.Scalar.Circuit
 
 /-- One locally checked rule instance, without proofs of its call premises. -/
 structure RuleInstance [Field F] (system : System F) where
@@ -34,7 +34,7 @@ def MemoDerives [Field F] [DecidableEq F] (system : System F) (message : Message
   Nonempty (MemoDerivation system message)
 
 def MemoAccepts [Field F] [DecidableEq F] (system : System F)
-    (function : String) (args : List (Value F)) (result : Value F) : Prop :=
+    (function : String) (args : List F) (result : F) : Prop :=
   MemoDerives system ⟨function, args, result⟩
 
 /-- The claims represented anywhere in a graph, including its root. -/
@@ -146,4 +146,4 @@ theorem Derives.memo [Field F] [DecidableEq F] {system : System F} {message : Me
   obtain ⟨tree⟩ := derives
   exact ⟨tree.toMemo⟩
 
-end Aiur.Circuit
+end Aiur.Scalar.Circuit
