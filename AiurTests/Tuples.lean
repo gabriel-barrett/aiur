@@ -128,12 +128,46 @@ example : ∃ fuel, eval (sample.toField Rat) "swap" [.tuple [2, 3]] fuel = .ok 
 #guard_msgs in
 #print axioms Aiur.exists_eval_iff
 
+/-- info: 'Aiur.Circuit.Compiler.lowerPattern_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.Circuit.Compiler.lowerPattern_sound
+
+/-- info: 'Aiur.compiler_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.compiler_sound
+
+/-- info: 'Aiur.memo_acyclic_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.memo_acyclic_sound
+
 def calls : Program Nat := aiur% "
 fn swap(p: (Field, Field)) -> (Field, Field) { (p.1, p.0) }
 fn main(p: (Field, Field)) -> (Field, Field) { swap(p) }
 "
 
 def callsSystem : System Rat := (compile (calls.toField Rat)).toOption.getD ⟨[]⟩
+
+theorem calls_compiled : compile (calls.toField Rat) = .ok callsSystem := by
+  have succeeds : (compile (calls.toField Rat)).isOk = true := by decide +kernel
+  cases compiled : compile (calls.toField Rat) with
+  | error error => simp [compiled, Except.isOk, Except.toBool] at succeeds
+  | ok system => simp [callsSystem, compiled, Except.toOption]
+
+-- This rules out every wrong structured result, independently of the supplied rows or tree shape.
+example (result : Value Rat)
+    (proof : CircuitEvaluates callsSystem "main" [.tuple [2, 3]] result) :
+    result = .tuple [3, 2] :=
+  (compiler_sound calls_compiled proof).deterministic
+    (eval_spec (fuel := 10) (by decide +kernel))
+
+-- The same source guarantee applies to any acyclic graph, including graphs with sharing.
+example (result : Value Rat)
+    (graph : MemoDerivation callsSystem ⟨"main", [.tuple [2, 3]], result⟩)
+    (acyclic : graph.Acyclic) : result = .tuple [3, 2] := by
+  have evaluated := memo_acyclic_sound calls_compiled graph acyclic
+  change EvalCall (calls.toField Rat) "main" [.tuple [2, 3]] result at evaluated
+  exact evaluated.deterministic
+    (eval_spec (fuel := 10) (by decide +kernel))
 
 example : (compile (calls.toField Rat)).isOk = true := by decide +kernel
 example : callsSystem.chips.map (·.numVars) = [4, 6] := by decide +kernel
@@ -145,18 +179,35 @@ example : callsSystem.check ⟨"main", [.tuple [2, 3]], .tuple [.tuple [3, 2]]�
 def tupleSwapChip : Chip Rat := {
   name := "swap", inputs := [.tuple [.field 0, .field 1]], output := .tuple [.field 2, .field 3]
   numVars := 4
-  constraints := [.sub (.var 2) (.var 1), .sub (.var 3) (.var 0)]
+  constraints := [.mul (.const 1) (.sub (.var 2) (.var 1)),
+    .mul (.const 1) (.sub (.var 3) (.var 0))]
   sends := []
 }
 
 def tupleMainChip : Chip Rat := {
   name := "main", inputs := [.tuple [.field 0, .field 1]], output := .tuple [.field 2, .field 3]
   numVars := 6
-  constraints := [.sub (.var 2) (.var 4), .sub (.var 3) (.var 5)]
+  constraints := [.mul (.const 1) (.sub (.const 1) (.const 1)),
+    .mul (.const 1) (.sub (.var 2) (.var 4)),
+    .mul (.const 1) (.sub (.var 3) (.var 5))]
   sends := [⟨"swap", [.tuple [.field (.var 0), .field (.var 1)]], .tuple [.field 4, .field 5], .const 1⟩]
 }
 
 def graphSystem : System Rat := ⟨[tupleSwapChip, tupleMainChip]⟩
+
+-- The concrete graph below uses the compiler's exact chips, including all guards.
+theorem graph_compiled : compile (calls.toField Rat) = .ok graphSystem := by
+  have checked : typecheck (calls.toField Rat) = .ok () := by decide +kernel
+  have modify_run (update : Compiler.BuildState Rat → Compiler.BuildState Rat)
+      (state : Compiler.BuildState Rat) :
+      (modify update : Compiler.Build Rat Unit) state = .ok ((), update state) := rfl
+  simp only [compile, checked]
+  simp [calls, Program.toField, Program.map, Function.map, Expr.map, Program.findFunction?,
+    Compiler.lowerFunction, Compiler.lowerExpr, Compiler.lowerArgs, Compiler.freshValues,
+    Compiler.freshValue, Compiler.constrainValue, Compiler.constrainValues, Value.map,
+    StateT.run, StateT.bind, StateT.pure, modify_run,
+    bind, pure, Except.bind, Except.pure,
+    graphSystem, tupleSwapChip, tupleMainChip]
 
 def swapRule : RuleInstance graphSystem := {
   chip := tupleSwapChip
@@ -209,6 +260,9 @@ example : CircuitEvaluates graphSystem "main" [.tuple [2, 3]] (.tuple [3, 2]) :=
 example : MemoAccepts graphSystem "main" [.tuple [2, 3]] (.tuple [3, 2]) :=
   (tupleGraph.derives_of_acyclic tupleGraph_acyclic).memo
 
+example : EvalCall (calls.toField Rat) "main" [.tuple [2, 3]] (.tuple [3, 2]) :=
+  memo_acyclic_sound graph_compiled tupleGraph tupleGraph_acyclic
+
 /-- info: 'Aiur.Circuit.MemoDerivation.derives_of_acyclic' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.Circuit.MemoDerivation.derives_of_acyclic
@@ -217,6 +271,25 @@ def overlap : Program Nat := aiur% "
 fn choose(p: (Field, Field)) -> Field { match p { (0, _) => 11, (_, 0) => 22, _ => 33 } }
 "
 def overlapSystem : System Rat := (compile (overlap.toField Rat)).toOption.getD ⟨[]⟩
+
+theorem overlap_compiled : compile (overlap.toField Rat) = .ok overlapSystem := by
+  have succeeds : (compile (overlap.toField Rat)).isOk = true := by decide +kernel
+  cases compiled : compile (overlap.toField Rat) with
+  | error error => simp [compiled, Except.isOk, Except.toBool] at succeeds
+  | ok system => simp [overlapSystem, compiled, Except.toOption]
+
+-- Overlapping matches force Rust's first arm for every closed derivation, not just the sample rows.
+example (result : Value Rat)
+    (proof : CircuitEvaluates overlapSystem "choose" [.tuple [0, 0]] result) : result = 11 :=
+  (compiler_sound overlap_compiled proof).deterministic
+    (eval_spec (fuel := 10) (by decide +kernel))
+
+-- A wildcard is reached only when both preceding tuple patterns fail.
+example (result : Value Rat)
+    (proof : CircuitEvaluates overlapSystem "choose" [.tuple [5, 6]] result) : result = 33 :=
+  (compiler_sound overlap_compiled proof).deterministic
+    (eval_spec (fuel := 10) (by decide +kernel))
+
 example : overlapSystem.chips.map (·.numVars) = [11] := by decide +kernel
 example : overlapSystem.check ⟨"choose", [.tuple [0, 0]], 11⟩
     [⟨"choose", [0, 0, 11, 11, 1, 0, 1, 1, 0, 0, 0]⟩] = .ok () := by decide +kernel

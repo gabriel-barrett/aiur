@@ -4,4 +4,6 @@ import Aiur.Eval
 import Aiur.Semantics
 import Aiur.EvalCorrectness
 import Aiur.Circuit
+import Aiur.Correctness
+import Aiur.MemoSoundness
 import Aiur.Frontend

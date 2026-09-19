@@ -75,9 +75,15 @@ fuel, and is deterministic. Tree-to-graph embedding and acyclic graph-to-tree
 unfolding are proved for tuple messages. Equality-test equations have soundness
 and witness lemmas.
 
-End-to-end compiler soundness and completeness for tuples are not yet proved.
-The prior compiler correctness, memoized completeness, and acyclic source-soundness
-theorems remain in `Aiur.Scalar`; they are not claimed for the new compiler. No
-`sorry` or replacement axiom was introduced. The remaining proof work is local
-correctness for structured values and first-match indicators, followed by the
-existing tree and graph arguments. Depth constraints remain deferred.
+End-to-end compiler soundness and acyclic memoized source soundness are proved
+for the tuple compiler as `Aiur.compiler_sound` and `Aiur.memo_acyclic_sound`.
+Their local lemmas cover nested pattern indicators and bindings, first-match
+priority, structured value equality, and enabled calls. No totality or recursion
+depth assumption is required.
+
+Tuple compiler completeness and memoized completeness remain unfinished. They
+need assignment construction for fresh tuple leaves and all pattern tests,
+including tests inside inactive code. The prior full compiler correctness and
+memoized completeness theorems remain in `Aiur.Scalar`. No `sorry` or replacement
+axiom was introduced. See [correctness](correctness.md) for the proof architecture
+and remaining direction. Depth constraints remain deferred.

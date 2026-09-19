@@ -45,11 +45,68 @@ messages in `Aiur.Circuit`. Their source-independent results are proved:
 Literal pattern equality-test equations have soundness and witness lemmas in
 `Aiur/Circuit/PatternFacts.lean`.
 
-**Full compiler soundness and completeness for the tuple compiler are not yet
-proved.** The required remaining work is local expression correctness for tuple
-values, binding environments, structured call results, and first-match pattern
-indicators. The tree and acyclic graph arguments can then use those lemmas.
-No placeholders or axioms assert these unfinished theorems.
+## Tuple compiler soundness
+
+**Compiler soundness and acyclic memoized source soundness are proved for the
+current tuple compiler**, assuming successful compilation `compile P = .ok C`:
+
+```text
+CircuitEvaluates C f xs y → EvalCall P f xs y
+
+(graph : MemoDerivation C ⟨f, xs, y⟩) → graph.Acyclic → EvalCall P f xs y
+```
+
+The theorems are `Aiur.compiler_sound` in `Aiur/Correctness.lean` and
+`Aiur.memo_acyclic_sound` in `Aiur/MemoSoundness.lean`. The more general
+`Aiur.derivation_sound` consumes an explicit derivation. They cover arbitrary
+fields, finite nested tuples of any arity, scoped bindings, projections,
+division, mutual recursion, and ordered overlapping patterns. Neither theorem
+assumes source totality, a fuel bound, or a depth constraint.
+
+The proof follows the actual compiler without an extra lowering pass:
+
+- `Compiler.lowerPattern_sound` in `PatternCorrectness.lean` proves that the emitted test is
+  exactly `0` or `1`, agrees with source matching, and collects the same bindings.
+  Tuple tests combine these facts recursively over their components.
+- `Compiler.constrainValue_sound` in `ValueCorrectness.lean` turns active leaf equations into
+  equality of complete structured values, including empty tuples.
+- `Compiler.lowerExpr_sound` in `ExpressionCorrectness.lean` interprets enabled calls through an
+  arbitrary premise relation. It recovers source evaluation from a satisfying
+  assignment and transports validity back through the compiler state.
+- The mutually proved `lowerArms_sound` shows that any nonzero selector selects
+  precisely the first matching source arm. A selected later arm requires the
+  preceding pattern indicator to be zero. This includes wildcard negation of
+  all previous complete patterns. The sum equation guarantees selection when
+  the match is active, without assumptions on field characteristic.
+- `CompileFacts` identifies compiled functions and their structured interfaces.
+  `Compiler.lowerFunction_sound` in `LocalCorrectness.lean` recovers one source body from a valid
+  chip row and its enabled premises. Induction on the closed tree supplies those
+  premises recursively; acyclic graph unfolding gives the memoized theorem.
+
+`Aiur/Semantics/WithCalls.lean` supplies the intermediate call-premise relation
+and proves its correspondence with `EvalExpr`. `Semantics/CallFacts.lean`
+connects the chip's input shapes to the evaluator's argument checks.
+
+## Remaining tuple completeness proof
+
+**Compiler completeness and memoized completeness for tuples are not yet
+proved.** The remaining direction constructs a derivation from an evaluation:
+
+```text
+EvalCall P f xs y → CircuitEvaluates C f xs y
+```
+
+The next work is to prove preservation of structural types and layouts, construct
+assignments for fresh tuple leaves and pattern indicators, and extend existing
+assignments without changing earlier values or equations. Inactive code also
+needs witnesses: its literal tests are unconditional, while its branch bodies
+and calls are guarded. Source-evaluation induction can then assemble the local
+witnesses into a tree, and the established tree-to-graph embedding gives
+memoized completeness. No placeholders or axioms assert these unfinished results.
+
+Axiom guards check the new pattern, compiler, and acyclic soundness theorems.
+Regression proofs rule out every incorrect result for compiled tuple calls and
+overlapping/default matches, rather than checking only particular witness rows.
 
 ## Preserved scalar proof
 

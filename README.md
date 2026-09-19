@@ -81,11 +81,16 @@ describes finite closed trees, while `MemoDerivation` permits sharing and cycles
 The proof that an acyclic graph unfolds into a tree supports tuple messages.
 See [the tuple example](Examples/Tuples.lean) and [tuple tests](AiurTests/Tuples.lean).
 
-The **full compiler soundness and completeness proofs for tuples are still
-pending**. The original field-only implementation and its completed compiler,
-memoized completeness, and acyclic source-soundness proofs are preserved under
-`Aiur.Scalar` (`scalar_aiur%`). The existing circuit and semantics examples use
-that reference implementation. No admitted proofs stand in for tuple correctness.
+**Tuple compiler soundness is proved**: `Aiur.compiler_sound` converts any closed
+compiled-chip derivation into a source evaluation. `Aiur.memo_acyclic_sound`
+does the same for acyclic memoized graphs, without assuming source totality.
+The proofs include nested tuple patterns, bindings, and first-match priority.
+
+**Tuple compiler completeness is still pending.** The original field-only
+implementation and its completed compiler and memoized correctness proofs are
+preserved under `Aiur.Scalar` (`scalar_aiur%`). The existing circuit and semantics
+examples use that reference implementation. No admitted proofs stand in for
+tuple correctness.
 
 The living [design directory](design/README.md) records the language, tuple
 lowering, semantic models, and precise proof boundaries.
