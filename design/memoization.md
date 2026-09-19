@@ -67,8 +67,17 @@ graph.Acyclic → Scalar.EvalCall P f xs y
 ```
 
 The theorems are `Aiur.Scalar.memo_complete` and
-`Aiur.Scalar.memo_acyclic_sound`, both fully proved. They require successful
-compilation and do not assert unrestricted cyclic soundness. Their tuple-language
-counterparts require the new compiler's local correctness proofs, which are
-not yet complete. The tuple evaluator/predicate correspondence itself is proved;
-see [correctness](correctness.md).
+`Aiur.Scalar.memo_acyclic_sound`, both fully proved.
+
+For the current tuple compiler, `Aiur.memo_acyclic_sound` also proves:
+
+```text
+compile P = .ok C →
+(graph : MemoDerivation C ⟨f, xs, y⟩) → graph.Acyclic → EvalCall P f xs y
+```
+
+It unfolds the graph to a tree and applies the tuple compiler's proved source
+soundness. No totality assumption is needed, and cyclic graphs remain accepted
+by the model. Tuple memoized completeness still depends on the unfinished
+compiler completeness proof. The tuple evaluator/predicate correspondence is
+proved in both directions; see [correctness](correctness.md).

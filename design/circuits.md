@@ -55,7 +55,9 @@ generate assignments. Its bridge to derivation semantics remains separate work.
 Both models now carry structured messages. Acyclic graphs are proved to unfold
 into trees; unrestricted cyclic acceptance intentionally admits self-justification.
 
-The tuple compiler is tested against valid and forged witnesses. Its equality-test
-lemmas are proved, but its complete source-to-circuit correctness proof remains
-to be generalized. The earlier full compiler proof is preserved under
-`Aiur.Scalar`. See [correctness](correctness.md) and [memoization](memoization.md).
+The tuple compiler has proved source soundness for both closed derivation trees
+and acyclic memoized graphs. The proofs include nested pattern indicators,
+bindings, first-match selectors, structured equalities, and calls. Compiler
+completeness still needs witness construction for active and inactive code.
+The earlier full compiler proof is preserved under `Aiur.Scalar`.
+See [correctness](correctness.md) and [memoization](memoization.md).

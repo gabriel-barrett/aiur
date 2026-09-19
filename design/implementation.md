@@ -20,15 +20,22 @@
   pattern indicators, and first-match branch selectors.
 - `Aiur/Circuit/PatternFacts.lean`: the literal equality-test equations are sound
   and have witnesses in every field.
+- `Aiur/Circuit/PatternCorrectness.lean` and `ValueCorrectness.lean`: exact
+  recursive pattern indicators and bindings, and guarded structured equality.
+- `Aiur/Circuit/ExpressionCorrectness.lean`, `CompileFacts.lean`, and
+  `LocalCorrectness.lean`: expression, ordered arm, interface, and function
+  soundness against the actual compiler.
 - `Aiur/Circuit/Derivation.lean`, `MemoDerivation.lean`, and `MemoAcyclic.lean`:
   finite trees, explicit graphs, tree embedding, and acyclic graph unfolding,
   all with structured messages.
+- `Aiur/Correctness.lean` and `MemoSoundness.lean`: end-to-end tuple compiler
+  soundness and acyclic memoized source soundness, without totality assumptions.
 
 The previously proved field-only implementation remains under `Aiur/Scalar/`,
 imported with `Aiur.Scalar`, using that namespace and `scalar_aiur%`. It is a
 reference snapshot, not the tuple language's entry point. Its full compiler and
-memoized correctness proofs remain checked. Those compiler proofs have not yet
-been generalized to tuples; see [correctness](correctness.md).
+memoized correctness proofs remain checked. Tuple compiler completeness remains
+unfinished; see [correctness](correctness.md).
 
 ## Syntax and checking
 
@@ -65,6 +72,8 @@ circuit witness generation remains separate work.
 `lake build` checks the tuple implementation and the preserved scalar proofs.
 `AiurTests/Tuples.lean` exercises nested, wide, empty, and singleton tuples,
 bindings, projections, strictness, recursion, shape errors, finite-field pattern
-collisions, structured messages, and forged branch selectors. Axiom reports guard
-the evaluator correspondence and the scalar compiler theorems against admitted
-proofs. `lake test` runs both sets of runtime checks.
+collisions, structured messages, and forged branch selectors. General soundness
+regressions rule out wrong tuple-call and first-match results for any derivation.
+Axiom reports guard evaluator correspondence, both compilers' soundness, and
+acyclic source soundness against admitted proofs. `lake test` runs both sets of
+runtime checks.
