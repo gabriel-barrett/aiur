@@ -1,7 +1,7 @@
-import Aiur.Semantics.WithCalls
-import Aiur.Circuit.CompileFacts
+import Aiur.Scalar.Semantics.WithCalls
+import Aiur.Scalar.Circuit.CompileFacts
 
-namespace Aiur.Circuit.Compiler
+namespace Aiur.Scalar.Circuit.Compiler
 
 def localsEnvironment (locals : List (String × Var)) (assignment : Var → F) : Environment F :=
   locals.map fun binding => (binding.1, assignment binding.2)
@@ -357,4 +357,4 @@ mutual
   termination_by sizeOf arms
 end
 
-end Aiur.Circuit.Compiler
+end Aiur.Scalar.Circuit.Compiler

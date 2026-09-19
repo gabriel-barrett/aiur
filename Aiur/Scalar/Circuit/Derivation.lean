@@ -1,6 +1,45 @@
-import Aiur.Circuit.Basic
+import Aiur.Scalar.Circuit.Basic
 
-namespace Aiur.Circuit
+namespace Aiur.Scalar.Circuit
+
+/-- Local validity is a collection of simultaneous equations and layout conditions. -/
+def Chip.ValidRow [Field F] (chip : Chip F) (row : Row F) : Prop :=
+  chip.wellFormed = true ∧ row.values.length = chip.numVars ∧
+    Satisfies chip.constraints row.assignment
+
+/-- The conclusion of a chip rule instantiated by a row. -/
+def Chip.receive [Field F] (chip : Chip F) (row : Row F) : Message F :=
+  ⟨chip.name, row.values.take chip.arity, row.assignment chip.output⟩
+
+theorem Chip.ValidRow.receive_arity [Field F] {chip : Chip F} {row : Row F}
+    (valid : chip.ValidRow row) : (chip.receive row).args.length = chip.arity := by
+  obtain ⟨layout, size, _⟩ := valid
+  have bounds : chip.arity ≤ chip.numVars := by
+    simp [Chip.wellFormed] at layout
+    exact le_trans layout.1.1.1 (Nat.le_of_lt layout.1.1.2)
+  simp [Chip.receive, size, Nat.min_eq_left bounds]
+
+/-- Keep one premise per enabled send occurrence, including repeated messages. -/
+def Chip.premises [Field F] [DecidableEq F] (chip : Chip F) (row : Row F) : List (Message F) :=
+  chip.sends.filterMap fun send =>
+    if send.enable.denote row.assignment = 1 then some (send.message row.assignment) else none
+
+theorem Chip.premises_forall [Field F] [DecidableEq F] (chip : Chip F) (row : Row F)
+    (property : Message F → Prop) :
+    (∀ message ∈ chip.premises row, property message) ↔
+      ∀ send ∈ chip.sends, send.enable.denote row.assignment = 1 → property (send.message row.assignment) := by
+  constructor
+  · intro valid send member enabled
+    apply valid (send.message row.assignment)
+    apply List.mem_filterMap.mpr
+    exact ⟨send, member, by simp [enabled]⟩
+  · intro valid message member
+    obtain ⟨send, sendMember, selected⟩ := List.mem_filterMap.mp member
+    split at selected
+    · rename_i enabled
+      cases selected
+      exact valid send sendMember enabled
+    · cases selected
 
 mutual
   /--
@@ -27,7 +66,7 @@ def Derives [Field F] [DecidableEq F] (system : System F) (message : Message F) 
 
 /-- The circuit relation for one function's arguments and claimed result. -/
 def CircuitEvaluates [Field F] [DecidableEq F] (system : System F)
-    (function : String) (args : List (Value F)) (result : Value F) : Prop :=
+    (function : String) (args : List F) (result : F) : Prop :=
   Derives system ⟨function, args, result⟩
 
 /-- Assemble a forest from proofs of every premise, retaining repeated occurrences. -/
@@ -83,4 +122,4 @@ theorem not_derives_of_no_leaves [Field F] [DecidableEq F] {system : System F}
   | nil => exact absurd rfl ‹([] : List (Message F)) ≠ []›
   | cons _ _ headIH _ => exact headIH
 
-end Aiur.Circuit
+end Aiur.Scalar.Circuit

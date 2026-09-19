@@ -1,9 +1,9 @@
-import Aiur.Semantics
-import Aiur.Circuit.Compile
-import Aiur.Circuit.Derivation
-import Aiur.Circuit.LocalCorrectness
+import Aiur.Scalar.Semantics
+import Aiur.Scalar.Circuit.Compile
+import Aiur.Scalar.Circuit.Derivation
+import Aiur.Scalar.Circuit.LocalCorrectness
 
-namespace Aiur
+namespace Aiur.Scalar
 
 /-- Every successful source evaluation has a closed derivation in the chip system. -/
 def CompilationComplete [Field F] [DecidableEq F] (program : Program F)
@@ -116,4 +116,4 @@ theorem compiler_correct [Field F] [DecidableEq F] : CompilerCorrect F := by
   · exact evaluation_complete compiled
   · exact compiler_sound compiled name args result
 
-end Aiur
+end Aiur.Scalar

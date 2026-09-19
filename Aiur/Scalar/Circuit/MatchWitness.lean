@@ -1,6 +1,6 @@
-import Aiur.Circuit.InactiveCorrectness
+import Aiur.Scalar.Circuit.InactiveCorrectness
 
-namespace Aiur.Circuit.Compiler
+namespace Aiur.Scalar.Circuit.Compiler
 
 /-- A selected default admits inverse witnesses for every excluded literal. -/
 theorem excludeLiterals_complete [Field F] {function : String}
@@ -64,4 +64,4 @@ theorem excludeLiterals_complete [Field F] {function : String}
           exact ⟨values, extension.trans finalExtension, finalSize, finalLayout, finalValid⟩
 termination_by literals.length
 
-end Aiur.Circuit.Compiler
+end Aiur.Scalar.Circuit.Compiler

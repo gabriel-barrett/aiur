@@ -5,6 +5,7 @@ namespace Aiur.Frontend
 
 open Lean Elab Term
 
+declare_syntax_cat aiur_type
 declare_syntax_cat aiur_expr
 declare_syntax_cat aiur_pattern
 declare_syntax_cat aiur_arm
@@ -12,6 +13,14 @@ declare_syntax_cat aiur_param
 declare_syntax_cat aiur_function
 declare_syntax_cat aiur_program
 
+syntax (name := namedType) ident : aiur_type
+syntax (name := unitType) "(" ")" : aiur_type
+syntax (name := typeParens) "(" aiur_type ")" : aiur_type
+syntax (name := tupleType) "(" aiur_type "," sepBy(aiur_type, ",", ",", allowTrailingSep) ")" : aiur_type
+syntax (name := unitExpr) "(" ")" : aiur_expr
+syntax (name := tupleExpr) "(" aiur_expr "," sepBy(aiur_expr, ",", ",", allowTrailingSep) ")" : aiur_expr
+syntax:80 (name := project) aiur_expr:80 "." num : aiur_expr
+syntax (name := letValue) "let" aiur_pattern "=" aiur_expr ";" aiur_expr : aiur_expr
 syntax (name := literal) num : aiur_expr
 syntax (name := variableExpr) ident : aiur_expr
 syntax (name := parens) "(" aiur_expr ")" : aiur_expr
@@ -24,12 +33,16 @@ syntax:65 (name := add) aiur_expr:65 "+" aiur_expr:66 : aiur_expr
 syntax:65 (name := sub) aiur_expr:65 "-" aiur_expr:66 : aiur_expr
 syntax (name := literalPattern) num : aiur_pattern
 syntax (name := wildcardPattern) "_" : aiur_pattern
+syntax (name := bindPattern) ident : aiur_pattern
+syntax (name := unitPattern) "(" ")" : aiur_pattern
+syntax (name := patternParens) "(" aiur_pattern ")" : aiur_pattern
+syntax (name := tuplePattern) "(" aiur_pattern "," sepBy(aiur_pattern, ",", ",", allowTrailingSep) ")" : aiur_pattern
 syntax (name := arm) aiur_pattern "=>" aiur_expr : aiur_arm
 syntax (name := matchValue) "match" aiur_expr "{"
   sepBy1(aiur_arm, ",", ",", allowTrailingSep) "}" : aiur_expr
-syntax (name := param) ident (":" ident)? : aiur_param
+syntax (name := param) aiur_pattern ":" aiur_type : aiur_param
 syntax (name := function) "fn" ident "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")"
-  ("->" ident)? "{" aiur_expr "}" : aiur_function
+  "->" aiur_type "{" aiur_expr "}" : aiur_function
 syntax (name := program) aiur_function* : aiur_program
 
 private def readName (stx : Syntax) : Except String String :=
@@ -37,14 +50,27 @@ private def readName (stx : Syntax) : Except String String :=
   | .str .anonymous name => .ok name
   | _ => .error "expected a simple function or parameter name"
 
-private def lowerPattern (stx : Syntax) : Except String (Pattern Nat) := do
+private partial def lowerType (stx : Syntax) : Except String Ty := do
+  if stx.getKind == ``namedType then
+    if stx[0].getId == `Field then return .field
+    else throw "expected 'Field' or a tuple type"
+  else if stx.getKind == ``unitType then return .tuple []
+  else if stx.getKind == ``typeParens then lowerType stx[1]
+  else if stx.getKind == ``tupleType then
+    return .tuple ((← lowerType stx[1]) :: (← stx[3].getSepArgs.toList.mapM lowerType))
+  else throw "expected 'Field' or a tuple type"
+
+private partial def lowerPattern (stx : Syntax) : Except String (Pattern Nat) := do
   if stx.getKind == ``literalPattern then
     let some value := stx[0].isNatLit? | throw "expected a natural-number pattern"
     return .literal value
-  else if stx.getKind == ``wildcardPattern then
-    return .wildcard
-  else
-    throw "expected a natural-number pattern or '_'"
+  else if stx.getKind == ``wildcardPattern then return .wildcard
+  else if stx.getKind == ``bindPattern then return .bind (← readName stx[0])
+  else if stx.getKind == ``unitPattern then return .tuple []
+  else if stx.getKind == ``patternParens then lowerPattern stx[1]
+  else if stx.getKind == ``tuplePattern then
+    return .tuple ((← lowerPattern stx[1]) :: (← stx[3].getSepArgs.toList.mapM lowerPattern))
+  else throw "expected a literal, wildcard, binding, or tuple pattern"
 
 /-- Lower Lean's syntax tree for the embedded language; no field is chosen here. -/
 private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := do
@@ -52,6 +78,14 @@ private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := 
   if kind == ``literal then
     let some value := stx[0].isNatLit? | throw "expected a natural-number literal"
     return .literal value
+  else if kind == ``unitExpr then return .tuple []
+  else if kind == ``tupleExpr then
+    return .tuple ((← lowerExpr stx[1]) :: (← stx[3].getSepArgs.toList.mapM lowerExpr))
+  else if kind == ``project then
+    let some index := stx[2].isNatLit? | throw "expected a tuple index"
+    return .project (← lowerExpr stx[0]) index
+  else if kind == ``letValue then
+    return .letValue (← lowerPattern stx[1]) (← lowerExpr stx[3]) (← lowerExpr stx[5])
   else if kind == ``variableExpr then
     return .var (← readName stx[0])
   else if kind == ``parens || kind == ``block then
@@ -72,18 +106,30 @@ private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := 
   else
     throw s!"unsupported expression syntax: {kind}"
 
-private def checkAnnotation (stx : Syntax) : Except String Unit := do
-  if !stx.getArgs.isEmpty then
-    if stx[1].getId != `Field then throw "expected type 'Field'"
-
 private def lowerFunction (stx : Syntax) : Except String (Aiur.Function Nat) := do
-  checkAnnotation stx[5]
+  let name ← readName stx[1]
+  let mut params := []
+  let mut destructuring := []
+  let mut names := []
+  for (param, index) in stx[3].getSepArgs.toList.zipIdx do
+    let pattern ← lowerPattern param[0]
+    let type ← lowerType param[2]
+    if !pattern.irrefutable then throw s!"parameter patterns must be irrefutable in function '{name}'"
+    let bindings ← (checkPattern name pattern type).mapError toString
+    names := names ++ bindings.map Prod.fst
+    match pattern with
+    | .bind key => params := params ++ [(key, type)]
+    | _ =>
+        let key := s!"$arg{index}"
+        params := params ++ [(key, type)]
+        destructuring := destructuring ++ [(pattern, key)]
+  if let some duplicate := findDuplicate names [] then
+    throw s!"duplicate parameter '{duplicate}' in function '{name}'"
+  let body ← lowerExpr stx[8]
   return {
-    name := ← readName stx[1]
-    params := ← stx[3].getSepArgs.toList.mapM (fun param => do
-      checkAnnotation param[1]
-      readName param[0])
-    body := ← lowerExpr stx[7]
+    name, params
+    result := ← lowerType stx[6]
+    body := destructuring.foldr (fun (pattern, key) body => .letValue pattern (.var key) body) body
   }
 
 /-- Mask Rust comments before invoking Lean's parser, preserving lines and token boundaries. -/
@@ -105,7 +151,9 @@ private def normalizeWhitespace : List Char → List Char
   | [] => []
   | char :: rest =>
       let normalized := if char == '\t' || char == '\r' then ' ' else char
-      if (char == '-' || char == '/') && rest.head? == some '-' then
+      -- Keep chained tuple indices such as `p.1.0` from becoming a decimal token.
+      if char == '.' then ' ' :: '.' :: ' ' :: normalizeWhitespace rest
+      else if (char == '-' || char == '/') && rest.head? == some '-' then
         normalized :: ' ' :: normalizeWhitespace rest
       else
         normalized :: normalizeWhitespace rest
@@ -133,13 +181,23 @@ private def quoteOp : BinOp → Lean.Expr
   | .mul => mkConst ``BinOp.mul
   | .div => mkConst ``BinOp.div
 
+private def quoteTy : Ty → Lean.Expr
+  | .field => mkConst ``Ty.field
+  | .tuple items => mkApp (mkConst ``Ty.tuple) (quoteList (mkConst ``Ty) (items.map quoteTy))
+
 private def quotePattern : Pattern Nat → Lean.Expr
   | .literal value => mkApp2 (mkConst ``Pattern.literal) natType (toExpr value)
   | .wildcard => mkApp (mkConst ``Pattern.wildcard) natType
+  | .bind name => mkApp2 (mkConst ``Pattern.bind) natType (toExpr name)
+  | .tuple items => mkApp2 (mkConst ``Pattern.tuple) natType (quoteList patternType (items.map quotePattern))
 
 private def quoteExpr : Aiur.Expr Nat → Lean.Expr
   | .literal value => mkApp2 (mkConst ``Aiur.Expr.literal) natType (toExpr value)
   | .var name => mkApp2 (mkConst ``Aiur.Expr.var) natType (toExpr name)
+  | .tuple items => mkApp2 (mkConst ``Aiur.Expr.tuple) natType (quoteList exprType (items.map quoteExpr))
+  | .project value index => mkApp3 (mkConst ``Aiur.Expr.project) natType (quoteExpr value) (toExpr index)
+  | .letValue pattern value body =>
+      mkApp4 (mkConst ``Aiur.Expr.letValue) natType (quotePattern pattern) (quoteExpr value) (quoteExpr body)
   | .neg value => mkApp2 (mkConst ``Aiur.Expr.neg) natType (quoteExpr value)
   | .binary op left right =>
       mkApp4 (mkConst ``Aiur.Expr.binary) natType (quoteOp op) (quoteExpr left) (quoteExpr right)
@@ -166,8 +224,11 @@ decreasing_by
         omega
 
 private def quoteFunction (defn : Aiur.Function Nat) : Lean.Expr :=
-  mkApp4 (mkConst ``Aiur.Function.mk) natType (toExpr defn.name) (toExpr defn.params)
-    (quoteExpr defn.body)
+  let paramType := mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``String) (mkConst ``Ty)
+  let params := defn.params.map fun (name, type) =>
+    mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkConst ``Ty) (toExpr name) (quoteTy type)
+  mkApp5 (mkConst ``Aiur.Function.mk) natType (toExpr defn.name) (quoteList paramType params)
+    (quoteTy defn.result) (quoteExpr defn.body)
 
 private def quoteProgram (program : Program Nat) : Lean.Expr :=
   mkApp2 (mkConst ``Program.mk) natType

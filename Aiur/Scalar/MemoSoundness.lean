@@ -1,7 +1,7 @@
-import Aiur.Correctness
-import Aiur.Circuit.MemoAcyclic
+import Aiur.Scalar.Correctness
+import Aiur.Scalar.Circuit.MemoAcyclic
 
-namespace Aiur
+namespace Aiur.Scalar
 
 /-- Every acyclic graph for a compiled system has a finite source evaluation. -/
 theorem memo_acyclic_sound [Field F] [DecidableEq F]
@@ -12,4 +12,4 @@ theorem memo_acyclic_sound [Field F] [DecidableEq F]
   obtain ⟨tree⟩ := graph.derives_of_acyclic acyclic
   exact derivation_sound compiled tree
 
-end Aiur
+end Aiur.Scalar

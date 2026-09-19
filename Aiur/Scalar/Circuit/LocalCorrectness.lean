@@ -1,10 +1,10 @@
-import Aiur.Semantics.WithCalls
-import Aiur.Circuit.CompileFacts
-import Aiur.Circuit.Derivation
-import Aiur.Circuit.ExpressionCorrectness
-import Aiur.Circuit.WitnessCorrectness
+import Aiur.Scalar.Semantics.WithCalls
+import Aiur.Scalar.Circuit.CompileFacts
+import Aiur.Scalar.Circuit.Derivation
+import Aiur.Scalar.Circuit.ExpressionCorrectness
+import Aiur.Scalar.Circuit.WitnessCorrectness
 
-namespace Aiur.Circuit.Compiler
+namespace Aiur.Scalar.Circuit.Compiler
 
 /--
 Satisfying a compiled body recovers its
@@ -108,4 +108,4 @@ theorem lowerFunction_complete [Field F] [DecidableEq F]
       · exact (Chip.premises_forall _ row
           (fun message => calls message.channel message.args message.result)).mpr stateValid.calls
 
-end Aiur.Circuit.Compiler
+end Aiur.Scalar.Circuit.Compiler

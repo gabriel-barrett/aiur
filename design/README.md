@@ -11,12 +11,16 @@ design, and keep proposals and unanswered questions explicitly separate.
 
 - [Language](language.md): initial scope, operations, pattern matching, and open
   semantic questions.
+- [Tuples](tuples.md): nested values and patterns, explicit signatures, structured
+  circuit interfaces, first-match equations, and proof boundaries.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
   fresh call results, and abstract channel balance.
 - [Correctness](correctness.md): relational evaluation, closed circuit
-  derivations, and the compiler's soundness and completeness statement.
+  derivations, and the current tuple and scalar proof status.
+- [Scalar correctness](scalar-correctness.md): the preserved field-only compiler
+  soundness and completeness proof.
 - [Memoization](memoization.md): explicit cyclic graphs with shared nodes,
   completeness, acyclic soundness, and the executable-evaluator correspondence.
 

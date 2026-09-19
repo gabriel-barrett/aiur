@@ -2,9 +2,6 @@ import Aiur.AST
 import Aiur.Typecheck
 import Aiur.Eval
 import Aiur.Semantics
-import Aiur.Circuit
-import Aiur.Correctness
-import Aiur.MemoCompleteness
-import Aiur.MemoSoundness
 import Aiur.EvalCorrectness
+import Aiur.Circuit
 import Aiur.Frontend

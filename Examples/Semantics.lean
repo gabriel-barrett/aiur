@@ -1,10 +1,10 @@
-import Aiur
+import Aiur.Scalar
 
-open Aiur Aiur.Circuit
+open Aiur.Scalar Aiur.Scalar.Circuit
 
 namespace SemanticsExample
 
-def source : Program Nat := aiur% "fn identity(x) { x }"
+def source : Program Nat := scalar_aiur% "fn identity(x) { x }"
 
 -- A source evaluation proof needs neither fuel nor decidable equality on the field.
 theorem identity_evaluates [Field F] (x : F) :

@@ -1,23 +1,23 @@
-import Aiur
+import Aiur.Scalar
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
-open Aiur Aiur.Circuit
+open Aiur.Scalar Aiur.Scalar.Circuit
 
 namespace AiurCircuitTests
 
-def division : Program Nat := aiur% "
+def division : Program Nat := scalar_aiur% "
 fn square(x) { x * x }
 fn main(x, y) { square(x / y) }
 "
 
-def matching : Program Nat := aiur% "
+def matching : Program Nat := scalar_aiur% "
 fn choose(x) { match x { 0 => 10, 2 => 20, _ => 30 } }
 fn partial_match(x) { match x { 0 => 10 } }
 fn discarded(x) { match x { _ => 11, 0 => discarded(x), 0 => 99 } }
 "
 
-def nested : Program Nat := aiur% "
+def nested : Program Nat := scalar_aiur% "
 fn guarded(x) {
   match x {
     0 => 7,
@@ -27,18 +27,18 @@ fn guarded(x) {
 fn looping(x) { looping(x) }
 "
 
-def recursion : Program Nat := aiur% "
+def recursion : Program Nat := scalar_aiur% "
 fn even(n) { match n { 0 => 1, _ => odd(n - 1) } }
 fn odd(n) { match n { 0 => 0, _ => even(n - 1) } }
 "
 
-def repeated : Program Nat := aiur% "
+def repeated : Program Nat := scalar_aiur% "
 fn square(x) { x * x }
 fn twice(x) { square(x) + square(x) }
 "
 
-def duplicates : Program Nat := aiur% "fn bad(x) { match x { 0 => 1, 0 => 2 } }"
-def collisions : Program Nat := aiur% "fn bad(x) { match x { 0 => 1, 7 => 2, _ => 3 } }"
+def duplicates : Program Nat := scalar_aiur% "fn bad(x) { match x { 0 => 1, 0 => 2 } }"
+def collisions : Program Nat := scalar_aiur% "fn bad(x) { match x { 0 => 1, 7 => 2, _ => 3 } }"
 
 private def checkedCompile [Field F] [DecidableEq F] (program : Program F) : IO (System F) :=
   match compile program with

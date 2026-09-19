@@ -1,18 +1,17 @@
 # Aiur
 
-A Lean formalization of a first-order language for zero-knowledge circuits. The
-initial implementation includes a parameterized AST, a typechecker, executable
-and relational evaluation, a Rust-like string elaborator, and compilation to
-chips with local polynomial equations and abstract channel messages.
+A Lean formalization of a first-order language for zero-knowledge circuits, with
+field arithmetic, nested tuples, mutually recursive functions, pattern matching,
+and compilation to chips with polynomial equations and abstract call messages.
 
 ## Build and test
 
-The project pins Lean and Mathlib to version 4.29.0.
+Lean and Mathlib are pinned to 4.29.0.
 
 ```sh
-lake update
 lake build
 lake test
+lake env lean Examples/Tuples.lean
 ```
 
 ## Use from Lean
@@ -24,110 +23,69 @@ import Mathlib.Algebra.Field.Rat
 open Aiur
 
 def source : Program Nat := aiur% "
-fn even(n: Field) -> Field {
-  match n {
-    0 => 1,
-    _ => odd(n - 1),
-  }
+fn swap(p: (Field, Field)) -> (Field, Field) {
+  match p { (x, y) => (y, x) }
 }
-fn odd(n: Field) -> Field {
-  match n {
-    0 => 0,
-    _ => even(n - 1),
-  }
+
+fn nested(p: (Field, (Field, Field))) -> (Field, (Field, Field), ()) {
+  let (tag, pair) = p;
+  (tag, swap(pair), ())
 }
 "
 
-#eval typecheck source
--- Except.ok ()
+#eval eval (source.toField Rat) "nested" [.tuple [7, .tuple [2, 3]]]
+-- .ok (.tuple [7, .tuple [3, 2], .tuple []])
 
-#eval eval (source.toField Rat) "even" [10] (fuel := 100)
--- Except.ok 1
+#eval (Circuit.compile (source.toField Rat)).isOk
+-- true
 ```
 
-`aiur%` elaborates a string literal into an ordinary `Program Nat` containing all
-the function definitions. It reports syntax and typechecking failures during Lean
-elaboration. It does not read source files. `Frontend.ofString` also exposes this
-operation to metaprograms with a Lean environment.
+`aiur%` elaborates a source string into a checked `Program Nat`, without reading
+files. `Nat` stores literals; `toField F` specializes literals and patterns to a
+chosen field. Results and arguments use `Value F`: `.field x` or `.tuple items`.
+Natural numerals in `Value F` positions denote field leaves.
 
-`Nat` describes the representation of frontend literals, not a language type.
-`source.toField F` converts every expression literal and pattern literal to `F`.
-The same source can be specialized to different fields. Evaluation requires
-Mathlib's `Field F` and a `DecidableEq F` instance.
+## Syntax and evaluation
 
-`eval program function arguments` checks the program and starts the named function
-with field-valued arguments. Its optional `fuel` argument defaults to 1000 and
-bounds evaluation depth. Division by zero, unmatched values, and exhausted fuel
-produce explicit errors.
+Every function parameter and result type must be explicit. Types are `Field` and
+tuples of any finite arity and nesting. `()` is unit, `(x,)` is a singleton tuple,
+and `(x)` groups an expression. Tuple projection is zero-based: `p.0`, `p.1.0`.
+Arithmetic operates only on field elements.
 
-For proofs, `EvalCall program function arguments result` is the inductive
-evaluation predicate. It requires no fuel and only describes successful finite
-evaluations. `EvalExpr` and `EvalArgs` give the corresponding expression and
-argument-list judgments. These relations require `Field F` without decidable
-equality. Expression and function evaluation are proved deterministic.
+Patterns include literals, `_`, names, and tuples. They work in `match`, `let`,
+and function parameters; lets and parameter patterns must be irrefutable.
+Matches use the first matching arm, including overlapping tuple patterns.
+Bindings may shadow outer names, but cannot repeat within one pattern or across
+parameters. Trailing commas and Rust-style comments are supported.
 
-`eval_spec` proves that every `eval ... = .ok result` run satisfies `EvalCall`.
-Conversely, every successful evaluation proof for a checked program runs with all
-sufficiently large fuel bounds. `exists_eval_iff` states this correspondence.
+Evaluation is eager in tuple components and call arguments; unselected match
+bodies are not evaluated. Functions may call one another recursively. `eval`
+checks the program and entry argument shapes. Its fuel bound defaults to 1000;
+division by zero, uncovered matches, and exhausted fuel produce errors.
 
-## Syntax
+`EvalCall` is the fuel-free evaluation predicate. `eval_spec`, `eval_complete`,
+and `exists_eval_iff` prove its correspondence with successful execution for the
+tuple language. Evaluation is also proved deterministic.
 
-Function bodies are expressions. Parameters and return types may be annotated
-with `Field`; annotations can be omitted because every value has that type.
-Expressions support natural-number literals, parameters, unary `-`, `+`, `-`, `*`,
-`/`, named function calls, parentheses, expression blocks, and `match`. Argument
-lists and match arms allow trailing commas. Match patterns are natural-number
-literals or `_`. Rust-style `//` and nested `/* ... */` comments are supported.
+## Circuits and proof status
 
-There are no tuples, higher-order functions, local declarations, or mutation in
-this initial subset. Definitions may call each other in any order, including
-mutually recursively.
+Compilation produces one chip per function. Assignments contain field elements;
+chip interfaces and call messages retain tuple shape. Each result leaf of a call
+gets a fresh variable. Unit-valued calls still produce messages. All constraints
+are polynomial equations equal to zero. Division uses inverse witnesses, and
+first-match selectors support overlapping tuple patterns. Duplicate retained
+pattern conditions are rejected after field conversion, ignoring binder names.
 
-## Circuit pipeline
+`System.check` checks supplied rows and exact message balance. `Derivation`
+describes finite closed trees, while `MemoDerivation` permits sharing and cycles.
+The proof that an acyclic graph unfolds into a tree supports tuple messages.
+See [the tuple example](Examples/Tuples.lean) and [tuple tests](AiurTests/Tuples.lean).
 
-`Aiur.Circuit.compile (source.toField F)` produces one chip per function. Chip
-constraints are simultaneous polynomial equations. Division uses inverse
-witnesses, calls use fresh output variables and channel messages, and matches use
-mutually exclusive branch selectors. Duplicate patterns are rejected in the
-chosen field, and arms following a wildcard are discarded during lowering.
+The **full compiler soundness and completeness proofs for tuples are still
+pending**. The original field-only implementation and its completed compiler,
+memoized completeness, and acyclic source-soundness proofs are preserved under
+`Aiur.Scalar` (`scalar_aiur%`). The existing circuit and semantics examples use
+that reference implementation. No admitted proofs stand in for tuple correctness.
 
-`System.check` validates supplied assignments and exact channel-message balance.
-It does not generate a witness. A runnable example is in
-[Examples/Circuit.lean](Examples/Circuit.lean):
-
-```sh
-lake env lean Examples/Circuit.lean
-```
-
-`Derivation system message` is a finite closed tree of valid chip instances.
-Every enabled outgoing call occurrence requires a child derivation. Local
-equations are side conditions on each node. `CircuitEvaluates` asserts the
-existence of such a tree for a function's arguments and result. An example with
-both a source evaluation proof and a chip derivation is in
-[Examples/Semantics.lean](Examples/Semantics.lean):
-
-```sh
-lake env lean Examples/Semantics.lean
-```
-
-`compiler_correct` proves that a source function evaluates to a result exactly
-when its successfully compiled system has a closed derivation of that call.
-Both directions are proved without admitted steps, including matches, inactive
-branches, and mutually recursive calls. The bridge to `System.check` remains
-separate work.
-
-`MemoDerivation` adds an explicit finite graph model with shared nodes and cycles.
-Every enabled call references a node with the required conclusion. There are no
-acyclicity or multiplicity fields. `memo_complete` proves that every successful
-source evaluation has such a graph, and `memo_eval_complete` supplies one from a
-successful executable run. `memo_acyclic_sound` proves that an acyclic graph for
-a compiled system has a source evaluation. Its hypothesis concerns the supplied
-graph and requires no source totality or depth parameter.
-See [the memoization design](design/memoization.md).
-
-See [the language design](design/language.md) for the agreed scope and
-[implementation notes](design/implementation.md) for current semantic defaults.
-The [circuit design](design/circuits.md) gives the equations, channel model, and
-current proof status.
-The [correctness design](design/correctness.md) records the two relations and
-the soundness and completeness statements.
+The living [design directory](design/README.md) records the language, tuple
+lowering, semantic models, and precise proof boundaries.
