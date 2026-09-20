@@ -1,14 +1,14 @@
-import Aiur
+import Aiur.Tuple
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.NormNum
 
-open Aiur Aiur.Circuit
+open Aiur.Tuple Aiur.Tuple.Circuit
 
 namespace AiurTupleTests
 
-def sample : Program Nat := aiur% "
+def sample : Program Nat := tuple_aiur% "
 fn unit() -> () { () }
 fn singleton(x: Field) -> (Field,) { (x,) }
 fn grouped(x: Field) -> Field { (x) }
@@ -120,27 +120,27 @@ example : EvalCall (sample.toField Rat) "reduce" [.tuple [4, 0]] (.tuple [0, 10]
 example : ∃ fuel, eval (sample.toField Rat) "swap" [.tuple [2, 3]] fuel = .ok (.tuple [3, 2]) :=
   eval_complete (by decide +kernel) (eval_spec (fuel := 10) (by decide +kernel))
 
-/-- info: 'Aiur.eval_spec' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Aiur.Tuple.eval_spec' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.eval_spec
+#print axioms Aiur.Tuple.eval_spec
 
-/-- info: 'Aiur.exists_eval_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.exists_eval_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.exists_eval_iff
+#print axioms Aiur.Tuple.exists_eval_iff
 
-/-- info: 'Aiur.Circuit.Compiler.lowerPattern_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.Circuit.Compiler.lowerPattern_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Circuit.Compiler.lowerPattern_sound
+#print axioms Aiur.Tuple.Circuit.Compiler.lowerPattern_sound
 
-/-- info: 'Aiur.compiler_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.compiler_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.compiler_sound
+#print axioms Aiur.Tuple.compiler_sound
 
-/-- info: 'Aiur.memo_acyclic_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.memo_acyclic_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.memo_acyclic_sound
+#print axioms Aiur.Tuple.memo_acyclic_sound
 
-def calls : Program Nat := aiur% "
+def calls : Program Nat := tuple_aiur% "
 fn swap(p: (Field, Field)) -> (Field, Field) { (p.1, p.0) }
 fn main(p: (Field, Field)) -> (Field, Field) { swap(p) }
 "
@@ -213,18 +213,18 @@ def swapRule : RuleInstance graphSystem := {
   chip := tupleSwapChip
   row := ⟨"swap", [2, 3, 3, 2]⟩
   lookup := rfl
-  valid := by norm_num [Chip.ValidRow, Chip.wellFormed, Satisfies, Scalar.Circuit.Satisfies, tupleSwapChip,
+  valid := by norm_num [Chip.ValidRow, Chip.wellFormed, Satisfies, Aiur.Scalar.Circuit.Satisfies, tupleSwapChip,
     Value.flatten, ArithExpr.inBounds, ArithExpr.denote, Row.assignment,
-    Scalar.Circuit.ArithExpr.inBounds, Scalar.Circuit.ArithExpr.denote, Scalar.Circuit.Row.assignment]
+    Aiur.Scalar.Circuit.ArithExpr.inBounds, Aiur.Scalar.Circuit.ArithExpr.denote, Aiur.Scalar.Circuit.Row.assignment]
 }
 
 def mainRule : RuleInstance graphSystem := {
   chip := tupleMainChip
   row := ⟨"main", [2, 3, 3, 2, 3, 2]⟩
   lookup := rfl
-  valid := by norm_num [Chip.ValidRow, Chip.wellFormed, Satisfies, Scalar.Circuit.Satisfies, tupleMainChip,
+  valid := by norm_num [Chip.ValidRow, Chip.wellFormed, Satisfies, Aiur.Scalar.Circuit.Satisfies, tupleMainChip,
     Send.inBounds, Value.flatten, ArithExpr.inBounds, ArithExpr.denote, Row.assignment,
-    Scalar.Circuit.ArithExpr.inBounds, Scalar.Circuit.ArithExpr.denote, Scalar.Circuit.Row.assignment]
+    Aiur.Scalar.Circuit.ArithExpr.inBounds, Aiur.Scalar.Circuit.ArithExpr.denote, Aiur.Scalar.Circuit.Row.assignment]
 }
 
 def tupleGraph : MemoDerivation graphSystem ⟨"main", [.tuple [2, 3]], .tuple [3, 2]⟩ := {
@@ -263,11 +263,11 @@ example : MemoAccepts graphSystem "main" [.tuple [2, 3]] (.tuple [3, 2]) :=
 example : EvalCall (calls.toField Rat) "main" [.tuple [2, 3]] (.tuple [3, 2]) :=
   memo_acyclic_sound graph_compiled tupleGraph tupleGraph_acyclic
 
-/-- info: 'Aiur.Circuit.MemoDerivation.derives_of_acyclic' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.Circuit.MemoDerivation.derives_of_acyclic' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Circuit.MemoDerivation.derives_of_acyclic
+#print axioms Aiur.Tuple.Circuit.MemoDerivation.derives_of_acyclic
 
-def overlap : Program Nat := aiur% "
+def overlap : Program Nat := tuple_aiur% "
 fn choose(p: (Field, Field)) -> Field { match p { (0, _) => 11, (_, 0) => 22, _ => 33 } }
 "
 def overlapSystem : System Rat := (compile (overlap.toField Rat)).toOption.getD ⟨[]⟩
@@ -300,13 +300,13 @@ example : overlapSystem.check ⟨"choose", [.tuple [5, 6]], 33⟩
 example : (overlapSystem.check ⟨"choose", [.tuple [0, 0]], 22⟩
     [⟨"choose", [0, 0, 22, 22, 1, 0, 0, 1, 0, 1, 0]⟩]).isOk = false := by decide +kernel
 
-def units : Program Nat := aiur% "fn u(x: ()) -> () { x } fn main() -> () { u(()) }"
+def units : Program Nat := tuple_aiur% "fn u(x: ()) -> () { x } fn main() -> () { u(()) }"
 def unitSystem : System Rat := (compile (units.toField Rat)).toOption.getD ⟨[]⟩
 example : unitSystem.chips.map (·.numVars) = [0, 0] := by decide +kernel
 example : unitSystem.check ⟨"main", [], .tuple []⟩ [⟨"main", []⟩, ⟨"u", []⟩] = .ok () := by decide +kernel
 example : unitSystem.check ⟨"main", [], .tuple []⟩ [⟨"main", []⟩] = .error .unbalancedMessages := by decide +kernel
 
-def duplicates : Program Nat := aiur% "
+def duplicates : Program Nat := tuple_aiur% "
 fn f(p: (Field, Field)) -> Field { match p { (0, x) => x, (7, _) => 2, _ => 3 } }
 "
 instance : Fact (Nat.Prime 7) := ⟨by decide⟩
@@ -316,21 +316,21 @@ example : (compile (duplicates.toField (ZMod 7))).map (fun _ => ()) =
 example : eval (sample.toField (ZMod 7)) "nested" [6] =
     .ok (.tuple [6, .tuple [0, .tuple []], .tuple [1]]) := by decide +kernel
 
-/-- info: 'Aiur.evaluation_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.evaluation_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.evaluation_complete
+#print axioms Aiur.Tuple.evaluation_complete
 
-/-- info: 'Aiur.compiler_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.compiler_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.compiler_correct
+#print axioms Aiur.Tuple.compiler_correct
 
-/-- info: 'Aiur.memo_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.memo_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.memo_complete
+#print axioms Aiur.Tuple.memo_complete
 
-/-- info: 'Aiur.memo_eval_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Tuple.memo_eval_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.memo_eval_complete
+#print axioms Aiur.Tuple.memo_eval_complete
 
 -- Completeness supplies the witnesses existentially; these proofs provide no hand-written rows.
 example : CircuitEvaluates callsSystem "main" [.tuple [2, 3]] (.tuple [3, 2]) :=
