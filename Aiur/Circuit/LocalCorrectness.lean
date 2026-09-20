@@ -3,6 +3,8 @@ import Aiur.Circuit.CompileFacts
 
 namespace Aiur.Circuit
 
+variable {F : Type} {rom : ROM F}
+
 theorem Chip.premises_forall [Field F] [DecidableEq F] (chip : Chip F) (row : Row F)
     (property : Message F → Prop) :
     (∀ message ∈ chip.premises row, property message) ↔
@@ -43,16 +45,16 @@ theorem parameter_environment [Field F] (names : List String) (inputs : List (Va
 theorem lowerFunction_sound [Field F] [DecidableEq F]
     {program : Program F} {fn : Function F} {chip : Chip F}
     (compiled : lowerFunction program fn = .ok chip)
-    {calls : CallRelation F} {row : Row F} (valid : chip.ValidRow row)
+    {calls : CallRelation F} {row : Row F} (valid : chip.ValidRow rom row)
     (premises : ∀ message ∈ chip.premises row,
       calls message.channel message.args message.result) :
-    EvalExprWith calls ((fn.params.map Prod.fst).zip (chip.receive row).args) fn.body
+    ROMEvalExprWith rom calls ((fn.params.map Prod.fst).zip (chip.receive row).args) fn.body
       (chip.receive row).result := by
   obtain ⟨inputs, output, s₁, s₂, body, s₃, s₄, _, _, bodyRun, outputRun, rfl⟩ :=
     lowerFunction_stages compiled
-  have stateValid : s₄.Valid calls row.assignment := ⟨valid.2.2,
+  have stateValid : s₄.Valid rom calls row.assignment := ⟨valid.2.2.1,
     (Chip.premises_forall _ row (fun message =>
-      calls message.channel message.args message.result)).mp premises⟩
+      calls message.channel message.args message.result)).mp premises, valid.2.2.2⟩
   obtain ⟨s₃Valid, resultEq⟩ := constrainValue_sound outputRun stateValid
   have evaluated := (lowerExpr_sound bodyRun s₃Valid).2 rfl
   have result := resultEq rfl

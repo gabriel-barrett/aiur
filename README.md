@@ -1,7 +1,7 @@
 # Aiur
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
-field arithmetic, nested tuples, mutually recursive functions, pattern matching,
+field arithmetic, nested tuples, typed ROM pointers, mutually recursive functions, pattern matching,
 and compilation to chips with polynomial equations and abstract call messages.
 
 ## Build and test
@@ -11,7 +11,7 @@ Lean and Mathlib are pinned to 4.29.0.
 ```sh
 lake build
 lake test
-lake env lean Examples/Tuples.lean
+lake env lean Examples/Pointers.lean
 ```
 
 ## Use from Lean
@@ -42,15 +42,23 @@ fn nested(p: (Field, (Field, Field))) -> (Field, (Field, Field), ()) {
 
 `aiur%` elaborates a source string into a checked `Program Nat`, without reading
 files. `Nat` stores literals; `toField F` specializes literals and patterns to a
-chosen field. Results and arguments use `Value F`: `.field x` or `.tuple items`.
-Natural numerals in `Value F` positions denote field leaves.
+chosen field. Source arguments and results use `SourceValue F = Value F Nat`;
+field leaves, tuples, and typed opaque pointers are distinct constructors.
+Natural numerals denote field leaves. Circuit values use `Value F` with field
+addresses instead of source locations.
 
 ## Syntax and evaluation
 
-Every function parameter and result type must be explicit. Types are `Field` and
-tuples of any finite arity and nesting. `()` is unit, `(x,)` is a singleton tuple,
+Every function parameter and result type must be explicit. Types are `Field`,
+tuples of any finite arity and nesting, and pointers `&A`. `()` is unit, `(x,)` is a singleton tuple,
 and `(x)` groups an expression. Tuple projection is zero-based: `p.0`, `p.1.0`.
 Arithmetic operates only on field elements.
+
+`&x` evaluates `x` and allocates a fresh immutable cell; `*p` loads its contents.
+Pointers may be nested, passed internally, stored in tuples, and returned. For
+example, `fn f(x: Field) -> Field { let p = &x; *p }`. There is no pointer
+equality, arithmetic, cast, or null pointer. Entry arguments cannot contain
+pointers, including inside tuples. See [Examples/Pointers.lean](Examples/Pointers.lean).
 
 Patterns include literals, `_`, names, and tuples. They work in `match`, `let`,
 and function parameters; lets and parameter patterns must be irrefutable.
@@ -60,12 +68,14 @@ parameters. Trailing commas and Rust-style comments are supported.
 
 Evaluation is eager in tuple components and call arguments; unselected match
 bodies are not evaluated. Functions may call one another recursively. `eval`
-checks the program and entry argument shapes. Its fuel bound defaults to 1000;
+checks the program, entry argument shapes, and the pointer-free entry restriction.
+`run` additionally returns the final heap. Both start from empty memory.
+The fuel bound defaults to 1000;
 division by zero, uncovered matches, and exhausted fuel produce errors.
 
 `EvalCall` is the fuel-free evaluation predicate. `eval_spec`, `eval_complete`,
 and `exists_eval_iff` prove its correspondence with successful execution for the
-tuple language. Evaluation is also proved deterministic.
+language including allocation and loading. Results and final heaps are deterministic.
 
 ## Circuits and proof status
 
@@ -76,29 +86,35 @@ are polynomial equations equal to zero. Division uses inverse witnesses, and
 first-match selectors support overlapping tuple patterns. Duplicate retained
 pattern conditions are rejected after field conversion, ignoring binder names.
 
-`System.check` checks supplied rows and exact message balance. `Derivation`
-describes finite closed trees, while `MemoDerivation` permits sharing and cycles.
-The proof that an acyclic graph unfolds into a tree supports tuple messages.
-See [the tuple example](Examples/Tuples.lean) and [tuple tests](AiurTests/Tuples.lean).
+`System.check` checks supplied rows against one valid prover-chosen ROM and exact
+message balance. Both store and load compile to guarded claims that an address
+contains a value. A pointer occupies one field column; addresses may differ
+from source locations and may be shared between allocations.
 
-**Tuple compiler correctness is proved.** After successful compilation,
-`Aiur.compiler_correct` establishes:
+`Derivation C ROM message` describes finite closed trees. `MemoDerivation`
+permits sharing and cycles; acyclic graphs unfold into trees. Public
+`EntryDerives` existentially quantifies one valid ROM for the whole proof.
 
-```text
-EvalCall P f xs y ↔ CircuitEvaluates C f xs y
-```
+**Pointer correctness is proved without admitted steps or added axioms.** The
+main theorems in [MemoryCorrectness.lean](Aiur/MemoryCorrectness.lean) are:
 
-`Aiur.evaluation_complete` constructs closed derivations from source evaluation;
-`Aiur.compiler_sound` recovers source evaluation from any closed derivation.
-`Aiur.memo_complete` and `Aiur.memo_eval_complete` provide memoized graphs.
-`Aiur.memo_acyclic_sound` recovers evaluation from acyclic graphs without a
-source-totality assumption. These proofs include arbitrary nested tuples,
-first-match overlapping patterns, and inactive branches, with no admitted steps
-or added axioms. Automatic executable witness generation remains separate work.
+- `compiler_run_complete`: successful execution yields a circuit derivation when
+  the allocation count fits the field cardinality.
+- `compiler_heap_sound`: a closed derivation and valid ROM yield a source
+  execution whose result corresponds through stored contents.
+- `compiler_entry_sound`: pointer-free results agree exactly with evaluation.
+- `memo_run_complete` and `memo_acyclic_heap_sound`: memoized completeness and
+  soundness under acyclicity, without source totality or depth constraints.
 
-The original field-only implementation and its completed proofs are preserved
-under `Aiur.Scalar` (`scalar_aiur%`). Existing scalar examples continue to use
-that reference implementation.
+`compiler_correct` proves the intermediate equivalence between `ROMEvalCall`
+and chip derivability for a fixed table. Soundness permits several fresh source
+locations to share one circuit address. Automatic executable circuit witness
+generation and the bridge from the exact row-balance checker to trees remain
+separate work.
 
-The living [design directory](design/README.md) records the language, tuple
-lowering, semantic models, and precise proof boundaries.
+The completed field-only and tuple-only models remain under `Aiur.Scalar`
+(`scalar_aiur%`) and `Aiur.Tuple` (`tuple_aiur%`). Their proof and regression suites
+remain checked.
+
+The living [design directory](design/README.md) records the language, lowering,
+semantic models, and precise proof boundaries.

@@ -2,52 +2,54 @@ import Aiur.Circuit.Derivation
 
 namespace Aiur.Circuit
 
+variable {F : Type} {rom : ROM F}
+
 /-- One locally checked rule instance, without proofs of its call premises. -/
-structure RuleInstance [Field F] (system : System F) where
+structure RuleInstance [Field F] (system : System F) (rom : ROM F) where
   chip : Chip F
   row : Row F
   lookup : system.findChip? row.chip = some chip
-  valid : chip.ValidRow row
+  valid : chip.ValidRow rom row
 
 def RuleInstance.conclusion [Field F] {system : System F}
-    (rule : RuleInstance system) : Message F := rule.chip.receive rule.row
+    (rule : RuleInstance system rom) : Message F := rule.chip.receive rule.row
 
 def RuleInstance.premises [Field F] [DecidableEq F] {system : System F}
-    (rule : RuleInstance system) : List (Message F) := rule.chip.premises rule.row
+    (rule : RuleInstance system rom) : List (Message F) := rule.chip.premises rule.row
 
 /--
 A finite graph of locally valid rules. Every enabled call has an explicit target
 with the required conclusion. References may be shared or cyclic, including self-references.
 There is no ordering, rank, multiplicity, or source-termination condition.
 -/
-structure MemoDerivation [Field F] [DecidableEq F] (system : System F)
+structure MemoDerivation [Field F] [DecidableEq F] (system : System F) (rom : ROM F)
     (message : Message F) where
   size : Nat
-  node : Fin size → RuleInstance system
+  node : Fin size → RuleInstance system rom
   root : Fin size
   root_claim : (node root).conclusion = message
   target : (i : Fin size) → Fin (node i).premises.length → Fin size
   target_claim : ∀ i j, (node (target i j)).conclusion = (node i).premises[j]
 
 /-- Memoized acceptance asserts the existence of a finite, possibly cyclic graph. -/
-def MemoDerives [Field F] [DecidableEq F] (system : System F) (message : Message F) : Prop :=
-  Nonempty (MemoDerivation system message)
+def MemoDerives [Field F] [DecidableEq F] (system : System F) (rom : ROM F) (message : Message F) : Prop :=
+  Nonempty (MemoDerivation system rom message)
 
-def MemoAccepts [Field F] [DecidableEq F] (system : System F)
+def MemoAccepts [Field F] [DecidableEq F] (system : System F) (rom : ROM F)
     (function : String) (args : List (Value F)) (result : Value F) : Prop :=
-  MemoDerives system ⟨function, args, result⟩
+  MemoDerives system rom ⟨function, args, result⟩
 
 /-- The claims represented anywhere in a graph, including its root. -/
 def MemoDerivation.Claims [Field F] [DecidableEq F] {system : System F} {message : Message F}
-    (graph : MemoDerivation system message) (claim : Message F) : Prop :=
+    (graph : MemoDerivation system rom message) (claim : Message F) : Prop :=
   ∃ i, (graph.node i).conclusion = claim
 
 theorem MemoDerivation.root_mem [Field F] [DecidableEq F]
-    {system : System F} {message : Message F} (graph : MemoDerivation system message) :
+    {system : System F} {message : Message F} (graph : MemoDerivation system rom message) :
     graph.Claims message := ⟨graph.root, graph.root_claim⟩
 
 theorem MemoDerivation.premise_mem [Field F] [DecidableEq F]
-    {system : System F} {message : Message F} (graph : MemoDerivation system message)
+    {system : System F} {message : Message F} (graph : MemoDerivation system rom message)
     (i : Fin graph.size) {premise : Message F} (member : premise ∈ (graph.node i).premises) :
     graph.Claims premise := by
   obtain ⟨j, bounded, same⟩ := List.mem_iff_getElem.mp member
@@ -55,10 +57,10 @@ theorem MemoDerivation.premise_mem [Field F] [DecidableEq F]
 
 /-- Build explicit references from a finite table closed under call premises. -/
 noncomputable def MemoDerivation.ofClosed [Field F] [DecidableEq F]
-    {system : System F} {message : Message F} (rules : List (RuleInstance system))
+    {system : System F} {message : Message F} (rules : List (RuleInstance system rom))
     (root : ∃ rule ∈ rules, rule.conclusion = message)
     (closed : ∀ rule ∈ rules, ∀ premise ∈ rule.premises,
-      ∃ provider ∈ rules, provider.conclusion = premise) : MemoDerivation system message := by
+      ∃ provider ∈ rules, provider.conclusion = premise) : MemoDerivation system rom message := by
   have locate {claim : Message F} (present : ∃ rule ∈ rules, rule.conclusion = claim) :
       ∃ i : Fin rules.length, rules[i].conclusion = claim := by
     obtain ⟨rule, member, conclusion⟩ := present
@@ -80,23 +82,23 @@ noncomputable def MemoDerivation.ofClosed [Field F] [DecidableEq F]
 mutual
   /-- Keep each tree occurrence as a locally valid graph node. -/
   def Derivation.instances [Field F] [DecidableEq F] {system : System F} {message : Message F} :
-      Derivation system message → List (RuleInstance system)
+      Derivation system rom message → List (RuleInstance system rom)
     | .node chip row lookup valid children => ⟨chip, row, lookup, valid⟩ :: children.instances
 
   def Derivations.instances [Field F] [DecidableEq F] {system : System F} {messages : List (Message F)} :
-      Derivations system messages → List (RuleInstance system)
+      Derivations system rom messages → List (RuleInstance system rom)
     | .nil => []
     | .cons head tail => head.instances ++ tail.instances
 end
 
 theorem Derivation.root_instance [Field F] [DecidableEq F]
-    {system : System F} {message : Message F} (tree : Derivation system message) :
+    {system : System F} {message : Message F} (tree : Derivation system rom message) :
     ∃ rule ∈ tree.instances, rule.conclusion = message := by
   cases tree with
   | node chip row lookup valid children => exact ⟨⟨chip, row, lookup, valid⟩, by simp [instances], rfl⟩
 
 theorem Derivations.root_instances [Field F] [DecidableEq F]
-    {system : System F} {messages : List (Message F)} (trees : Derivations system messages) :
+    {system : System F} {messages : List (Message F)} (trees : Derivations system rom messages) :
     ∀ message ∈ messages, ∃ rule ∈ trees.instances, rule.conclusion = message := by
   cases trees with
   | nil => simp
@@ -110,12 +112,12 @@ theorem Derivations.root_instances [Field F] [DecidableEq F]
 termination_by structural trees
 
 theorem Derivation.instances_closed [Field F] [DecidableEq F]
-    {system : System F} {message : Message F} (tree : Derivation system message) :
+    {system : System F} {message : Message F} (tree : Derivation system rom message) :
     ∀ rule ∈ tree.instances, ∀ premise ∈ rule.premises,
       ∃ provider ∈ tree.instances, provider.conclusion = premise := by
   induction tree using Derivation.rec
-    (motive_2 := fun messages (trees : Derivations system messages) =>
-      ∀ (rule : RuleInstance system), rule ∈ trees.instances → ∀ premise ∈ rule.premises,
+    (motive_2 := fun messages (trees : Derivations system rom messages) =>
+      ∀ (rule : RuleInstance system rom), rule ∈ trees.instances → ∀ premise ∈ rule.premises,
       ∃ provider ∈ trees.instances, provider.conclusion = premise) with
   | node chip row lookup valid children ih =>
       intro rule member premise required
@@ -137,12 +139,12 @@ theorem Derivation.instances_closed [Field F] [DecidableEq F]
 
 /-- Every ordinary derivation supplies a memoized graph; cycles are not required. -/
 noncomputable def Derivation.toMemo [Field F] [DecidableEq F]
-    {system : System F} {message : Message F} (tree : Derivation system message) :
-    MemoDerivation system message :=
+    {system : System F} {message : Message F} (tree : Derivation system rom message) :
+    MemoDerivation system rom message :=
   .ofClosed tree.instances tree.root_instance tree.instances_closed
 
 theorem Derives.memo [Field F] [DecidableEq F] {system : System F} {message : Message F}
-    (derives : Derives system message) : MemoDerives system message := by
+    (derives : Derives system rom message) : MemoDerives system rom message := by
   obtain ⟨tree⟩ := derives
   exact ⟨tree.toMemo⟩
 

@@ -3,6 +3,8 @@ import Aiur.Circuit.ValueCorrectness
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 set_option maxHeartbeats 800000
 
 mutual
@@ -12,15 +14,15 @@ mutual
       {enable : ArithExpr F} {expr : Expr F} {output : Symbolic F}
       {before after : BuildState F}
       (compiled : lowerExpr program function locals enable expr before = .ok (output, after))
-      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-      before.Valid calls assignment ∧ (enable.denote assignment = 1 →
-        EvalExprWith calls (localsEnvironment locals assignment) expr
+      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+      before.Valid rom calls assignment ∧ (enable.denote assignment = 1 →
+        ROMEvalExprWith rom calls (localsEnvironment locals assignment) expr
           (output.map (ArithExpr.denote assignment))) := by
     cases expr with
     | literal value =>
         simp only [lowerExpr, pure_ok] at compiled
         obtain ⟨rfl, rfl⟩ := compiled
-        exact ⟨valid, fun _ => by simpa only [Value.map] using EvalExprWith.literal⟩
+        exact ⟨valid, fun _ => by simpa only [Value.map] using ROMEvalExprWith.literal⟩
     | var name =>
         cases found : locals.find? (·.1 == name) with
         | none => simp [lowerExpr, found] at compiled
@@ -38,12 +40,12 @@ mutual
         obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
         obtain ⟨beforeValid, evaluated⟩ := lowerArgs_sound itemsRun valid
         exact ⟨beforeValid, fun active => by
-          simpa only [Value.map] using EvalExprWith.tuple (evaluated active)⟩
+          simpa only [Value.map] using ROMEvalExprWith.tuple (evaluated active)⟩
     | project value index =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, middle, valueRun, rest⟩ := bind_ok.mp compiled
         cases input with
-        | field => simp at rest
+        | field | ptr => simp at rest
         | tuple items =>
             cases projected : items[index]? with
             | none => simp [projected] at rest
@@ -71,6 +73,41 @@ mutual
         · exact .letValue (valueEval active) matched (by
             simpa only [localsEnvironment_append] using bodyEval active)
         · exact (zero_ne_one (testZero.symm.trans testOne)).elim
+    | store operand =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
+        obtain ⟨address, s₂, addressRun, rest⟩ := bind_ok.mp rest
+        obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+        cases finished
+        obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
+        cases finished
+        obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
+        obtain ⟨s₃Valid, cell⟩ := requireCell_valid cellRun valid
+        have s₂Valid := (boolean_valid booleanRun s₃Valid).1
+        have s₁Valid := fresh_valid addressRun s₂Valid
+        obtain ⟨beforeValid, evaluated⟩ := lowerExpr_sound operandRun s₁Valid
+        refine ⟨beforeValid, fun active => ?_⟩
+        simpa only [Value.map, Value.type_map] using
+          ROMEvalExprWith.store (evaluated active) (cell active)
+    | load operand =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
+        cases input with
+        | field | tuple => simp at rest
+        | ptr target address =>
+            obtain ⟨result, s₂, resultRun, rest⟩ := bind_ok.mp rest
+            obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+            cases finished
+            obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
+            cases finished
+            obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
+            obtain ⟨s₃Valid, cell⟩ := requireCell_valid cellRun valid
+            have s₂Valid := (boolean_valid booleanRun s₃Valid).1
+            have s₁Valid := freshValue_valid resultRun s₂Valid
+            obtain ⟨beforeValid, evaluated⟩ := lowerExpr_sound operandRun s₁Valid
+            refine ⟨beforeValid, fun active => .load (by simpa only [Value.map] using evaluated active)
+              (cell active) ?_⟩
+            simpa only [Value.type_map] using (freshValue_spec resultRun).2.2.1
     | neg value =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, valueRun, rest⟩ := bind_ok.mp compiled
@@ -121,8 +158,8 @@ mutual
             cases finished
             simp [StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at rest
             obtain ⟨rfl, rfl⟩ := rest
-            have s₃Valid : s₃.Valid calls assignment :=
-              valid.of_subset (fun _ member => member) (fun _ member => by simp [member])
+            have s₃Valid : s₃.Valid rom calls assignment :=
+              valid.of_subset (fun _ member => member) (fun _ member => by simp [member]) (fun _ member => member)
             have s₂Valid := (boolean_valid booleanRun s₃Valid).1
             have s₁Valid := freshValue_valid resultRun s₂Valid
             obtain ⟨beforeValid, argsEval⟩ := lowerArgs_sound argsRun s₁Valid
@@ -168,9 +205,9 @@ mutual
       {program : Program F} {function : String} {locals : Locals F} {enable : ArithExpr F}
       {args : List (Expr F)} {outputs : List (Symbolic F)} {before after : BuildState F}
       (compiled : lowerArgs program function locals enable args before = .ok (outputs, after))
-      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-      before.Valid calls assignment ∧ (enable.denote assignment = 1 →
-        EvalArgsWith calls (localsEnvironment locals assignment) args
+      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+      before.Valid rom calls assignment ∧ (enable.denote assignment = 1 →
+        ROMEvalArgsWith rom calls (localsEnvironment locals assignment) args
           (outputs.map (Value.map (ArithExpr.denote assignment)))) := by
     cases args with
     | nil =>
@@ -195,13 +232,13 @@ mutual
       {before after : BuildState F}
       (compiled : lowerArms program function locals scrutinee result remaining arms before =
         .ok (selectors, after))
-      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-      before.Valid calls assignment ∧
+      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+      before.Valid rom calls assignment ∧
         ∀ selector ∈ selectors, selector.denote assignment ≠ 0 →
           remaining.denote assignment ≠ 0 ∧
             ∃ bindings body,
               selectArm (scrutinee.map (ArithExpr.denote assignment)) arms = some (bindings, body) ∧
-              EvalExprWith calls (bindings ++ localsEnvironment locals assignment) body
+              ROMEvalExprWith rom calls (bindings ++ localsEnvironment locals assignment) body
                 (result.map (ArithExpr.denote assignment)) := by
     cases arms with
     | nil =>
@@ -220,13 +257,13 @@ mutual
         obtain ⟨bodyValue, s₅, bodyRun, rest⟩ := bind_ok.mp rest
         obtain ⟨finished, s₆, valueRun, rest⟩ := bind_ok.mp rest
         cases finished
-        have headFacts (endValid : s₆.Valid calls assignment) :
-            before.Valid calls assignment ∧
+        have headFacts (endValid : s₆.Valid rom calls assignment) :
+            before.Valid rom calls assignment ∧
             PatternTest (pattern.bindings (scrutinee.map (ArithExpr.denote assignment)))
               (test.denote assignment) (localsEnvironment bindings assignment) ∧
             assignment selector = remaining.denote assignment * test.denote assignment ∧
             (assignment selector = 0 ∨ assignment selector = 1) ∧
-            (assignment selector = 1 → EvalExprWith calls
+            (assignment selector = 1 → ROMEvalExprWith rom calls
               (localsEnvironment bindings assignment ++ localsEnvironment locals assignment) body
               (result.map (ArithExpr.denote assignment))) := by
           obtain ⟨s₅Valid, resultEq⟩ := constrainValue_sound valueRun endValid
@@ -238,11 +275,11 @@ mutual
           refine ⟨beforeValid, matched, sub_eq_zero.mp equation, boolean, fun active => ?_⟩
           rw [resultEq active]
           simpa only [localsEnvironment_append] using bodyEval active
-        have headSelected (endValid : s₆.Valid calls assignment) (active : assignment selector ≠ 0) :
+        have headSelected (endValid : s₆.Valid rom calls assignment) (active : assignment selector ≠ 0) :
             remaining.denote assignment ≠ 0 ∧
             ∃ matched body', selectArm (scrutinee.map (ArithExpr.denote assignment))
                 ((pattern, body) :: arms) = some (matched, body') ∧
-              EvalExprWith calls (matched ++ localsEnvironment locals assignment) body'
+              ROMEvalExprWith rom calls (matched ++ localsEnvironment locals assignment) body'
                 (result.map (ArithExpr.denote assignment)) := by
           obtain ⟨_, matched, equation, boolean, evaluated⟩ := headFacts endValid
           have one := boolean.resolve_left active

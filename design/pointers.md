@@ -1,118 +1,118 @@
-# Pointers and ROM
+# Typed pointers and ROM
 
-This is the agreed direction for the next language extension. Pointers and ROM
-are not implemented yet; the existing correctness theorems cover fields and
-tuples. The source heap representation and the extended proofs remain to be
-developed.
+Typed pointers are implemented in the main `Aiur` API, including the frontend,
+checker, evaluator, chip compiler, tree and memoized models, and correctness
+proofs. [Examples/Pointers.lean](../Examples/Pointers.lean) is a runnable example.
 
-## Agreed source interface
+## Source interface
 
-Pointers are typed and opaque. We use `Ptr<T>` as design notation for a pointer
-to a value of type `T`. `store(v)` produces a pointer; `load(p)` retrieves the
-value it points to. Memory is immutable once allocated. A store adds a cell;
-it does not overwrite an existing cell.
+`&A` is the type of a pointer to `A`. `&x` evaluates `x`, allocates a fresh
+immutable cell containing its value, and returns a pointer. `*p` evaluates `p`
+and loads its cell. This is allocation, not Rust borrowing. For example:
 
-Pointers can be carried in tuples and passed between functions. Entry arguments
-must contain no pointers, including inside nested tuples. Internal calls may
-take pointers. Correctness for pointer-valued results must relate opaque
-locations to circuit addresses.
-
-Safe code cannot observe pointer identity through equality, arithmetic, casts to
-field elements, or numeric patterns. Equality and arithmetic might eventually
-be introduced as unsafe operations. They would not inherit the general
-source/circuit correctness guarantee. Particular uses could have separate
-theorems under additional hypotheses.
-
-Address choices belong to the representation. The source cannot depend on which
-field element the prover chooses for a pointer, or distinguish representation
-sharing through pointer equality.
-
-## Prover-chosen table
-
-The circuit representation of a pointer is a field element. The prover supplies
-one explicit finite ROM table for the entire proof. An address determines one
-complete stored value; conflicting contents at the same address are invalid.
-
-The memory is heterogeneous. Different addresses may store values with different
-tuple shapes and widths. Padding to the largest store, or using a separate memory
-for each layout, is deferred to a more concrete implementation.
-
-Both circuit operations express the same lookup:
-
-```text
-Cell(i, v): the chosen ROM contains value v at address i
+```rust
+fn read(p: &(Field, &Field)) -> Field {
+  let (x, q) = *p;
+  x + *q
+}
+fn main(x: Field) -> Field {
+  read(&(x, &(x + 1)))
+}
 ```
 
-An active store and an active load both require this lookup. The same entry may
-justify repeated accesses. Inactive operations impose no memory lookup
-requirement. The table is available in full to the circuit; its rows carry no
-allocation chronology.
+Pointers may be nested, stored in tuples or other cells, passed to internal
+functions, and returned. Every signature remains explicitly typed. `&&Field`
+and `**p` work. Projection binds tighter than unary `&`, `*`, and `-`, which
+bind tighter than binary multiplication and division: `*p.0` means `*(p.0)`.
 
-In the derivation presentation, each table entry supplies a rule with no
-premises:
+Public entry arguments must contain no pointers, recursively through tuples.
+Internal calls share the heap and may receive pointers. The source has no
+pointer equality, arithmetic, casts, numeric pointer patterns, null pointer,
+mutation, or deallocation. Bindings and wildcards may accept an entire pointer;
+a tuple or literal pattern requires loading its contents first. Unsafe pointer
+operations and recursion-depth constraints remain deferred.
 
-```text
---------------
-Cell(i, v)
-```
+## Executable and relational memory
 
-The prover chooses these memory rules by choosing the table. The fixed model
-specifies admissible tables and how chip instances use their entries. All chip
-instances consult the same table, including instances in different branches or
-function calls. The table must not be chosen independently for each lookup.
+`Value F Address` separates field data from addresses. `SourceValue F` uses
+natural-number locations; `Value F` uses field addresses for circuits.
+`Heap F` is a list of source values. Stores append to the heap and use its old
+length as the location. The source syntax cannot observe these indices.
 
-## Proposed heap correspondence
+`run program name args fuel` starts with an empty heap and returns `(value, heap)`.
+`eval` returns only the value. Evaluation is eager and runs left to right,
+including tuple components and call arguments. A load reads the heap after its
+operand has run, so `*&x` works. Inactive match arms do not allocate.
 
-The source semantics can start from an empty heap and make each store allocate
-a fresh opaque location. A representation map `rho`, defined on allocated
-locations, assigns field addresses to those locations. Encoding a value keeps
-its field leaves and tuple structure and replaces pointer occurrences using
-`rho`.
+`EvalExpr`, `EvalArgs`, and internal `EvalFn` thread before/after heaps without
+fuel. Public `EvalCall` requires pointer-free arguments and starts `EvalFn` at
+an empty heap. The executable evaluator and these predicates are proved to
+agree; successful evaluations and their final heaps are deterministic.
 
-The central proposed invariant is:
+## Prover-chosen table and chip lowering
 
-```text
-H[p] = v  implies  ROM[rho(p)] = encode_rho(v)
-```
+`ROM F` is one finite heterogeneous table of `(field address, Value F)` entries.
+`ROM.Valid` requires unique addresses. The table is chosen by the prover and
+shared by every row and node in the whole derivation. Different addresses may
+contain different types, widths, and tuple shapes. All field addresses,
+including zero, are available.
 
-For completeness, an injective map on the finitely many allocated locations
-suffices. The requested bound, that the number of allocations is less than the
-field cardinality, provides room for this map in a finite field. The more
-general hypothesis is the existence of such an injection. The exact capacity
-statement and any reserved addresses are still to be fixed.
-
-Soundness must allow representation sharing: two fresh source locations may map
-to one field address when their encoded contents agree. Circuit stores are
-lookups and do not enforce fresh addresses. Excluding pointer equality is what
-allows correctness to use this correspondence instead of preserving allocation
-identity. The source allocator convention and the precise simulation invariant
-will be settled during formalization.
-
-## Intended correctness statements
-
-The circuit witness contains both a table and a derivation relative to that
-table. Assuming successful compilation and pointer-free arguments and result,
-the intended tree soundness theorem has the form:
+Both circuit operations require the identical claim:
 
 ```text
-(exists ROM, ValidROM ROM and CircuitEvaluates C ROM f xs y)
-  implies EvalCall P f xs y
+Cell(address, stored value)
 ```
 
-Here source evaluation begins with an empty heap. Soundness must hold for every
-admissible table and accepting derivation the prover can choose.
+Each table entry provides that claim with no further premises. In Lean these
+leaf rules are represented by table membership in `MemoryLookup.Valid`, a side
+condition of `Chip.ValidRow`. Loads and stores use the same `MemoryLookup`
+structure; the table carries no allocation chronology or freshness constraints.
+A store allocates a fresh circuit variable for its address. A load allocates
+fresh variables for every field or pointer leaf of its result. An active lookup
+must appear in the table; a disabled lookup imposes no requirement. Enables
+are constrained to be Boolean using polynomial equations.
 
-For pointer-valued results, the conclusion instead supplies a source execution,
-its resulting heap and value, and a representation map relating that heap and
-value to the supplied table and circuit result. It cannot compare source
-locations directly with field elements.
+A pointer occupies one field column, regardless of its pointee's size. Its type
+and stored tuple shape remain metadata in messages and lookups. Ordinary local
+constraints still contain only field constants, variables, `+`, `-`, `*`, and
+an equality to zero. No division or memory operation is added to polynomial
+syntax. Padding cells to a common width, separate memories by layout, and
+cryptographic lookup arguments remain deferred.
 
-Completeness constructs a table, an address map, and a derivation from source
-evaluation under the allocation-capacity hypothesis. The intended memoized
-soundness statement retains the acyclicity condition on function-call
-dependencies. Neither statement should assume source totality. Extending the
-existing proofs to these memory semantics is future work.
+## Correspondence and proved guarantees
 
-The exact Lean representation of heterogeneous cells, the source heap, and
-layout information in lookups is still open. Cryptographic lookup arguments,
-multiplicities, concrete memory layouts, and unsafe operations remain deferred.
+The compiler proof first establishes equivalence between a closed chip tree
+relative to a fixed ROM and `ROMEvalCall`. This pure relation interprets both
+store and load using table membership. It does not pretend to allocate fresh
+field addresses.
+
+Completeness then encodes a finite source execution. `Value.mapAddress` keeps
+field data and tuple structure and replaces each location through a map `rho`.
+The table is `ROM.ofHeap finalHeap rho`. An injection on the allocated indices
+makes this table valid. `compiler_heap_complete` proves completeness under that
+injection; `compiler_heap_complete_finite` obtains one when the allocation count
+is at most `Fintype.card F`. The previously proposed strict inequality is also
+sufficient. The non-strict bound works because no address is reserved.
+`compiler_run_complete` starts directly from successful execution.
+
+Soundness allows representation sharing. `Represents ROM heap source circuit`
+relates field leaves exactly, tuples componentwise, and pointers through
+corresponding cell contents. A source pointer must identify an actual heap cell;
+the field address must identify its corresponding value in the same ROM.
+This logical relation neither equates locations to field elements nor requires
+an injective representation. In particular, two stores of the same value may
+receive distinct source locations and share one circuit address.
+
+`compiler_heap_sound` reconstructs a fresh-allocation source execution from any
+closed chip tree and any valid ROM. It supplies the source result, final heap,
+and `Represents` proof. `compiler_entry_sound` gives exact evaluation for a
+pointer-free result. No allocation bound is needed for soundness, and the
+source program need not be total.
+
+`memo_run_complete` constructs a memoized graph under the same capacity bound.
+`memo_acyclic_heap_sound` proves soundness when the supplied graph has no call
+cycles. The memoized acceptance model continues to allow cycles; unconditional
+memoized soundness is deliberately not asserted. No depth constraint is added.
+
+All these theorems are proved without `sorry` or new axioms. The correspondence
+is an abstract semantic statement, not a concrete cryptographic security theorem.

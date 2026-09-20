@@ -3,8 +3,10 @@ import Aiur.ValueFacts
 
 namespace Aiur
 
+variable {F : Type} {rom : ROM F}
+
 private theorem checked_arguments (name : String) (params : List (String × Ty))
-    (args : List (Value F)) (types : params.map Prod.snd = args.map Value.type) :
+    (args : List (Value F A)) (types : params.map Prod.snd = args.map Value.type) :
     (do
       for (param, arg) in params.zip args do
         if param.2 ≠ arg.type then throw (.argumentTypeMismatch name param.2 arg.type)
@@ -22,7 +24,7 @@ private theorem checked_arguments (name : String) (params : List (String × Ty))
 
 /-- Structural argument types are exactly the shape check performed at a source call. -/
 theorem prepareCall_of_types {program : Program F} {name : String} {fn : Function F}
-    {args : List (Value F)} (found : program.findFunction? name = some fn)
+    {args : List (Value F A)} (found : program.findFunction? name = some fn)
     (types : fn.params.map Prod.snd = args.map Value.type) :
     prepareCall program name args = .ok ((fn.params.map Prod.fst).zip args, fn.body) := by
   have arity : fn.params.length = args.length := by

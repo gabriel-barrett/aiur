@@ -7,6 +7,7 @@ theorem map_congr (value : Value α) {f g : α → β}
     (agree : ∀ x ∈ value.flatten, f x = g x) : value.map f = value.map g := by
   cases value with
   | field x => simp only [Value.map, agree x (by simp [Value.flatten])]
+  | ptr target x => simp only [Value.map, agree x (by simp [Value.flatten])]
   | tuple items =>
       simp only [Value.map, Value.tuple.injEq]
       apply List.map_congr_left
@@ -24,6 +25,7 @@ decreasing_by
     (value.map f).flatten = value.flatten.map f := by
   cases value with
   | field => simp [Value.map, Value.flatten]
+  | ptr => simp [Value.map, Value.flatten]
   | tuple items =>
       simp only [Value.map, Value.flatten, List.flatMap_map, List.map_flatMap]
       apply List.flatMap_congr
@@ -39,6 +41,7 @@ decreasing_by
     (value.map f).map g = value.map (g ∘ f) := by
   cases value with
   | field => simp [Value.map]
+  | ptr => simp [Value.map]
   | tuple items =>
       simp only [Value.map, List.map_map, Value.tuple.injEq]
       apply List.map_congr_left
@@ -54,6 +57,7 @@ decreasing_by
     (value.map f).type = value.type := by
   cases value with
   | field => simp [Value.map, Value.type]
+  | ptr => simp [Value.map, Value.type]
   | tuple items =>
       simp only [Value.map, Value.type, List.map_map, Ty.tuple.injEq]
       apply List.map_congr_left

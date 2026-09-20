@@ -15,6 +15,7 @@ structure BuildState (F : Type) where
   nextVar : Nat := 0
   constraints : Array (Constraint F) := #[]
   sends : Array (Send F) := #[]
+  memory : Array (MemoryLookup F) := #[]
 
 abbrev Build (F : Type) := StateT (BuildState F) (Except CompileError)
 abbrev Symbolic (F : Type) := Value (ArithExpr F)
@@ -33,11 +34,15 @@ def guarded (enable polynomial : ArithExpr F) : Build F Unit := constrain (.mul 
 def boolean [Field F] (selector : ArithExpr F) : Build F Unit :=
   constrain (.mul selector (.sub selector (.const 1)))
 
+def requireCell (enable address : ArithExpr F) (value : Symbolic F) : Build F Unit :=
+  modify fun state => { state with memory := state.memory.push ⟨address, value, enable⟩ }
+
 mutual
   def freshValue (type : Ty) : Build F (Value Var) := do
     match type with
     | .field => return .field (← fresh)
     | .tuple types => return .tuple (← freshValues types)
+    | .ptr target => return .ptr target (← fresh)
   termination_by sizeOf type
 
   def freshValues (types : List Ty) : Build F (List (Value Var)) := do
@@ -95,6 +100,8 @@ mutual
     match left, right with
     | .field left, .field right => guarded enable (.sub left right)
     | .tuple left, .tuple right => constrainValues enable left right
+    | .ptr leftType left, .ptr rightType right =>
+        if leftType = rightType then guarded enable (.sub left right) else throw .invalidShape
     | _, _ => throw .invalidShape
   termination_by sizeOf left
 
@@ -111,6 +118,7 @@ end
 def asField : Symbolic F → Build F (ArithExpr F)
   | .field value => pure value
   | .tuple _ => throw .invalidShape
+  | .ptr _ _ => throw .invalidShape
 
 def excludePairs (selectors : List (ArithExpr F)) : Build F Unit := do
   match selectors with
@@ -138,6 +146,19 @@ mutual
         let (test, bindings) ← lowerPattern pattern value
         guarded enable (.sub test (.const 1))
         lowerExpr program function (bindings ++ locals) enable body
+    | .store operand =>
+        let value ← lowerExpr program function locals enable operand
+        let address ← fresh
+        boolean enable
+        requireCell enable (.var address) value
+        return .ptr value.type (.var address)
+    | .load operand =>
+        let .ptr target address ← lowerExpr program function locals enable operand
+          | throw .invalidShape
+        let result ← freshValue target
+        boolean enable
+        requireCell enable address (result.map ArithExpr.var)
+        return result.map ArithExpr.var
     | .neg value =>
         return .field (.sub (.const 0) (← asField (← lowerExpr program function locals enable value)))
     | .binary op left right =>
@@ -211,7 +232,8 @@ def lowerFunction [Field F] [DecidableEq F] (program : Program F) (fn : Function
     constrainValue (.const 1) (output.map ArithExpr.var) body
     return (inputs, output)
   let ((inputs, output), state) ← build.run {}
-  return ⟨fn.name, inputs, output, state.nextVar, state.constraints.toList, state.sends.toList⟩
+  return ⟨fn.name, inputs, output, state.nextVar, state.constraints.toList, state.sends.toList,
+    state.memory.toList⟩
 
 end Compiler
 

@@ -2,13 +2,13 @@
 
 The memoized model lives alongside ordinary finite derivation trees. Its finite,
 explicit graphs permit shared dependencies and cycles. The current `Aiur.Circuit`
-model carries tuple-valued messages; the preserved `Aiur.Scalar.Circuit` model
+model carries tuple and pointer values and shares one ROM; the preserved `Aiur.Scalar.Circuit` model
 carries the original field-valued messages.
 
 ## Graphs and trees
 
-`RuleInstance system` contains a chip, a row, a successful chip lookup, and proof
-of local validity. `MemoDerivation system message` contains a finite node table,
+`RuleInstance system rom` contains a chip, a row, a successful chip lookup, and proof
+of local validity, including active lookups in that same table. `MemoDerivation system rom message` contains a finite node table,
 a root concluding `message`, and a target index for every enabled premise
 occurrence of every node. Targets must conclude exactly the required message,
 including all arguments, the result, and their tuple shapes.
@@ -69,26 +69,24 @@ graph.Acyclic → Scalar.EvalCall P f xs y
 The theorems are `Aiur.Scalar.memo_complete` and
 `Aiur.Scalar.memo_acyclic_sound`, both fully proved.
 
-For the current tuple compiler, `Aiur.memo_acyclic_sound` also proves:
+For the main compiler, `Aiur.memo_acyclic_sound` first recovers pure
+`ROMEvalCall` against the graph's fixed table. `Aiur.memo_acyclic_heap_sound`
+then reconstructs an execution with fresh source allocations, assuming a valid
+ROM and pointer-free entry arguments. Its output includes a heap and a
+contents-based `Represents` relation for the result. Pointer-free results agree
+as data. This proof has no totality or recursion-depth hypothesis.
 
-```text
-compile P = .ok C →
-(graph : MemoDerivation C ⟨f, xs, y⟩) → graph.Acyclic → EvalCall P f xs y
-```
+`Aiur.memo_run_complete` starts from a successful executable `run`. If its heap
+fits the field cardinality, it constructs an address encoding, valid ROM, and
+memoized graph. `Aiur.memo_complete` retains the intermediate construction from
+pure ROM evaluation. Neither construction claims its chosen graph references
+are acyclic; conditional soundness examines the actual supplied graph.
 
-It unfolds the graph to a tree and applies the tuple compiler's proved source
-soundness. No totality assumption is needed, and cyclic graphs remain accepted
-by the model.
+`MemoEntryDerives` requires pointer-free entry arguments and existentially chooses
+one valid ROM for the complete graph. ROM cells provide reusable leaf claims;
+sharing cell addresses does not add call-dependency edges. Cyclic function-call
+justification remains allowed by the model and is deliberately excluded only by
+the soundness theorem's hypothesis.
 
-Tuple memoized completeness is also proved. `Aiur.memo_complete` embeds the
-closed tree constructed by tuple compiler completeness into a memoized graph:
-
-```text
-compile P = .ok C → EvalCall P f xs y → MemoAccepts C f xs y
-```
-
-`Aiur.memo_eval_complete` starts from `eval P f xs fuel = .ok y` instead, using
-the proved evaluator/predicate correspondence. These constructions do not claim
-acyclicity of the chosen graph references. Conditional soundness examines the
-actual supplied graph, without imposing totality on the source program. See
-[correctness](correctness.md) for the complete tuple proof architecture.
+The completed tuple-only graph theorems remain in `Aiur.Tuple`. See
+[correctness](correctness.md) and [pointers](pointers.md) for the current proof chain.

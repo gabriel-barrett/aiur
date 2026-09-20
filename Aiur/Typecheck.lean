@@ -10,6 +10,7 @@ inductive CheckError where
   | unknownFunction (caller callee : String)
   | arityMismatch (caller callee : String) (expected actual : Nat)
   | typeMismatch (function : String) (expected actual : Ty)
+  | expectedPointer (function : String)
   | expectedTuple (function : String)
   | tupleArity (function : String) (expected actual : Nat)
   | projectionBounds (function : String) (index size : Nat)
@@ -28,6 +29,7 @@ instance : ToString CheckError where
         s!"function '{caller}' calls '{callee}' with {actual} arguments; expected {expected}"
     | .typeMismatch fn expected actual =>
         s!"type mismatch in function '{fn}': expected {repr expected}, got {repr actual}"
+    | .expectedPointer fn => s!"expected a pointer in function '{fn}'"
     | .expectedTuple fn => s!"expected a tuple in function '{fn}'"
     | .tupleArity fn expected actual =>
         s!"tuple pattern in function '{fn}' has {actual} components; expected {expected}"
@@ -93,6 +95,10 @@ mutual
         let bindings ← checkPattern caller pattern type
         if !pattern.irrefutable then throw (.refutableBinding caller)
         inferType program caller (bindings ++ locals) body
+    | .store value => return .ptr (← inferType program caller locals value)
+    | .load pointer =>
+        let .ptr target ← inferType program caller locals pointer | throw (.expectedPointer caller)
+        return target
     | .neg value =>
         requireType caller .field (← inferType program caller locals value)
         return .field

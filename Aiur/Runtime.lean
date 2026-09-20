@@ -1,0 +1,111 @@
+import Aiur.Typecheck
+import Aiur.Memory
+import Mathlib.Algebra.Field.Defs
+
+namespace Aiur
+
+abbrev Environment (F : Type) (Address : Type := F) := List (String × Value F Address)
+
+inductive EvalError where
+  | invalidProgram (error : CheckError)
+  | unknownFunction (name : String)
+  | arityMismatch (function : String) (expected actual : Nat)
+  | argumentTypeMismatch (function : String) (expected actual : Ty)
+  | unboundVariable (name : String)
+  | expectedField
+  | expectedTuple
+  | expectedPointer
+  | danglingPointer (address : Nat)
+  | memoryTypeMismatch (expected actual : Ty)
+  | pointerEntryArgument (index : Nat)
+  | projectionBounds (index size : Nat)
+  | patternMismatch
+  | divisionByZero
+  | noMatchingArm
+  | outOfFuel
+  deriving Repr, BEq, DecidableEq
+
+mutual
+  /-- Match the whole value and collect bindings in left-to-right order. -/
+  def Pattern.bindings [DecidableEq F] : Pattern F → Value F Address → Option (Environment F Address)
+    | .literal x, .field y => if x = y then some [] else none
+    | .wildcard, _ => some []
+    | .bind name, value => some [(name, value)]
+    | .tuple patterns, .tuple values => Pattern.bindingsList patterns values
+    | _, _ => none
+  termination_by pattern _ => sizeOf pattern
+
+  def Pattern.bindingsList [DecidableEq F] : List (Pattern F) → List (Value F Address) →
+      Option (Environment F Address)
+    | [], [] => some []
+    | pattern :: patterns, value :: values => do
+        return (← pattern.bindings value) ++ (← Pattern.bindingsList patterns values)
+    | _, _ => none
+  termination_by patterns _ => sizeOf patterns
+end
+
+def selectArm [DecidableEq F] (value : Value F Address) :
+    List (Pattern F × Expr F) → Option (Environment F Address × Expr F)
+  | [] => none
+  | (pattern, body) :: rest =>
+      match pattern.bindings value with
+      | some bindings => some (bindings, body)
+      | none => selectArm value rest
+
+def evalNeg [Field F] : Value F Address → Except EvalError (Value F Address)
+  | .field x => .ok (.field (-x))
+  | .tuple _ | .ptr _ _ => .error .expectedField
+
+def evalBinOp [Field F] [DecidableEq F] (op : BinOp) :
+    Value F Address → Value F Address → Except EvalError (Value F Address)
+  | .field x, .field y =>
+      match op with
+      | .add => .ok (.field (x + y))
+      | .sub => .ok (.field (x - y))
+      | .mul => .ok (.field (x * y))
+      | .div => if y = 0 then .error .divisionByZero else .ok (.field (x / y))
+  | _, _ => .error .expectedField
+
+def projectValue (value : Value F Address) (index : Nat) : Except EvalError (Value F Address) := do
+  let .tuple items := value | throw .expectedTuple
+  let some result := items[index]? | throw (.projectionBounds index items.length)
+  return result
+
+/-- Resolve a call and check the complete shapes of its arguments. -/
+def prepareCall (program : Program F) (name : String) (args : List (Value F Address)) :
+    Except EvalError (Environment F Address × Expr F) := do
+  let some fn := program.findFunction? name | throw (.unknownFunction name)
+  if fn.params.length != args.length then
+    throw (.arityMismatch name fn.params.length args.length)
+  for (param, arg) in fn.params.zip args do
+    if param.2 ≠ arg.type then throw (.argumentTypeMismatch name param.2 arg.type)
+  return ((fn.params.map Prod.fst).zip args, fn.body)
+
+/-- Loads check their declared cell type; source pointers remain opaque to the language. -/
+def loadValue (heap : Heap F) : SourceValue F → Except EvalError (SourceValue F)
+  | .ptr target address => do
+      let some value := heap[address]? | throw (.danglingPointer address)
+      if value.type ≠ target then throw (.memoryTypeMismatch target value.type)
+      return value
+  | _ => throw .expectedPointer
+
+/-- Check public arguments recursively, retaining the offending argument index. -/
+def checkEntryFrom (index : Nat) : List (SourceValue F) → Except EvalError Unit
+  | [] => .ok ()
+  | value :: rest =>
+      if value.pointerFree then checkEntryFrom (index + 1) rest
+      else .error (.pointerEntryArgument index)
+
+def checkEntry (args : List (SourceValue F)) : Except EvalError Unit := checkEntryFrom 0 args
+
+theorem checkEntryFrom_ok (args : List (SourceValue F)) (index : Nat) :
+    checkEntryFrom index args = .ok () ↔ ∀ value ∈ args, value.pointerFree = true := by
+  induction args generalizing index with
+  | nil => simp [checkEntryFrom]
+  | cons value rest ih =>
+      cases free : value.pointerFree <;> simp [checkEntryFrom, free, ih]
+
+theorem checkEntry_ok (args : List (SourceValue F)) :
+    checkEntry args = .ok () ↔ ∀ value ∈ args, value.pointerFree = true := checkEntryFrom_ok args 0
+
+end Aiur

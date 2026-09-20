@@ -13,6 +13,7 @@ declare_syntax_cat aiur_param
 declare_syntax_cat aiur_function
 declare_syntax_cat aiur_program
 
+syntax:75 (name := pointerType) "&" aiur_type:75 : aiur_type
 syntax (name := namedType) ident : aiur_type
 syntax (name := unitType) "(" ")" : aiur_type
 syntax (name := typeParens) "(" aiur_type ")" : aiur_type
@@ -26,6 +27,8 @@ syntax (name := variableExpr) ident : aiur_expr
 syntax (name := parens) "(" aiur_expr ")" : aiur_expr
 syntax (name := block) "{" aiur_expr "}" : aiur_expr
 syntax (name := call) ident "(" sepBy(aiur_expr, ",", ",", allowTrailingSep) ")" : aiur_expr
+syntax:75 (name := store) "&" aiur_expr:75 : aiur_expr
+syntax:75 (name := load) "*" aiur_expr:75 : aiur_expr
 syntax:75 (name := neg) "-" aiur_expr:75 : aiur_expr
 syntax:70 (name := mul) aiur_expr:70 "*" aiur_expr:71 : aiur_expr
 syntax:70 (name := div) aiur_expr:70 "/" aiur_expr:71 : aiur_expr
@@ -51,14 +54,15 @@ private def readName (stx : Syntax) : Except String String :=
   | _ => .error "expected a simple function or parameter name"
 
 private partial def lowerType (stx : Syntax) : Except String Ty := do
-  if stx.getKind == ``namedType then
+  if stx.getKind == ``pointerType then return .ptr (← lowerType stx[1])
+  else if stx.getKind == ``namedType then
     if stx[0].getId == `Field then return .field
-    else throw "expected 'Field' or a tuple type"
+    else throw "expected 'Field', a tuple type, or '&A'"
   else if stx.getKind == ``unitType then return .tuple []
   else if stx.getKind == ``typeParens then lowerType stx[1]
   else if stx.getKind == ``tupleType then
     return .tuple ((← lowerType stx[1]) :: (← stx[3].getSepArgs.toList.mapM lowerType))
-  else throw "expected 'Field' or a tuple type"
+  else throw "expected 'Field', a tuple type, or '&A'"
 
 private partial def lowerPattern (stx : Syntax) : Except String (Pattern Nat) := do
   if stx.getKind == ``literalPattern then
@@ -90,6 +94,8 @@ private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := 
     return .var (← readName stx[0])
   else if kind == ``parens || kind == ``block then
     lowerExpr stx[1]
+  else if kind == ``store then return .store (← lowerExpr stx[1])
+  else if kind == ``load then return .load (← lowerExpr stx[1])
   else if kind == ``neg then
     return .neg (← lowerExpr stx[1])
   else if kind == ``add || kind == ``sub || kind == ``mul || kind == ``div then
@@ -152,7 +158,8 @@ private def normalizeWhitespace : List Char → List Char
   | char :: rest =>
       let normalized := if char == '\t' || char == '\r' then ' ' else char
       -- Keep chained tuple indices such as `p.1.0` from becoming a decimal token.
-      if char == '.' then ' ' :: '.' :: ' ' :: normalizeWhitespace rest
+      if char == '&' || char == '*' then normalized :: ' ' :: normalizeWhitespace rest
+      else if char == '.' then ' ' :: '.' :: ' ' :: normalizeWhitespace rest
       else if (char == '-' || char == '/') && rest.head? == some '-' then
         normalized :: ' ' :: normalizeWhitespace rest
       else
@@ -183,6 +190,7 @@ private def quoteOp : BinOp → Lean.Expr
 
 private def quoteTy : Ty → Lean.Expr
   | .field => mkConst ``Ty.field
+  | .ptr target => mkApp (mkConst ``Ty.ptr) (quoteTy target)
   | .tuple items => mkApp (mkConst ``Ty.tuple) (quoteList (mkConst ``Ty) (items.map quoteTy))
 
 private def quotePattern : Pattern Nat → Lean.Expr
@@ -198,6 +206,8 @@ private def quoteExpr : Aiur.Expr Nat → Lean.Expr
   | .project value index => mkApp3 (mkConst ``Aiur.Expr.project) natType (quoteExpr value) (toExpr index)
   | .letValue pattern value body =>
       mkApp4 (mkConst ``Aiur.Expr.letValue) natType (quotePattern pattern) (quoteExpr value) (quoteExpr body)
+  | .store value => mkApp2 (mkConst ``Aiur.Expr.store) natType (quoteExpr value)
+  | .load pointer => mkApp2 (mkConst ``Aiur.Expr.load) natType (quoteExpr pointer)
   | .neg value => mkApp2 (mkConst ``Aiur.Expr.neg) natType (quoteExpr value)
   | .binary op left right =>
       mkApp4 (mkConst ``Aiur.Expr.binary) natType (quoteOp op) (quoteExpr left) (quoteExpr right)

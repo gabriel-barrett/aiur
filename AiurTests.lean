@@ -2,6 +2,8 @@ import Aiur.Scalar
 import AiurTests.Circuit
 import AiurTests.Semantics
 import AiurTests.Memo
+import AiurTests.TupleRuntime
+import AiurTests.Pointers
 import AiurTests.Tuples
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
@@ -157,3 +159,5 @@ def main : IO Unit := do
   AiurTests.run
   AiurCircuitTests.run
   AiurTupleTests.run
+  AiurPointerTests.run
+  AiurTupleRuntimeTests.run

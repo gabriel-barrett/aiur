@@ -3,16 +3,18 @@ import Aiur.Scalar.Circuit.WitnessBasic
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 private theorem excludeHead_complete [Field F] {calls : CallRelation F}
     (selector : ArithExpr F) (rest : List (ArithExpr F)) {before after : BuildState F}
     (compiled : (forIn rest PUnit.unit (fun other _ => do
       constrain (.mul selector other)
       pure (ForInStep.yield PUnit.unit)) : Build F PUnit) before = .ok (PUnit.unit, after)) {assignment : Var → F}
-    (layout : before.WellFormed) (valid : before.Valid calls assignment)
+    (layout : before.WellFormed) (valid : before.Valid rom calls assignment)
     (headBound : selector.inBounds before.nextVar = true)
     (tailBound : ∀ other ∈ rest, other.inBounds before.nextVar = true)
     (zero : ∀ other ∈ rest, selector.denote assignment * other.denote assignment = 0) :
-    Extension calls before after assignment assignment := by
+    Extension rom calls before after assignment assignment := by
   induction rest generalizing before with
   | nil =>
       have same : before = after := by
@@ -33,10 +35,10 @@ private theorem excludeHead_complete [Field F] {calls : CallRelation F}
 theorem excludePairs_complete [Field F] {calls : CallRelation F}
     {selectors : List (ArithExpr F)} {before after : BuildState F}
     (compiled : excludePairs selectors before = .ok ((), after)) {assignment : Var → F}
-    (layout : before.WellFormed) (valid : before.Valid calls assignment)
+    (layout : before.WellFormed) (valid : before.Valid rom calls assignment)
     (bounded : ∀ selector ∈ selectors, selector.inBounds before.nextVar = true)
     (exclusive : (selectors.map (ArithExpr.denote assignment)).Pairwise (fun x y => x * y = 0)) :
-    Extension calls before after assignment assignment := by
+    Extension rom calls before after assignment assignment := by
   induction selectors generalizing before with
   | nil =>
       simp only [excludePairs, pure_ok, true_and] at compiled
@@ -56,11 +58,11 @@ theorem excludePairs_complete [Field F] {calls : CallRelation F}
 theorem sum_complete [Field F] {calls : CallRelation F}
     {selectors : List (ArithExpr F)} {enable : ArithExpr F} {before after : BuildState F}
     (compiled : constrain (.sub (selectors.foldl ArithExpr.add (.const 0)) enable) before = .ok ((), after))
-    {assignment : Var → F} (layout : before.WellFormed) (valid : before.Valid calls assignment)
+    {assignment : Var → F} (layout : before.WellFormed) (valid : before.Valid rom calls assignment)
     (bounded : ∀ selector ∈ selectors, selector.inBounds before.nextVar = true)
     (enableBound : enable.inBounds before.nextVar = true)
     (sum : (selectors.map (ArithExpr.denote assignment)).sum = enable.denote assignment) :
-    Extension calls before after assignment assignment := by
+    Extension rom calls before after assignment assignment := by
   apply constrain_complete compiled layout valid
   · simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using
       And.intro (Scalar.Circuit.Compiler.foldl_add_inBounds (initial := .const (0 : F)) rfl bounded) enableBound

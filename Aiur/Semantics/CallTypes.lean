@@ -3,8 +3,10 @@ import Aiur.TypecheckFacts
 
 namespace Aiur
 
+variable {F : Type} {rom : ROM F}
+
 private theorem checked_arguments_types (name : String) (params : List (String × Ty))
-    (args : List (Value F)) (arity : params.length = args.length)
+    (args : List (Value F A)) (arity : params.length = args.length)
     (checked : (forIn (params.zip args) PUnit.unit (fun pair _ =>
       if pair.1.2 = pair.2.type then Except.ok (ForInStep.yield PUnit.unit)
       else Except.error (.argumentTypeMismatch name pair.1.2 pair.2.type))
@@ -24,8 +26,8 @@ private theorem checked_arguments_types (name : String) (params : List (String �
           · simp [List.zip_cons_cons, List.forIn_cons, same, bind, Except.bind] at checked
 
 /-- Successful entry preparation supplies the declared argument shapes and exact body environment. -/
-theorem prepareCall_spec {program : Program F} {name : String} {args : List (Value F)}
-    {locals : Environment F} {body : Expr F}
+theorem prepareCall_spec {program : Program F} {name : String} {args : List (Value F A)}
+    {locals : Environment F A} {body : Expr F}
     (prepared : prepareCall program name args = .ok (locals, body)) :
     ∃ fn, program.findFunction? name = some fn ∧ fn.params.map Prod.snd = args.map Value.type ∧
       locals = (fn.params.map Prod.fst).zip args ∧ body = fn.body := by

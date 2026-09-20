@@ -2,13 +2,15 @@ import Aiur.Circuit.ValueWitness
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 theorem equalIndicator_complete [Field F] [DecidableEq F]
     {difference test : ArithExpr F} {before after : BuildState F}
     (compiled : equalIndicator difference before = .ok (test, after))
     {calls : CallRelation F} {initial : Var → F}
-    (layout : before.WellFormed) (valid : before.Valid calls initial)
+    (layout : before.WellFormed) (valid : before.Valid rom calls initial)
     (bounded : difference.inBounds before.nextVar = true) :
-    ∃ assignment, Extension calls before after initial assignment ∧
+    ∃ assignment, Extension rom calls before after initial assignment ∧
       test.inBounds after.nextVar = true := by
   simp [equalIndicator, StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at compiled
   obtain ⟨rfl, rfl⟩ := compiled
@@ -38,8 +40,8 @@ theorem equalIndicator_complete [Field F] [DecidableEq F]
   have thirdBound : (ArithExpr.sub (.mul difference (.var (before.nextVar + 1)))
       (.sub (.const 1) (.var before.nextVar))).inBounds (before.nextVar + 1 + 1) = true := by
     simp [Scalar.Circuit.ArithExpr.inBounds, lo, hi, db]
-  have grownValid : ({ before with nextVar := before.nextVar + 1 + 1 } : BuildState F).Valid calls assignment :=
-    ⟨(valid.of_agree layout agree).constraints, (valid.of_agree layout agree).calls⟩
+  have grownValid : ({ before with nextVar := before.nextVar + 1 + 1 } : BuildState F).Valid rom calls assignment :=
+    ⟨(valid.of_agree layout agree).constraints, (valid.of_agree layout agree).calls, (valid.of_agree layout agree).memory⟩
   have firstZero : (ArithExpr.mul (.var before.nextVar)
       (.sub (.var before.nextVar) (.const (1 : F)))).denote assignment = 0 := by
     simpa only [ArithExpr.denote, Scalar.Circuit.ArithExpr.denote, eEq, equal] using equations.1
@@ -61,9 +63,9 @@ mutual
       {before after : BuildState F}
       (compiled : lowerPattern pattern value before = .ok ((test, bindings), after))
       {calls : CallRelation F} {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (bounded : Bounded before.nextVar value) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         test.inBounds after.nextVar = true ∧ LocalsBounded after.nextVar bindings := by
     cases pattern with
     | wildcard =>
@@ -76,7 +78,7 @@ mutual
         exact ⟨initial, .refl layout valid, rfl, by simpa [LocalsBounded] using bounded⟩
     | literal literal =>
         cases value with
-        | tuple values => simp [lowerPattern] at compiled
+        | tuple values | ptr => simp [lowerPattern] at compiled
         | field value =>
             simp only [lowerPattern] at compiled
             obtain ⟨test, middle, tested, finished⟩ := bind_ok.mp compiled
@@ -86,7 +88,7 @@ mutual
             exact ⟨assignment, extension, bound, by simp [LocalsBounded]⟩
     | tuple patterns =>
         cases value with
-        | field value => simp [lowerPattern] at compiled
+        | field value | ptr => simp [lowerPattern] at compiled
         | tuple values =>
             simp only [lowerPattern] at compiled
             exact lowerPatterns_complete compiled layout valid (bounded_tuple.mp bounded)
@@ -97,9 +99,9 @@ mutual
       {test : ArithExpr F} {bindings : Locals F} {before after : BuildState F}
       (compiled : lowerPatterns patterns values before = .ok ((test, bindings), after))
       {calls : CallRelation F} {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (bounded : ∀ value ∈ values, Bounded before.nextVar value) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         test.inBounds after.nextVar = true ∧ LocalsBounded after.nextVar bindings := by
     cases patterns with
     | nil =>
@@ -142,7 +144,7 @@ mutual
     | literal => simp [Pattern.irrefutable] at irrefutable
     | tuple patterns =>
         cases value with
-        | field => simp [lowerPattern] at compiled
+        | field | ptr => simp [lowerPattern] at compiled
         | tuple values =>
             simp only [lowerPattern] at compiled
             exact lowerPatterns_irrefutable compiled (by simpa [Pattern.irrefutable] using irrefutable) assignment

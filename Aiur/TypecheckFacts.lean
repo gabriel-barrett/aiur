@@ -4,6 +4,8 @@ import Mathlib.Data.List.Basic
 
 namespace Aiur
 
+variable {F : Type} {rom : ROM F}
+
 theorem except_bind_ok {first : Except ε α} {next : α → Except ε β} {result : β} :
     (first >>= next) = .ok result ↔ ∃ value, first = .ok value ∧ next value = .ok result := by
   cases first <;> simp [bind, Except.bind]
@@ -67,7 +69,7 @@ mutual
         subst types; subst bindings; rfl
     | literal literal =>
         cases value with
-        | tuple values => simp [Pattern.bindings] at matched
+        | tuple values | ptr => simp [Pattern.bindings] at matched
         | field value =>
             simp [patternTypes, Value.type, requireType, bind, Except.bind, pure, Except.pure] at checked
             subst types
@@ -77,7 +79,7 @@ mutual
             · cases matched
     | tuple patterns =>
         cases value with
-        | field => simp [Pattern.bindings] at matched
+        | field | ptr => simp [Pattern.bindings] at matched
         | tuple values =>
             simp only [Pattern.bindings] at matched
             simp only [patternTypes, Value.type] at checked
@@ -189,11 +191,11 @@ theorem typecheck_function {program : Program F} (checked : typecheck program = 
     exact checked_functions program program.functions checked fn member
 
 /-- Successful evaluation preserves inferred tuple shape when call premises have their declared shapes. -/
-theorem EvalExprWith.type [Field F] [DecidableEq F] {program : Program F} {calls : CallRelation F}
+theorem ROMEvalExprWith.type [Field F] [DecidableEq F] {program : Program F} {calls : CallRelation F}
     (typed : CallsTyped program calls) {locals : Environment F} {expr : Expr F} {result : Value F}
-    (evaluated : EvalExprWith calls locals expr result) :
+    (evaluated : ROMEvalExprWith rom calls locals expr result) :
     ∀ caller type, inferType program caller (environmentTypes locals) expr = .ok type → result.type = type := by
-  induction evaluated using EvalExprWith.rec
+  induction evaluated using ROMEvalExprWith.rec
     (motive_2 := fun locals exprs values _ => ∀ caller types,
       inferTypes program caller (environmentTypes locals) exprs = .ok types → values.map Value.type = types) with
   | literal =>
@@ -215,7 +217,7 @@ theorem EvalExprWith.type [Field F] [DecidableEq F] {program : Program F} {calls
       obtain ⟨inputType, inputRun, rest⟩ := except_bind_ok.mp checked
       have inputShape := ih caller inputType inputRun
       cases input with
-      | field => cases projected
+      | field | ptr => cases projected
       | tuple values =>
           simp only [Value.type] at inputShape
           subst inputType
@@ -242,6 +244,21 @@ theorem EvalExprWith.type [Field F] [DecidableEq F] {program : Program F} {calls
         have bindings := patternTypes_bindings (caller := caller)
           (by rw [shape]; exact checkPattern_types patternRun) matched
         exact bodyIH caller type (by simpa only [environmentTypes_append, bindings] using rest)
+  | store _ _ ih =>
+      intro caller type checked
+      simp only [inferType] at checked
+      obtain ⟨inputType, inputRun, rest⟩ := except_bind_ok.mp checked
+      obtain rfl := except_pure_ok.mp rest
+      simp [Value.type, ih caller inputType inputRun]
+  | @load locals expr target address result _ _ shape ih =>
+      intro caller type checked
+      simp only [inferType] at checked
+      obtain ⟨inputType, inputRun, rest⟩ := except_bind_ok.mp checked
+      have pointerShape := ih caller inputType inputRun
+      simp only [Value.type] at pointerShape
+      subst inputType
+      obtain rfl := except_pure_ok.mp rest
+      exact shape
   | @neg locals expr input result _ operation ih =>
       intro caller type checked
       simp only [inferType] at checked
@@ -250,7 +267,7 @@ theorem EvalExprWith.type [Field F] [DecidableEq F] {program : Program F} {calls
       obtain rfl := except_pure_ok.mp rest
       cases input with
       | field x => cases operation; simp [Value.type]
-      | tuple => cases operation
+      | tuple | ptr => cases operation
   | @binary locals lhs x rhs y op result _ _ operation leftIH rightIH =>
       intro caller type checked
       simp only [inferType] at checked
@@ -260,10 +277,10 @@ theorem EvalExprWith.type [Field F] [DecidableEq F] {program : Program F} {calls
       obtain ⟨finished, _, rest⟩ := except_bind_ok.mp rest
       obtain rfl := except_pure_ok.mp rest
       cases x with
-      | tuple => cases operation
+      | tuple | ptr => cases operation
       | field x =>
           cases y with
-          | tuple => cases operation
+          | tuple | ptr => cases operation
           | field y =>
               cases op <;> simp only [evalBinOp] at operation
               all_goals first
