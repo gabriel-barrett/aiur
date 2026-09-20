@@ -5,5 +5,7 @@ import Aiur.Semantics
 import Aiur.EvalCorrectness
 import Aiur.Circuit
 import Aiur.Correctness
+import Aiur.Completeness
+import Aiur.MemoCompleteness
 import Aiur.MemoSoundness
 import Aiur.Frontend

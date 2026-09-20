@@ -68,22 +68,20 @@ Duplicate retained conditions are rejected after field conversion, ignoring
 binder names. Partly overlapping conditions are allowed. Lowering stops at the
 first irrefutable arm, though typechecking examines every arm.
 
-## Proof boundary
+## Correctness
 
 Tuple evaluation is proved equivalent to successful execution with sufficient
-fuel, and is deterministic. Tree-to-graph embedding and acyclic graph-to-tree
-unfolding are proved for tuple messages. Equality-test equations have soundness
-and witness lemmas.
+fuel, and is deterministic. `Aiur.compiler_correct` proves the full equivalence
+between source evaluation and a closed chip derivation after successful
+compilation. The witness construction covers every fresh tuple leaf, every
+pattern test (including those in inactive code), and every enabled call.
 
-End-to-end compiler soundness and acyclic memoized source soundness are proved
-for the tuple compiler as `Aiur.compiler_sound` and `Aiur.memo_acyclic_sound`.
-Their local lemmas cover nested pattern indicators and bindings, first-match
-priority, structured value equality, and enabled calls. No totality or recursion
-depth assumption is required.
+`Aiur.memo_complete` and `Aiur.memo_eval_complete` prove graph existence from
+relational and executable evaluation. Tree-to-graph embedding permits sharing
+and cycles. `Aiur.memo_acyclic_sound` recovers source evaluation from any acyclic
+memoized graph; it needs no totality or recursion depth assumption.
 
-Tuple compiler completeness and memoized completeness remain unfinished. They
-need assignment construction for fresh tuple leaves and all pattern tests,
-including tests inside inactive code. The prior full compiler correctness and
-memoized completeness theorems remain in `Aiur.Scalar`. No `sorry` or replacement
-axiom was introduced. See [correctness](correctness.md) for the proof architecture
-and remaining direction. Depth constraints remain deferred.
+These theorems cover arbitrary fields and arbitrary finite tuple nesting and
+arity. They have no `sorry` or replacement axiom. The scalar reference proofs
+remain in `Aiur.Scalar`. See [correctness](correctness.md) for the complete proof
+architecture. Depth constraints remain deferred.

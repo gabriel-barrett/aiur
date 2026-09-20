@@ -6,6 +6,8 @@
   signatures, and field specialization.
 - `Aiur/Typecheck.lean`: expression inference against declared signatures; tuple
   shapes, projections, scoped bindings, and result agreement.
+- `Aiur/TypecheckFacts.lean` and `Semantics/CallTypes.lean`: preservation of
+  inferred tuple shapes, function-body checks, and entry argument-shape facts.
 - `Aiur/Frontend.lean`: `aiur%` elaborates a string into a checked `Program Nat`.
   Parameter destructuring lowers to lets with generated parameter names that
   cannot collide with source identifiers.
@@ -25,17 +27,26 @@
 - `Aiur/Circuit/ExpressionCorrectness.lean`, `CompileFacts.lean`, and
   `LocalCorrectness.lean`: expression, ordered arm, interface, and function
   soundness against the actual compiler.
+- `Aiur/Circuit/WitnessBasic.lean`, `ValueWitness.lean`, and `PatternWitness.lean`:
+  fresh assignments, preservation of existing constraints and calls, and exact
+  recursive tuple and pattern witnesses.
+- `Aiur/Circuit/InactiveWitness.lean`, `ExpressionWitness.lean`, and
+  `SelectorWitness.lean`: active and inactive expression witnesses and ordered
+  branch selection, including unconditional pattern tests in inactive code.
+- `Aiur/Circuit/RowWitness.lean` and `LocalWitness.lean`: finite row construction
+  from assignments and completeness of one compiled function.
 - `Aiur/Circuit/Derivation.lean`, `MemoDerivation.lean`, and `MemoAcyclic.lean`:
   finite trees, explicit graphs, tree embedding, and acyclic graph unfolding,
   all with structured messages.
-- `Aiur/Correctness.lean` and `MemoSoundness.lean`: end-to-end tuple compiler
-  soundness and acyclic memoized source soundness, without totality assumptions.
+- `Aiur/Correctness.lean`, `Completeness.lean`, `MemoCompleteness.lean`, and
+  `MemoSoundness.lean`: end-to-end source/tree equivalence, memoized completeness,
+  and acyclic source soundness, without totality assumptions.
 
 The previously proved field-only implementation remains under `Aiur/Scalar/`,
 imported with `Aiur.Scalar`, using that namespace and `scalar_aiur%`. It is a
 reference snapshot, not the tuple language's entry point. Its full compiler and
-memoized correctness proofs remain checked. Tuple compiler completeness remains
-unfinished; see [correctness](correctness.md).
+memoized correctness proofs remain checked alongside the completed tuple proofs;
+see [correctness](correctness.md).
 
 ## Syntax and checking
 
@@ -74,6 +85,8 @@ circuit witness generation remains separate work.
 bindings, projections, strictness, recursion, shape errors, finite-field pattern
 collisions, structured messages, and forged branch selectors. General soundness
 regressions rule out wrong tuple-call and first-match results for any derivation.
-Axiom reports guard evaluator correspondence, both compilers' soundness, and
-acyclic source soundness against admitted proofs. `lake test` runs both sets of
-runtime checks.
+Completeness regressions derive trees and memoized graphs from successful
+execution without supplying rows, including nested tuples, inactive failures,
+unit-valued calls, and mutual recursion. Axiom reports guard evaluator
+correspondence, full compiler correctness, memoized completeness, and acyclic
+soundness against admitted proofs. `lake test` runs both sets of runtime checks.
