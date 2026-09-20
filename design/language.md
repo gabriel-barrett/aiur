@@ -87,6 +87,14 @@ Each function compiles to one chip. Tuple interfaces preserve shape; rows contai
 only field elements. Local equations remain polynomials equal to zero. See
 [tuples](tuples.md), [circuits](circuits.md), and [correctness](correctness.md).
 
+## Planned pointers
+
+The next extension introduces typed opaque pointers with `store` and `load`,
+backed by immutable heterogeneous memory. Entry arguments must contain no
+pointers. Pointer equality and arithmetic are excluded from safe code. Circuit
+addresses are field elements chosen by the prover through a ROM table. See
+[pointers and ROM](pointers.md) for the agreed direction and proposed semantics.
+
 ## Open questions
 
 - Concrete fields and circuit backends for applications.
