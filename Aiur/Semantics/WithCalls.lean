@@ -1,56 +1,66 @@
-import Aiur.Semantics
+import Aiur.ROMSemantics
 
 namespace Aiur
+
+variable {F : Type} {rom : ROM F}
 
 /-- Interpret each function call by a supplied premise relation. -/
 abbrev CallRelation (F : Type) := String → List (Value F) → Value F → Prop
 
 mutual
-  inductive EvalExprWith [Field F] [DecidableEq F] (calls : CallRelation F) :
+  inductive ROMEvalExprWith [Field F] [DecidableEq F] (rom : ROM F) (calls : CallRelation F) :
       Environment F → Expr F → Value F → Prop where
-    | literal : EvalExprWith calls locals (.literal value) (.field value)
+    | literal : ROMEvalExprWith rom calls locals (.literal value) (.field value)
     | var (lookup : locals.find? (·.1 == name) = some (name, value)) :
-        EvalExprWith calls locals (.var name) value
-    | tuple (items : EvalArgsWith calls locals exprs values) :
-        EvalExprWith calls locals (.tuple exprs) (.tuple values)
-    | project (value : EvalExprWith calls locals expr input)
+        ROMEvalExprWith rom calls locals (.var name) value
+    | tuple (items : ROMEvalArgsWith rom calls locals exprs values) :
+        ROMEvalExprWith rom calls locals (.tuple exprs) (.tuple values)
+    | project (value : ROMEvalExprWith rom calls locals expr input)
         (projected : projectValue input index = .ok result) :
-        EvalExprWith calls locals (.project expr index) result
-    | letValue (value : EvalExprWith calls locals expr input)
+        ROMEvalExprWith rom calls locals (.project expr index) result
+    | letValue (value : ROMEvalExprWith rom calls locals expr input)
         (matched : pattern.bindings input = some bindings)
-        (body : EvalExprWith calls (bindings ++ locals) rest result) :
-        EvalExprWith calls locals (.letValue pattern expr rest) result
-    | neg (value : EvalExprWith calls locals expr input) (operation : evalNeg input = .ok result) :
-        EvalExprWith calls locals (.neg expr) result
-    | binary (left : EvalExprWith calls locals lhs x) (right : EvalExprWith calls locals rhs y)
+        (body : ROMEvalExprWith rom calls (bindings ++ locals) rest result) :
+        ROMEvalExprWith rom calls locals (.letValue pattern expr rest) result
+    | store (value : ROMEvalExprWith rom calls locals expr input)
+        (cell : (address, input) ∈ rom.entries) :
+        ROMEvalExprWith rom calls locals (.store expr) (.ptr input.type address)
+    | load (pointer : ROMEvalExprWith rom calls locals expr (.ptr target address))
+        (cell : (address, result) ∈ rom.entries) (typed : result.type = target) :
+        ROMEvalExprWith rom calls locals (.load expr) result
+    | neg (value : ROMEvalExprWith rom calls locals expr input) (operation : evalNeg input = .ok result) :
+        ROMEvalExprWith rom calls locals (.neg expr) result
+    | binary (left : ROMEvalExprWith rom calls locals lhs x) (right : ROMEvalExprWith rom calls locals rhs y)
         (operation : evalBinOp op x y = .ok result) :
-        EvalExprWith calls locals (.binary op lhs rhs) result
-    | call (arguments : EvalArgsWith calls locals args values) (callee : calls name values result) :
-        EvalExprWith calls locals (.call name args) result
-    | matchValue (value : EvalExprWith calls locals expr input)
+        ROMEvalExprWith rom calls locals (.binary op lhs rhs) result
+    | call (arguments : ROMEvalArgsWith rom calls locals args values) (callee : calls name values result) :
+        ROMEvalExprWith rom calls locals (.call name args) result
+    | matchValue (value : ROMEvalExprWith rom calls locals expr input)
         (selected : selectArm input arms = some (bindings, body))
-        (branch : EvalExprWith calls (bindings ++ locals) body result) :
-        EvalExprWith calls locals (.matchValue expr arms) result
+        (branch : ROMEvalExprWith rom calls (bindings ++ locals) body result) :
+        ROMEvalExprWith rom calls locals (.matchValue expr arms) result
 
-  inductive EvalArgsWith [Field F] [DecidableEq F] (calls : CallRelation F) :
+  inductive ROMEvalArgsWith [Field F] [DecidableEq F] (rom : ROM F) (calls : CallRelation F) :
       Environment F → List (Expr F) → List (Value F) → Prop where
-    | nil : EvalArgsWith calls locals [] []
-    | cons (head : EvalExprWith calls locals expr value)
-        (tail : EvalArgsWith calls locals exprs values) :
-        EvalArgsWith calls locals (expr :: exprs) (value :: values)
+    | nil : ROMEvalArgsWith rom calls locals [] []
+    | cons (head : ROMEvalExprWith rom calls locals expr value)
+        (tail : ROMEvalArgsWith rom calls locals exprs values) :
+        ROMEvalArgsWith rom calls locals (expr :: exprs) (value :: values)
 end
 
-theorem EvalExprWith.toEvalExpr [Field F] [DecidableEq F] {program : Program F}
+theorem ROMEvalExprWith.toEvalExpr [Field F] [DecidableEq F] {program : Program F}
     {locals : Environment F} {expr : Expr F} {result : Value F}
-    (evaluates : EvalExprWith (EvalCall program) locals expr result) :
-    EvalExpr program locals expr result := by
-  induction evaluates using EvalExprWith.rec
-    (motive_2 := fun locals exprs values _ => EvalArgs program locals exprs values) with
+    (evaluates : ROMEvalExprWith rom (ROMEvalCall rom program) locals expr result) :
+    ROMEvalExpr rom program locals expr result := by
+  induction evaluates using ROMEvalExprWith.rec
+    (motive_2 := fun locals exprs values _ => ROMEvalArgs rom program locals exprs values) with
   | literal => exact .literal
   | var lookup => exact .var lookup
   | tuple _ ih => exact .tuple ih
   | project _ projected ih => exact .project ih projected
   | letValue _ matched _ valueIH bodyIH => exact .letValue valueIH matched bodyIH
+  | store _ cell ih => exact .store ih cell
+  | load _ cell typed ih => exact .load ih cell typed
   | neg _ operation ih => exact .neg ih operation
   | binary _ _ operation leftIH rightIH => exact .binary leftIH rightIH operation
   | call _ callee ih => exact .call ih callee
@@ -58,18 +68,20 @@ theorem EvalExprWith.toEvalExpr [Field F] [DecidableEq F] {program : Program F}
   | nil => exact .nil
   | cons _ _ headIH tailIH => exact .cons headIH tailIH
 
-theorem EvalExpr.toEvalExprWith [Field F] [DecidableEq F] {program : Program F}
+theorem ROMEvalExpr.toEvalExprWith [Field F] [DecidableEq F] {program : Program F}
     {locals : Environment F} {expr : Expr F} {result : Value F}
-    (evaluates : EvalExpr program locals expr result) :
-    EvalExprWith (EvalCall program) locals expr result := by
-  induction evaluates using EvalExpr.rec
-    (motive_2 := fun locals exprs values _ => EvalArgsWith (EvalCall program) locals exprs values)
+    (evaluates : ROMEvalExpr rom program locals expr result) :
+    ROMEvalExprWith rom (ROMEvalCall rom program) locals expr result := by
+  induction evaluates using ROMEvalExpr.rec
+    (motive_2 := fun locals exprs values _ => ROMEvalArgsWith rom (ROMEvalCall rom program) locals exprs values)
     (motive_3 := fun _ _ _ _ => True) with
   | literal => exact .literal
   | var lookup => exact .var lookup
   | tuple _ ih => exact .tuple ih
   | project _ projected ih => exact .project ih projected
   | letValue _ matched _ valueIH bodyIH => exact .letValue valueIH matched bodyIH
+  | store _ cell ih => exact .store ih cell
+  | load _ cell typed ih => exact .load ih cell typed
   | neg _ operation ih => exact .neg ih operation
   | binary _ _ operation leftIH rightIH => exact .binary leftIH rightIH operation
   | call _ callee ih _ => exact .call ih callee

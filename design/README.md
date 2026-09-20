@@ -13,14 +13,14 @@ design, and keep proposals and unanswered questions explicitly separate.
   semantic questions.
 - [Tuples](tuples.md): nested values and patterns, explicit signatures, structured
   circuit interfaces, first-match equations, and proof boundaries.
-- [Pointers and ROM](pointers.md): planned typed opaque pointers, a prover-chosen
+- [Pointers and ROM](pointers.md): typed opaque pointers, a prover-chosen
   heterogeneous table, allocation bounds, and source/circuit correspondence.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
   fresh call results, and abstract channel balance.
 - [Correctness](correctness.md): relational evaluation, closed circuit
-  derivations, and the current tuple and scalar proof status.
+  derivations, and the heap/ROM correspondence and current proof status.
 - [Scalar correctness](scalar-correctness.md): the preserved field-only compiler
   soundness and completeness proof.
 - [Memoization](memoization.md): explicit cyclic graphs with shared nodes,

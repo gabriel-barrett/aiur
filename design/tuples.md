@@ -70,18 +70,22 @@ first irrefutable arm, though typechecking examines every arm.
 
 ## Correctness
 
-Tuple evaluation is proved equivalent to successful execution with sufficient
-fuel, and is deterministic. `Aiur.compiler_correct` proves the full equivalence
+The tuple-only snapshot in `Aiur.Tuple` retains its full proofs. Tuple evaluation is proved equivalent to successful execution with sufficient
+fuel, and is deterministic. `Aiur.Tuple.compiler_correct` proves the full equivalence
 between source evaluation and a closed chip derivation after successful
 compilation. The witness construction covers every fresh tuple leaf, every
 pattern test (including those in inactive code), and every enabled call.
 
-`Aiur.memo_complete` and `Aiur.memo_eval_complete` prove graph existence from
+`Aiur.Tuple.memo_complete` and `Aiur.Tuple.memo_eval_complete` prove graph existence from
 relational and executable evaluation. Tree-to-graph embedding permits sharing
-and cycles. `Aiur.memo_acyclic_sound` recovers source evaluation from any acyclic
+and cycles. `Aiur.Tuple.memo_acyclic_sound` recovers source evaluation from any acyclic
 memoized graph; it needs no totality or recursion depth assumption.
 
 These theorems cover arbitrary fields and arbitrary finite tuple nesting and
 arity. They have no `sorry` or replacement axiom. The scalar reference proofs
 remain in `Aiur.Scalar`. See [correctness](correctness.md) for the complete proof
 architecture. Depth constraints remain deferred.
+
+The main `Aiur` implementation extends tuple leaves with typed pointers, each
+occupying one field column. The source/ROM bridge and capacity-bounded
+completeness are documented in [pointers](pointers.md) and [correctness](correctness.md).

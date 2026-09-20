@@ -4,6 +4,8 @@ import Aiur.Circuit.RowWitness
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 private theorem parameter_types (params : List (String × Ty)) (args : List (Value F))
     (types : params.map Prod.snd = args.map Value.type) :
     environmentTypes ((params.map Prod.fst).zip args) = params := by
@@ -35,15 +37,15 @@ theorem lowerFunction_complete [Field F] [DecidableEq F]
     (checked : inferType program fn.name fn.params fn.body = .ok fn.result)
     {args : List (Value F)} {value : Value F}
     (types : fn.params.map Prod.snd = args.map Value.type)
-    (evaluated : EvalExprWith calls ((fn.params.map Prod.fst).zip args) fn.body value) :
-    ∃ row, row.chip = fn.name ∧ chip.ValidRow row ∧ chip.receive row = ⟨fn.name, args, value⟩ ∧
+    (evaluated : ROMEvalExprWith rom calls ((fn.params.map Prod.fst).zip args) fn.body value) :
+    ∃ row, row.chip = fn.name ∧ chip.ValidRow rom row ∧ chip.receive row = ⟨fn.name, args, value⟩ ∧
       ∀ message ∈ chip.premises row, calls message.channel message.args message.result := by
   have resultType : value.type = fn.result :=
     evaluated.type typed fn.name fn.result (by rw [parameter_types fn.params args types]; exact checked)
   obtain ⟨inputs, output, s₁, s₂, body, s₃, s₄, inputsRun, outputRun, bodyRun, constraintRun, rfl⟩ :=
     lowerFunction_stages compiled
-  have emptyLayout : ({} : BuildState F).WellFormed := ⟨by simp, by simp⟩
-  have emptyValid : ({} : BuildState F).Valid calls (fun _ => 0) := ⟨by simp [Satisfies, Scalar.Circuit.Satisfies], by simp⟩
+  have emptyLayout : ({} : BuildState F).WellFormed := ⟨by simp, by simp, by simp⟩
+  have emptyValid : ({} : BuildState F).Valid rom calls (fun _ => 0) := ⟨by simp [Satisfies, Scalar.Circuit.Satisfies], by simp, by simp⟩
   obtain ⟨a, e₁, inputsBound, inputsEq⟩ := freshValues_complete inputsRun emptyLayout emptyValid args types.symm
   obtain ⟨b, e₂, outputBound, outputEq⟩ := freshValue_complete outputRun e₁.layout e₁.valid value resultType
   have inputsEqB : inputs.map (Value.map b) = args := by
@@ -61,8 +63,8 @@ theorem lowerFunction_complete [Field F] [DecidableEq F]
   have inputFinal : ∀ input ∈ inputs, Bounded (F := F) s₄.nextVar (input.map ArithExpr.var) :=
     fun input member => (inputsBound input member).mono ((e₂.trans e₃).trans e₄).increase
   have outputFinal := outputBound.mono (e₃.trans e₄).increase
-  have rowValid : (Chip.mk fn.name inputs output s₄.nextVar s₄.constraints.toList s₄.sends.toList).ValidRow row :=
-    ⟨chip_wellFormed e₄.layout inputFinal outputFinal, Row.ofAssignment_length _ _ _, finiteExt.valid.constraints⟩
+  have rowValid : (Chip.mk fn.name inputs output s₄.nextVar s₄.constraints.toList s₄.sends.toList s₄.memory.toList).ValidRow rom row :=
+    ⟨chip_wellFormed e₄.layout inputFinal outputFinal, Row.ofAssignment_length _ _ _, finiteExt.valid.constraints, finiteExt.valid.memory⟩
   refine ⟨row, rfl, rowValid, ?_, ?_⟩
   · change Message.mk fn.name (inputs.map (Value.map row.assignment)) (output.map row.assignment) = _
     have ins : inputs.map (Value.map row.assignment) = args := by

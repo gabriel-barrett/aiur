@@ -1,27 +1,27 @@
-# Correctness
+# Evaluation and circuit correctness
 
-The current language includes nested tuples. The original field-only compiler
-and all its proofs are preserved under `Aiur.Scalar`. The current tuple compiler
-now has both directions of correctness, with the original proof retained as a
-reference.
+The main implementation supports fields, arbitrary nested tuples, and typed
+pointers. The completed field-only and tuple-only formalizations remain as
+reference snapshots in `Aiur.Scalar` and `Aiur.Tuple`.
 
-## Tuple source semantics
+## Source evaluation
 
-`Aiur/Semantics.lean` defines fuel-free, finite inductive relations:
+The fuel-free source relations thread immutable allocation heaps:
 
 ```text
-EvalExpr program environment expression result
-EvalArgs program environment expressions values
-EvalCall program function arguments result
+EvalExpr P locals expression before value after
+EvalArgs P locals expressions before values after
+EvalFn   P function arguments before value after
 ```
 
-Results are `Value F`; argument lists and environments retain tuple structure.
-Tuple construction evaluates all components. Projections and discarded values
-remain strict. Patterns collect scoped bindings and choose the first matching
-arm. Function calls check declared argument shapes and evaluate the selected
-body in a fresh environment. These relations do not assume totality.
+`EvalCall P f xs y` means that `xs` contains no pointers and there is a finite
+`EvalFn P f xs [] y heap`. Each store appends a cell. Loads use the heap after
+evaluating their pointer operand. Internal calls share the heap; selected
+branches, tuple items, arguments, and operands retain left-to-right evaluation.
 
-`Aiur/EvalCorrectness.lean` proves, without admitted steps:
+`evalExpr_spec` and `EvalExpr.eventually_runs` establish both directions between
+the predicate and successful execution, including the exact final heap.
+`eval_spec`, `eval_complete`, and `exists_eval_iff` establish:
 
 ```text
 eval P f xs fuel = .ok y → EvalCall P f xs y
@@ -30,135 +30,95 @@ eval P f xs fuel = .ok y → EvalCall P f xs y
   ↔ typecheck P = .ok () ∧ EvalCall P f xs y
 ```
 
-Every finite evaluation also runs at every sufficiently large fuel bound.
-Expression and call evaluation are deterministic. An out-of-fuel result does
-not imply there is no successful evaluation with a larger bound.
+These statements concern successful execution. Exhausted fuel and runtime
+errors are not successful evaluations. Expression results and final heaps are
+proved deterministic, as are function and public entry results.
 
-## Tuple circuit semantics
+## Closed trees and fixed-ROM evaluation
 
-The original finite-tree and explicit-graph models now also exist for structured
-messages in `Aiur.Circuit`. Their source-independent results are proved:
+Each chip row gives a rule instance. Its conclusion is the function name,
+arguments, and result. Local polynomial equations must hold. Every active
+memory lookup must belong to the same ROM table. Enabled function sends are
+its premises; inactive sends and memory lookups impose no premise.
 
-- Every tree supplies a memoized graph (`Derives.memo`).
-- A graph with no nonempty directed cycle has a well-founded dependency relation.
-- Every acyclic graph supplies a closed tree (`MemoDerivation.derives_of_acyclic`).
+`Derivation C ROM message` is a finite tree with a valid row at each node and
+one child per enabled call occurrence. It has no free-premise constructor.
+`CircuitEvaluates C ROM f xs y` asserts that such a closed tree exists.
 
-Literal pattern equality-test equations have soundness and witness lemmas in
-`Aiur/Circuit/PatternFacts.lean`.
-
-## Tuple compiler soundness
-
-**Compiler soundness and acyclic memoized source soundness are proved for the
-current tuple compiler**, assuming successful compilation `compile P = .ok C`:
-
-```text
-CircuitEvaluates C f xs y → EvalCall P f xs y
-
-(graph : MemoDerivation C ⟨f, xs, y⟩) → graph.Acyclic → EvalCall P f xs y
-```
-
-The theorems are `Aiur.compiler_sound` in `Aiur/Correctness.lean` and
-`Aiur.memo_acyclic_sound` in `Aiur/MemoSoundness.lean`. The more general
-`Aiur.derivation_sound` consumes an explicit derivation. They cover arbitrary
-fields, finite nested tuples of any arity, scoped bindings, projections,
-division, mutual recursion, and ordered overlapping patterns. Neither theorem
-assumes source totality, a fuel bound, or a depth constraint.
-
-The proof follows the actual compiler without an extra lowering pass:
-
-- `Compiler.lowerPattern_sound` in `PatternCorrectness.lean` proves that the emitted test is
-  exactly `0` or `1`, agrees with source matching, and collects the same bindings.
-  Tuple tests combine these facts recursively over their components.
-- `Compiler.constrainValue_sound` in `ValueCorrectness.lean` turns active leaf equations into
-  equality of complete structured values, including empty tuples.
-- `Compiler.lowerExpr_sound` in `ExpressionCorrectness.lean` interprets enabled calls through an
-  arbitrary premise relation. It recovers source evaluation from a satisfying
-  assignment and transports validity back through the compiler state.
-- The mutually proved `lowerArms_sound` shows that any nonzero selector selects
-  precisely the first matching source arm. A selected later arm requires the
-  preceding pattern indicator to be zero. This includes wildcard negation of
-  all previous complete patterns. The sum equation guarantees selection when
-  the match is active, without assumptions on field characteristic.
-- `CompileFacts` identifies compiled functions and their structured interfaces.
-  `Compiler.lowerFunction_sound` in `LocalCorrectness.lean` recovers one source body from a valid
-  chip row and its enabled premises. Induction on the closed tree supplies those
-  premises recursively; acyclic graph unfolding gives the memoized theorem.
-
-`Aiur/Semantics/WithCalls.lean` supplies the intermediate call-premise relation
-and proves its correspondence with `EvalExpr`. `Semantics/CallFacts.lean`
-connects the chip's input shapes to the evaluator's argument checks.
-
-## Tuple compiler completeness
-
-**Compiler completeness and memoized completeness are proved for the current
-compiler.** Under `compile P = .ok C`, `Aiur.evaluation_complete` in
-`Aiur/Completeness.lean` proves:
+`ROMEvalExpr`, `ROMEvalArgs`, and `ROMEvalCall` provide a pure evaluation
+relation over field-valued pointers. A store chooses an address whose ROM cell
+contains the evaluated value; a load retrieves a cell of the declared type.
+There is no allocation order in this relation. With successful compilation:
 
 ```text
-EvalCall P f xs y → CircuitEvaluates C f xs y
+ROMEvalCall ROM P f xs y ↔ CircuitEvaluates C ROM f xs y
 ```
 
-Together with soundness, `Aiur.compiler_correct` proves the full equivalence:
+`compiler_correct`, `evaluation_complete`, and `compiler_sound` prove this
+fixed-table equivalence. It holds even for a nonfunctional table; table
+functionality is required by the subsequent source-soundness bridge.
+`EntryDerives` requires pointer-free arguments and existentially quantifies
+one valid ROM for the whole tree. The prover cannot choose a new table per call.
 
-```text
-EvalCall P f xs y ↔ CircuitEvaluates C f xs y
-```
+## Source/ROM bridge
 
-These statements cover every successful compilation over any field, without
-assuming termination or totality. They follow the actual tuple compiler and do
-not introduce an intermediate language or change its constraints.
+`Memory/Completeness.lean` maps allocated source locations into field addresses
+and constructs a table from the final heap. `EvalExpr.toROM` and `EvalFn.toROM`
+prove that source evaluation transfers to any table containing the encoded
+cells. An injection on the allocated indices ensures unique table addresses.
 
-The witness construction is compositional:
+`Memory/Soundness.lean` proves the converse for every valid table. Induction on
+finite ROM evaluation reconstructs fresh source allocations. The `Represents`
+logical relation connects pointer contents and remains true as the heap grows.
+It permits different source locations to represent the same circuit address.
+ROM functionality ensures that a later load agrees with the earlier store.
 
-- `TypecheckFacts.lean` proves that evaluation preserves inferred structural
-  types when call premises have their declared result shapes.
-  `Semantics/CallTypes.lean` extracts the exact environment and argument types
-  checked by function entry. Compiled call derivations have the declared result
-  shape directly from their chip interfaces.
-- `Circuit/WitnessBasic.lean` tracks the allocation frontier and proves that
-  extending an assignment preserves earlier variables, equations, and enabled
-  call premises. `ValueWitness.lean` allocates any nested value at fresh leaves
-  and satisfies guarded structured equalities, including empty tuples.
-- `PatternWitness.lean` assigns every equality-test indicator and inverse,
-  recursively through tuple patterns. These tests are unconditional, so they
-  receive valid witnesses even inside inactive code.
-- `InactiveWitness.lean` constructs witnesses for disabled expressions and arms.
-  Selectors are zero; calls need no premises; division guards vanish. Literal
-  pattern tests still use their exact equality witnesses.
-- `ExpressionWitness.lean` constructs witnesses from active evaluation. A chosen
-  arm receives selector one; preceding failures and subsequent arms receive
-  zero. Earlier pattern failures are preserved, including overlapping tuple
-  patterns and the final wildcard. `SelectorWitness.lean` discharges pairwise
-  exclusion and sum equations in every field characteristic.
-- `LocalWitness.lean` initializes the function's input and output leaves, invokes
-  the body construction, and constrains the result. `RowWitness.lean` restricts
-  the assignment to its allocated finite prefix, preserving all equations and
-  messages. Induction over source evaluation supplies a derivation for each
-  enabled call and assembles the resulting closed tree.
+The end-to-end API is in `MemoryCorrectness.lean`:
 
-`Aiur/MemoCompleteness.lean` proves `memo_complete` by embedding this tree into
-an explicit graph, and `memo_eval_complete` connects successful executable runs
-to graphs through `eval_spec`. Graph existence does not require acyclicity;
-source soundness remains conditional on the supplied graph having no cycles.
-Depth constraints and cryptographic lookup arguments remain outside this model.
+- `compiler_heap_complete`: completeness under a supplied injective address map.
+- `compiler_heap_complete_finite`: completeness when the final heap length is
+  at most the field cardinality.
+- `compiler_run_complete`: the same construction from a successful `run`.
+- `compiler_heap_sound`: an accepting tree with a valid table supplies a source
+  execution, heap, and corresponding result, including pointer-valued results.
+- `compiler_entry_sound`: exact source evaluation when the result contains no
+  pointers.
+- `memo_run_complete`: capacity-bounded completeness for memoized graphs.
+- `memo_acyclic_heap_sound`: soundness for any supplied acyclic graph and valid ROM.
 
-The completeness construction is an existence proof. An executable automatic
-witness generator is separate work; the executable row checker continues to
-validate supplied rows.
+Soundness assumes neither source totality nor an allocation bound. Completeness
+needs room for the executed allocations. There is no claim that circuit
+addresses equal execution locations. See [pointers](pointers.md) for details.
 
-Axiom guards cover evaluator correspondence, compiler equivalence, memoized
-completeness, and acyclic soundness. Only Lean's standard `propext`,
-`Classical.choice`, and `Quot.sound` appear; no `sorryAx` or additional axioms
-assert any result. Regression proofs obtain derivations without hand-written
-rows for tuple calls, all first-match cases, nested and empty tuples, inactive
-failure, and mutual recursion. Existing soundness regressions rule out every
-incorrect result for compiled tuple calls and overlapping/default matches.
+## Compiler proof architecture
 
-## Preserved scalar proof
+The proofs follow the actual recursive compiler. `BuildFacts` tracks equations,
+calls, and memory lookups. `ValueCorrectness` handles structured equality,
+including typed pointer leaves. `PatternCorrectness` proves exact pattern
+indicators and bindings. `ExpressionCorrectness` proves active expression and
+first-match arm soundness, and `LocalCorrectness` recovers a whole function body.
 
-`Aiur.Scalar.compiler_correct` proves the full source/tree equivalence for the
-original field-only implementation. `Aiur.Scalar.memo_complete` proves memoized
-completeness, and `Aiur.Scalar.memo_acyclic_sound` proves source soundness of an
-acyclic graph without a source-totality hypothesis or a depth constraint.
-These theorems remain checked with no `sorryAx`. Their detailed architecture is
-recorded in [scalar correctness](scalar-correctness.md).
+For completeness, `WitnessBasic` maintains variable bounds, preserves previous
+assignments, and checks all accumulated equations, calls, and memory lookups.
+`ValueWitness`, `PatternWitness`, and `ExpressionWitness` construct fresh leaf,
+inverse, selector, store-address, load-result, and call-result witnesses.
+`InactiveWitness` fills unused code while leaving its calls and lookups inactive.
+`RowWitness` materializes finite rows; `LocalWitness` builds whole chip instances.
+
+The proofs cover empty and singleton tuples, overlapping tuple patterns,
+field-specific duplicate pattern rejection, arbitrary recursive calls, and
+inactive failing expressions. `MemoAcyclic` unfolds finite acyclic graphs to
+trees; unrestricted cyclic graphs remain admitted by the memoized model.
+
+## Validation and boundaries
+
+There are no admitted proof steps or new axioms. Regression axiom reports check
+evaluator correspondence, compiler completeness, heap soundness, and acyclic
+memoized soundness. Pointer tests check field addresses distinct from source
+indices, shared circuit addresses, invalid tables, entry restrictions, nested
+cells, and mutual recursion carrying pointers. Both reference suites remain
+checked.
+
+Automatic executable circuit-witness generation, a theorem connecting the exact
+multiset row checker to trees, concrete memory layouts, cryptographic lookup
+security, unsafe pointer operations, and depth constraints remain separate work.

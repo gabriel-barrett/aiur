@@ -2,16 +2,19 @@ import Aiur.Circuit.WitnessBasic
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 set_option maxHeartbeats 1000000
 
 def zeroValue [Zero F] : Ty → Value F
   | .field => .field 0
+  | .ptr target => .ptr target 0
   | .tuple types => .tuple (types.map zeroValue)
 termination_by type => sizeOf type
 
 @[simp] theorem zeroValue_type [Zero F] (type : Ty) : (zeroValue (F := F) type).type = type := by
   cases type with
-  | field => simp [zeroValue, Value.type]
+  | field | ptr => simp [zeroValue, Value.type]
   | tuple types =>
       simp only [zeroValue, Value.type, List.map_map, Ty.tuple.injEq]
       conv_rhs => rw [← List.map_id types]
@@ -29,14 +32,14 @@ mutual
   theorem freshValue_complete [Field F] {calls : CallRelation F} {before after : BuildState F}
       {type : Ty} {vars : Value Var}
       (compiled : freshValue type before = .ok (vars, after)) {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (value : Value F) (shape : value.type = type) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         Bounded (F := F) after.nextVar (vars.map ArithExpr.var) ∧ vars.map assignment = value := by
     cases type with
     | field =>
         cases value with
-        | tuple => simp [Value.type] at shape
+        | tuple | ptr => simp [Value.type] at shape
         | field value =>
             simp only [freshValue] at compiled
             obtain ⟨id, middle, allocated, finished⟩ := bind_ok.mp compiled
@@ -47,7 +50,7 @@ mutual
               by simp [Value.map, assigned]⟩
     | tuple types =>
         cases value with
-        | field => simp [Value.type] at shape
+        | field | ptr => simp [Value.type] at shape
         | tuple values =>
             simp only [Value.type, Ty.tuple.injEq] at shape
             simp only [freshValue] at compiled
@@ -57,15 +60,28 @@ mutual
               freshValues_complete allocated layout valid values shape
             exact ⟨assignment, extension, by simpa [Value.map] using bound,
               by simp only [Value.map, assigned]⟩
+    | ptr target =>
+        cases value with
+        | field | tuple => simp [Value.type] at shape
+        | ptr other address =>
+            simp only [Value.type, Ty.ptr.injEq] at shape
+            subst other
+            simp only [freshValue] at compiled
+            obtain ⟨id, middle, allocated, finished⟩ := bind_ok.mp compiled
+            obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+            obtain ⟨assignment, extension, bound, assigned⟩ := fresh_complete allocated layout valid address
+            exact ⟨assignment, extension, by
+              simpa [Value.map, ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using bound,
+              by simp [Value.map, assigned]⟩
   termination_by sizeOf type
   decreasing_by all_goals simp_all only [Ty.tuple.sizeOf_spec]; all_goals omega
 
   theorem freshValues_complete [Field F] {calls : CallRelation F} {before after : BuildState F}
       {types : List Ty} {vars : List (Value Var)}
       (compiled : freshValues types before = .ok (vars, after)) {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (values : List (Value F)) (shape : values.map Value.type = types) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         (∀ value ∈ vars, Bounded (F := F) after.nextVar (value.map ArithExpr.var)) ∧
         vars.map (Value.map assignment) = values := by
     cases types with
@@ -102,16 +118,16 @@ mutual
   theorem constrainValue_complete [Field F] {calls : CallRelation F}
       {enable : ArithExpr F} {left right : Symbolic F} {before after : BuildState F}
       (compiled : constrainValue enable left right before = .ok ((), after)) {assignment : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls assignment)
+      (layout : before.WellFormed) (valid : before.Valid rom calls assignment)
       (enableBound : enable.inBounds before.nextVar = true)
       (leftBound : Bounded before.nextVar left) (rightBound : Bounded before.nextVar right)
       (equal : enable.denote assignment = 0 ∨
         left.map (ArithExpr.denote assignment) = right.map (ArithExpr.denote assignment)) :
-      Extension calls before after assignment assignment := by
+      Extension rom calls before after assignment assignment := by
     cases left with
     | field left =>
         cases right with
-        | tuple => simp [constrainValue] at compiled
+        | tuple | ptr => simp [constrainValue] at compiled
         | field right =>
             simp only [constrainValue, guarded] at compiled
             apply constrain_complete compiled layout valid
@@ -124,24 +140,40 @@ mutual
                 simp [equal]
     | tuple left =>
         cases right with
-        | field => simp [constrainValue] at compiled
+        | field | ptr => simp [constrainValue] at compiled
         | tuple right =>
             simp only [constrainValue] at compiled
             apply constrainValues_complete compiled layout valid enableBound
               (bounded_tuple.mp leftBound) (bounded_tuple.mp rightBound)
             simpa only [Value.map, Value.tuple.injEq] using equal
+    | ptr target left =>
+        cases right with
+        | field | tuple => simp [constrainValue] at compiled
+        | ptr other right =>
+            simp only [constrainValue] at compiled
+            split at compiled
+            · rename_i same
+              subst other
+              apply guarded_complete compiled layout valid enableBound
+              · simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using
+                  And.intro (bounded_ptr.mp leftBound) (bounded_ptr.mp rightBound)
+              · rcases equal with disabled | equal
+                · exact Or.inl disabled
+                · simp only [Value.map, Value.ptr.injEq, true_and] at equal
+                  exact Or.inr (by change left.denote assignment - right.denote assignment = 0; simp [equal])
+            · cases compiled
   termination_by sizeOf left
 
   theorem constrainValues_complete [Field F] {calls : CallRelation F}
       {enable : ArithExpr F} {left right : List (Symbolic F)} {before after : BuildState F}
       (compiled : constrainValues enable left right before = .ok ((), after)) {assignment : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls assignment)
+      (layout : before.WellFormed) (valid : before.Valid rom calls assignment)
       (enableBound : enable.inBounds before.nextVar = true)
       (leftBound : ∀ value ∈ left, Bounded before.nextVar value)
       (rightBound : ∀ value ∈ right, Bounded before.nextVar value)
       (equal : enable.denote assignment = 0 ∨
         left.map (Value.map (ArithExpr.denote assignment)) = right.map (Value.map (ArithExpr.denote assignment))) :
-      Extension calls before after assignment assignment := by
+      Extension rom calls before after assignment assignment := by
     cases left with
     | nil =>
         cases right with

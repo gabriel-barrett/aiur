@@ -2,38 +2,40 @@ import Aiur.Circuit.Basic
 
 namespace Aiur.Circuit
 
+variable {F : Type} {rom : ROM F}
+
 mutual
   /--
   A closed, finite derivation of a message. Local validity is a side condition;
   all enabled calls must be discharged by child derivations. There is no assumption rule.
   -/
-  inductive Derivation [Field F] [DecidableEq F] (system : System F) : Message F → Type where
+  inductive Derivation [Field F] [DecidableEq F] (system : System F) (rom : ROM F) : Message F → Type where
     | node (chip : Chip F) (row : Row F)
         (lookup : system.findChip? row.chip = some chip)
-        (valid : chip.ValidRow row)
-        (children : Derivations system (chip.premises row)) :
-        Derivation system (chip.receive row)
+        (valid : chip.ValidRow rom row)
+        (children : Derivations system rom (chip.premises row)) :
+        Derivation system rom (chip.receive row)
 
   /-- A finite list of proofs indexed by its list of premise occurrences. -/
-  inductive Derivations [Field F] [DecidableEq F] (system : System F) : List (Message F) → Type where
-    | nil : Derivations system []
-    | cons (head : Derivation system message) (tail : Derivations system messages) :
-        Derivations system (message :: messages)
+  inductive Derivations [Field F] [DecidableEq F] (system : System F) (rom : ROM F) : List (Message F) → Type where
+    | nil : Derivations system rom []
+    | cons (head : Derivation system rom message) (tail : Derivations system rom messages) :
+        Derivations system rom (message :: messages)
 end
 
 /-- Derivability asserts the existence of a closed derivation tree. -/
-def Derives [Field F] [DecidableEq F] (system : System F) (message : Message F) : Prop :=
-  Nonempty (Derivation system message)
+def Derives [Field F] [DecidableEq F] (system : System F) (rom : ROM F) (message : Message F) : Prop :=
+  Nonempty (Derivation system rom message)
 
 /-- The circuit relation for one function's arguments and claimed result. -/
-def CircuitEvaluates [Field F] [DecidableEq F] (system : System F)
+def CircuitEvaluates [Field F] [DecidableEq F] (system : System F) (rom : ROM F)
     (function : String) (args : List (Value F)) (result : Value F) : Prop :=
-  Derives system ⟨function, args, result⟩
+  Derives system rom ⟨function, args, result⟩
 
 /-- Assemble a forest from proofs of every premise, retaining repeated occurrences. -/
 theorem derivations_nonempty_iff [Field F] [DecidableEq F] {system : System F}
     {messages : List (Message F)} :
-    Nonempty (Derivations system messages) ↔ ∀ message ∈ messages, Derives system message := by
+    Nonempty (Derivations system rom messages) ↔ ∀ message ∈ messages, Derives system rom message := by
   induction messages with
   | nil =>
       constructor
@@ -56,25 +58,25 @@ theorem derivations_nonempty_iff [Field F] [DecidableEq F] {system : System F}
 mutual
   /-- Flatten a tree to rows, retaining separate occurrences of identical calls. -/
   def Derivation.rows [Field F] [DecidableEq F] {system : System F} {message : Message F} :
-      Derivation system message → List (Row F)
+      Derivation system rom message → List (Row F)
     | .node _ row _ _ children => row :: children.rows
 
   def Derivations.rows [Field F] [DecidableEq F] {system : System F} {messages : List (Message F)} :
-      Derivations system messages → List (Row F)
+      Derivations system rom messages → List (Row F)
     | .nil => []
     | .cons head tail => head.rows ++ tail.rows
 end
 
 theorem Derivation.rows_ne_nil [Field F] [DecidableEq F] {system : System F}
-    {message : Message F} (derivation : Derivation system message) : derivation.rows ≠ [] := by
+    {message : Message F} (derivation : Derivation system rom message) : derivation.rows ≠ [] := by
   cases derivation
   simp [Derivation.rows]
 
 /-- If every valid rule requires a call, no finite closed derivation can start. -/
 theorem not_derives_of_no_leaves [Field F] [DecidableEq F] {system : System F}
     (requiresCall : ∀ chip row, system.findChip? row.chip = some chip →
-      chip.ValidRow row → chip.premises row ≠ []) (message : Message F) :
-    ¬ Derives system message := by
+      chip.ValidRow rom row → chip.premises row ≠ []) (message : Message F) :
+    ¬ Derives system rom message := by
   rintro ⟨derivation⟩
   induction derivation using Derivation.rec
     (motive_2 := fun messages _ => messages ≠ [] → False) with

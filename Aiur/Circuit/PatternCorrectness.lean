@@ -3,15 +3,17 @@ import Aiur.Circuit.PatternFacts
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 theorem equalIndicator_sound [Field F] [DecidableEq F]
     {difference test : ArithExpr F} {before after : BuildState F}
     (compiled : equalIndicator difference before = .ok (test, after))
-    {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-    before.Valid calls assignment ∧
+    {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+    before.Valid rom calls assignment ∧
       test.denote assignment = if difference.denote assignment = 0 then 1 else 0 := by
   simp [equalIndicator, StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at compiled
   obtain ⟨rfl, rfl⟩ := compiled
-  refine ⟨valid.of_subset (fun _ member => by simp [member]) (fun _ member => member), ?_⟩
+  refine ⟨valid.of_subset (fun _ member => by simp [member]) (fun _ member => member) (fun _ member => member), ?_⟩
   apply equality_indicator_sound
   · exact valid.constraints (.mul difference (.var before.nextVar)) (by simp)
   · exact valid.constraints
@@ -29,8 +31,8 @@ mutual
       {pattern : Pattern F} {value : Symbolic F} {test : ArithExpr F} {bindings : Locals F}
       {before after : BuildState F}
       (compiled : lowerPattern pattern value before = .ok ((test, bindings), after))
-      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-      before.Valid calls assignment ∧ PatternTest
+      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+      before.Valid rom calls assignment ∧ PatternTest
         (pattern.bindings (value.map (ArithExpr.denote assignment)))
         (test.denote assignment) (localsEnvironment bindings assignment) := by
     cases pattern with
@@ -44,7 +46,7 @@ mutual
         exact ⟨valid, Or.inl ⟨by simp [Pattern.bindings, localsEnvironment], rfl⟩⟩
     | literal literal =>
         cases value with
-        | tuple values => simp [lowerPattern] at compiled
+        | tuple values | ptr => simp [lowerPattern] at compiled
         | field value =>
             simp only [lowerPattern] at compiled
             obtain ⟨test, middle, tested, finished⟩ := bind_ok.mp compiled
@@ -59,7 +61,7 @@ mutual
                   sub_eq_zero, Ne.symm same] using exactTest⟩
     | tuple patterns =>
         cases value with
-        | field value => simp [lowerPattern] at compiled
+        | field value | ptr => simp [lowerPattern] at compiled
         | tuple values =>
             simp only [lowerPattern] at compiled
             simpa only [Value.map, Pattern.bindings] using lowerPatterns_sound compiled valid
@@ -69,8 +71,8 @@ mutual
       {patterns : List (Pattern F)} {values : List (Symbolic F)}
       {test : ArithExpr F} {bindings : Locals F} {before after : BuildState F}
       (compiled : lowerPatterns patterns values before = .ok ((test, bindings), after))
-      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-      before.Valid calls assignment ∧ PatternTest
+      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+      before.Valid rom calls assignment ∧ PatternTest
         (Pattern.bindingsList patterns (values.map (Value.map (ArithExpr.denote assignment))))
         (test.denote assignment) (localsEnvironment bindings assignment) := by
     cases patterns with

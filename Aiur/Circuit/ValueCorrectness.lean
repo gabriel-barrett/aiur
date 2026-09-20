@@ -2,18 +2,20 @@ import Aiur.Circuit.BuildFacts
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 mutual
   /-- Guarded leaf equalities imply equality of the complete structured values. -/
   theorem constrainValue_sound [Field F] {enable : ArithExpr F} {left right : Symbolic F}
       {before after : BuildState F}
       (compiled : constrainValue enable left right before = .ok ((), after))
-      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-      before.Valid calls assignment ∧ (enable.denote assignment = 1 →
+      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+      before.Valid rom calls assignment ∧ (enable.denote assignment = 1 →
         left.map (ArithExpr.denote assignment) = right.map (ArithExpr.denote assignment)) := by
     cases left with
     | field left =>
         cases right with
-        | tuple => simp [constrainValue] at compiled
+        | tuple | ptr => simp [constrainValue] at compiled
         | field right =>
             simp only [constrainValue, guarded] at compiled
             obtain ⟨beforeValid, equation⟩ := constrain_valid compiled valid
@@ -24,18 +26,32 @@ mutual
             simp [Value.map, equation]
     | tuple left =>
         cases right with
-        | field => simp [constrainValue] at compiled
+        | field | ptr => simp [constrainValue] at compiled
         | tuple right =>
             simp only [constrainValue] at compiled
             obtain ⟨beforeValid, equal⟩ := constrainValues_sound compiled valid
             exact ⟨beforeValid, fun active => by simp only [Value.map, equal active]⟩
+    | ptr target left =>
+        cases right with
+        | field | tuple => simp [constrainValue] at compiled
+        | ptr other right =>
+            simp only [constrainValue] at compiled
+            split at compiled
+            · rename_i same
+              subst other
+              obtain ⟨beforeValid, equation⟩ := constrain_valid compiled valid
+              refine ⟨beforeValid, fun active => ?_⟩
+              change enable.denote assignment * (left.denote assignment - right.denote assignment) = 0 at equation
+              simp only [active, one_mul, sub_eq_zero] at equation
+              simp [Value.map, equation]
+            · cases compiled
   termination_by sizeOf left
 
   theorem constrainValues_sound [Field F] {enable : ArithExpr F}
       {left right : List (Symbolic F)} {before after : BuildState F}
       (compiled : constrainValues enable left right before = .ok ((), after))
-      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-      before.Valid calls assignment ∧ (enable.denote assignment = 1 →
+      {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+      before.Valid rom calls assignment ∧ (enable.denote assignment = 1 →
         left.map (Value.map (ArithExpr.denote assignment)) =
           right.map (Value.map (ArithExpr.denote assignment))) := by
     cases left with
@@ -63,8 +79,8 @@ end
 theorem excludePairs_valid [Field F] {selectors : List (ArithExpr F)}
     {before after : BuildState F}
     (compiled : excludePairs selectors before = .ok ((), after))
-    {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid calls assignment) :
-    before.Valid calls assignment := by
+    {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
+    before.Valid rom calls assignment := by
   induction selectors generalizing before with
   | nil =>
       simp only [excludePairs, pure_ok, true_and] at compiled
@@ -79,13 +95,13 @@ theorem excludePairs_valid [Field F] {selectors : List (ArithExpr F)}
       induction rest generalizing before with
       | nil =>
           simpa [List.forIn_nil, pure, StateT.pure, Except.pure] using
-            (show before.Valid calls assignment from by
+            (show before.Valid rom calls assignment from by
               have same : before = middle := by simpa [List.forIn_nil, pure, StateT.pure, Except.pure] using pairs
               simpa [same] using middleValid)
       | cons other rest ih =>
           simp only [List.forIn_cons] at pairs
           simp [StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at pairs
           have previous := ih pairs
-          exact previous.of_subset (fun _ member => by simp [member]) (fun _ member => member)
+          exact previous.of_subset (fun _ member => by simp [member]) (fun _ member => member) (fun _ member => member)
 
 end Aiur.Circuit.Compiler

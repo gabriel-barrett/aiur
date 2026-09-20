@@ -2,6 +2,8 @@ import Aiur.Circuit.SelectorWitness
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 set_option maxHeartbeats 1600000
 
 mutual
@@ -11,10 +13,10 @@ mutual
       {enable : ArithExpr F} {expr : Expr F} {output : Symbolic F} {before after : BuildState F}
       (compiled : lowerExpr program function locals enable expr before = .ok (output, after))
       {calls : CallRelation F} {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (localsBound : LocalsBounded before.nextVar locals)
       (enableBound : enable.inBounds before.nextVar = true) (inactive : enable.denote initial = 0) :
-      ∃ assignment, Extension calls before after initial assignment ∧ Bounded after.nextVar output := by
+      ∃ assignment, Extension rom calls before after initial assignment ∧ Bounded after.nextVar output := by
     cases expr with
     | literal value =>
         simp only [lowerExpr, pure_ok] at compiled
@@ -39,7 +41,7 @@ mutual
         simp only [lowerExpr] at compiled
         obtain ⟨input, middle, valueRun, rest⟩ := bind_ok.mp compiled
         cases input with
-        | field => simp at rest
+        | field | ptr => simp at rest
         | tuple items =>
             cases projected : items[index]? with
             | none => simp [projected] at rest
@@ -66,6 +68,57 @@ mutual
           (localsBounded_append.mpr ⟨bindingsBound.mono e₃.increase, localsBound.mono (chainExt.trans e₃).increase⟩)
           ((chainExt.trans e₃).bound enableBound) (((chainExt.trans e₃).polynomial enableBound).trans inactive)
         exact ⟨c, (chainExt.trans e₃).trans e₄, bodyBound⟩
+    | store operand =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
+        obtain ⟨id, s₂, addressRun, rest⟩ := bind_ok.mp rest
+        obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+        cases finished
+        obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
+        cases finished
+        obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
+        obtain ⟨a, e₁, inputBound⟩ :=
+          lowerExpr_inactive operandRun layout valid localsBound enableBound inactive
+        obtain ⟨b, e₂, addressBound, _⟩ := fresh_complete addressRun e₁.layout e₁.valid 0
+        have chainExt := e₁.trans e₂
+        have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
+          (Or.inl ((chainExt.polynomial enableBound).trans inactive))
+        have ab : (ArithExpr.var id : ArithExpr F).inBounds s₂.nextVar = true := by
+          simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using addressBound
+        have e₄ := requireCell_complete cellRun e₃.layout e₃.valid
+          ((chainExt.trans e₃).bound enableBound) (e₃.bound ab)
+          (inputBound.mono (e₂.trans e₃).increase) (by
+            intro active
+            have zero := ((chainExt.trans e₃).polynomial enableBound).trans inactive
+            exact (zero_ne_one (zero.symm.trans active)).elim)
+        exact ⟨b, (chainExt.trans e₃).trans e₄, by
+          simpa only [bounded_ptr] using (e₃.trans e₄).bound ab⟩
+    | load operand =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
+        cases input with
+        | field | tuple => simp at rest
+        | ptr target address =>
+            obtain ⟨result, s₂, resultRun, rest⟩ := bind_ok.mp rest
+            obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+            cases finished
+            obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
+            cases finished
+            obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
+            obtain ⟨a, e₁, inputBound⟩ :=
+              lowerExpr_inactive operandRun layout valid localsBound enableBound inactive
+            obtain ⟨b, e₂, resultBound, _⟩ := freshValue_complete resultRun e₁.layout e₁.valid
+              (zeroValue target) (zeroValue_type _)
+            have chainExt := e₁.trans e₂
+            have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
+              (Or.inl ((chainExt.polynomial enableBound).trans inactive))
+            have e₄ := requireCell_complete cellRun e₃.layout e₃.valid
+              ((chainExt.trans e₃).bound enableBound) ((e₂.trans e₃).bound (bounded_ptr.mp inputBound))
+              (resultBound.mono e₃.increase) (by
+                intro active
+                have zero := ((chainExt.trans e₃).polynomial enableBound).trans inactive
+                exact (zero_ne_one (zero.symm.trans active)).elim)
+            exact ⟨b, (chainExt.trans e₃).trans e₄, resultBound.mono (e₃.trans e₄).increase⟩
     | neg value =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, valueRun, rest⟩ := bind_ok.mp compiled
@@ -166,10 +219,10 @@ mutual
       {args : List (Expr F)} {outputs : List (Symbolic F)} {before after : BuildState F}
       (compiled : lowerArgs program function locals enable args before = .ok (outputs, after))
       {calls : CallRelation F} {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (localsBound : LocalsBounded before.nextVar locals)
       (enableBound : enable.inBounds before.nextVar = true) (inactive : enable.denote initial = 0) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         ∀ value ∈ outputs, Bounded after.nextVar value := by
     cases args with
     | nil =>
@@ -197,11 +250,11 @@ mutual
       {arms : List (Pattern F × Expr F)} {selectors : List (ArithExpr F)} {before after : BuildState F}
       (compiled : lowerArms program function locals scrutinee result remaining arms before = .ok (selectors, after))
       {calls : CallRelation F} {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (localsBound : LocalsBounded before.nextVar locals)
       (inputBound : Bounded before.nextVar scrutinee) (resultBound : Bounded before.nextVar result)
       (remainingBound : remaining.inBounds before.nextVar = true) (inactive : remaining.denote initial = 0) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         (∀ selector ∈ selectors, selector.inBounds after.nextVar = true) ∧
         (∀ selector ∈ selectors, selector.denote assignment = 0) := by
     cases arms with

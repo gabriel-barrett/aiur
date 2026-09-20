@@ -4,6 +4,8 @@ import Aiur.Semantics.CallTypes
 
 namespace Aiur
 
+variable {F : Type} {rom : ROM F}
+
 private theorem compiled_typechecked [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F} (compiled : Circuit.compile program = .ok system) :
     typecheck program = .ok () := by
@@ -14,7 +16,7 @@ private theorem compiled_typechecked [Field F] [DecidableEq F]
 /-- Compiled call premises carry the function's declared structural result type. -/
 theorem circuit_calls_typed [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F} (compiled : Circuit.compile program = .ok system) :
-    CallsTyped program (Circuit.CircuitEvaluates system) := by
+    CallsTyped program (Circuit.CircuitEvaluates system rom) := by
   intro name args result derives fn found
   obtain ⟨tree⟩ := derives
   cases tree with
@@ -27,20 +29,22 @@ theorem circuit_calls_typed [Field F] [DecidableEq F]
       subst fn
       simpa only [Circuit.Chip.receive, Value.type_map] using (Circuit.Compiler.lowerFunction_interface lowered).2.2
 
-/-- Every finite source evaluation produces a closed derivation of the compiled tuple chips. -/
+/-- Every finite ROM evaluation produces a closed derivation of the compiled chips. -/
 theorem evaluation_complete [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
-    {name : String} {args : List (Value F)} {result : Value F} (evaluated : EvalCall program name args result) :
-    Circuit.CircuitEvaluates system name args result := by
-  induction evaluated using EvalCall.rec
-    (motive_1 := fun locals expr value _ => EvalExprWith (Circuit.CircuitEvaluates system) locals expr value)
-    (motive_2 := fun locals exprs values _ => EvalArgsWith (Circuit.CircuitEvaluates system) locals exprs values) with
+    {name : String} {args : List (Value F)} {result : Value F} (evaluated : ROMEvalCall rom program name args result) :
+    Circuit.CircuitEvaluates system rom name args result := by
+  induction evaluated using ROMEvalCall.rec
+    (motive_1 := fun locals expr value _ => ROMEvalExprWith rom (Circuit.CircuitEvaluates system rom) locals expr value)
+    (motive_2 := fun locals exprs values _ => ROMEvalArgsWith rom (Circuit.CircuitEvaluates system rom) locals exprs values) with
   | literal => exact .literal
   | var lookup => exact .var lookup
   | tuple _ ih => exact .tuple ih
   | project _ projected ih => exact .project ih projected
   | letValue _ matched _ inputIH bodyIH => exact .letValue inputIH matched bodyIH
+  | store _ cell ih => exact .store ih cell
+  | load _ cell typed ih => exact .load ih cell typed
   | neg _ operation ih => exact .neg ih operation
   | binary _ _ operation leftIH rightIH => exact .binary leftIH rightIH operation
   | call _ _ argsIH calleeIH => exact .call argsIH calleeIH
@@ -65,7 +69,7 @@ theorem compiler_correct [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
     {name : String} {args : List (Value F)} {result : Value F} :
-    EvalCall program name args result ↔ Circuit.CircuitEvaluates system name args result :=
+    ROMEvalCall rom program name args result ↔ Circuit.CircuitEvaluates system rom name args result :=
   ⟨evaluation_complete compiled, compiler_sound compiled⟩
 
 end Aiur

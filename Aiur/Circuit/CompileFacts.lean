@@ -2,6 +2,8 @@ import Aiur.Circuit.BuildFacts
 
 namespace Aiur.Circuit
 
+variable {F : Type} {rom : ROM F}
+
 private theorem except_bind_ok {first : Except ε α} {next : α → Except ε β} {result : β} :
     (first >>= next) = .ok result ↔ ∃ value, first = .ok value ∧ next value = .ok result := by
   cases first <;> simp [bind, Except.bind]
@@ -17,7 +19,7 @@ theorem Compiler.lowerFunction_stages [Field F] [DecidableEq F]
         ((fn.params.map Prod.fst).zip (inputs.map (Value.map ArithExpr.var)))
         (.const 1) fn.body s₂ = .ok (body, s₃) ∧
       Compiler.constrainValue (.const 1) (output.map ArithExpr.var) body s₃ = .ok ((), s₄) ∧
-      chip = ⟨fn.name, inputs, output, s₄.nextVar, s₄.constraints.toList, s₄.sends.toList⟩ := by
+      chip = ⟨fn.name, inputs, output, s₄.nextVar, s₄.constraints.toList, s₄.sends.toList, s₄.memory.toList⟩ := by
   unfold Compiler.lowerFunction at compiled
   obtain ⟨⟨⟨inputs, output⟩, state⟩, run, finished⟩ := except_bind_ok.mp compiled
   simp only [pure, Except.pure, Except.ok.injEq] at finished
@@ -36,7 +38,7 @@ theorem Compiler.lowerFunction_interface [Field F] [DecidableEq F]
     chip.name = fn.name ∧ chip.inputs.map Value.type = fn.params.map Prod.snd ∧
       chip.output.type = fn.result := by
   obtain ⟨_, _, _, _, _, _, _, inputsRun, outputRun, _, _, rfl⟩ := lowerFunction_stages compiled
-  exact ⟨rfl, (freshValues_spec inputsRun).2.2, (freshValue_spec outputRun).2.2⟩
+  exact ⟨rfl, (freshValues_spec inputsRun).2.2.1, (freshValue_spec outputRun).2.2.1⟩
 
 private theorem forall₂_of_mapM_ok {f : α → Except ε β} {xs : List α} {ys : List β}
     (mapped : xs.mapM f = .ok ys) : List.Forall₂ (fun x y => f x = .ok y) xs ys := by

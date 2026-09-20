@@ -8,12 +8,12 @@ constants, variables, addition, subtraction, and multiplication. Their order has
 no semantic significance.
 
 Calls emit messages with a function name, structured arguments, and a structured
-result. Each field leaf of the result is a fresh variable. The model abstracts
+result. Each field or pointer leaf of the result is a fresh variable. The model abstracts
 away lookup arguments, fingerprints, and cryptographic protocol details.
 
 `Circuit.compile (source.toField F)` checks the program and produces one chip per
 function without unfolding callees. All interface leaves are allocated before
-auxiliary variables. A tuple is a tree of field expressions or variable indices;
+auxiliary variables. A tuple is a tree of field expressions, typed pointer addresses, or variable indices;
 the row is a flat list of field elements. Shape remains part of the message, so
 different tuple nestings cannot be confused by flattening.
 
@@ -46,7 +46,8 @@ arms after the first irrefutable pattern are discarded.
 
 ## Acceptance and proofs
 
-`System.check` checks bounds, row lengths, polynomial equations, and exact
+`System.check` takes a shared ROM, checks address uniqueness, pointer-free entry
+arguments, active memory lookups, bounds, row lengths, polynomial equations, and exact
 multiset message balance for supplied rows and one entry request. It does not
 generate assignments. Its bridge to derivation semantics remains separate work.
 
@@ -55,13 +56,17 @@ generate assignments. Its bridge to derivation semantics remains separate work.
 Both models now carry structured messages. Acyclic graphs are proved to unfold
 into trees; unrestricted cyclic acceptance intentionally admits self-justification.
 
-The tuple compiler has proved source soundness for both closed derivation trees
+The compiler has proved source soundness for both closed derivation trees
 and acyclic memoized graphs, and completeness for trees and memoized graphs.
 The proofs include nested pattern indicators, bindings, first-match selectors,
 structured equalities, and witness construction for active and inactive code.
 The earlier full compiler proof is preserved under `Aiur.Scalar`.
 See [correctness](correctness.md) and [memoization](memoization.md).
 
-The planned [pointer extension](pointers.md) adds a prover-chosen ROM table.
-Stores and loads both require lookups in that same table. Its source/circuit
-correspondence and allocation-capacity hypothesis will require new proofs.
+The [pointer extension](pointers.md) uses a prover-chosen heterogeneous ROM.
+Both stores and loads emit the same guarded `MemoryLookup`. These membership
+requirements are valid zero-premise ROM rules, represented as row side conditions.
+The table is fixed across the entire derivation. Typed pointers occupy one field
+column; a store address and every load-result leaf receive fresh variables.
+Source completeness assumes enough field addresses for the allocation count.
+Source soundness relates stored contents and permits representation sharing.

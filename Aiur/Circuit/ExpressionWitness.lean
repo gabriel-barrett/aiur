@@ -3,6 +3,8 @@ import Aiur.TypecheckFacts
 
 namespace Aiur.Circuit.Compiler
 
+variable {F : Type} {rom : ROM F}
+
 set_option maxHeartbeats 2400000
 set_option maxRecDepth 10000
 
@@ -17,11 +19,11 @@ mutual
       {enable : ArithExpr F} {expr : Expr F} {output : Symbolic F} {before after : BuildState F}
       (compiled : lowerExpr program function locals enable expr before = .ok (output, after))
       {calls : CallRelation F} (typed : CallsTyped program calls) {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (localsBound : LocalsBounded before.nextVar locals)
       (enableBound : enable.inBounds before.nextVar = true) (active : enable.denote initial = 1)
-      {value : Value F} (evaluated : EvalExprWith calls (localsEnvironment locals initial) expr value) :
-      ∃ assignment, Extension calls before after initial assignment ∧ Bounded after.nextVar output ∧
+      {value : Value F} (evaluated : ROMEvalExprWith rom calls (localsEnvironment locals initial) expr value) :
+      ∃ assignment, Extension rom calls before after initial assignment ∧ Bounded after.nextVar output ∧
         output.map (ArithExpr.denote assignment) = value := by
     cases expr with
     | literal literal =>
@@ -56,7 +58,7 @@ mutual
             simp only [lowerExpr] at compiled
             obtain ⟨input, middle, inputRun, rest⟩ := bind_ok.mp compiled
             cases input with
-            | field => simp at rest
+            | field | ptr => simp at rest
             | tuple items =>
                 cases found : items[index]? with
                 | none => simp [found] at rest
@@ -94,6 +96,70 @@ mutual
               ((chainExt.trans e₃).bound enableBound) (((chainExt.trans e₃).polynomial enableBound).trans active)
               (by rw [localsEnvironment_append, ← bindingsEq, chainExt.locals localsBound]; exact bodyEval)
             exact ⟨c, (chainExt.trans e₃).trans e₄, bodyBound, bodyEq⟩
+    | store operand =>
+        cases evaluated with
+        | @store _ _ stored address operandEval cell =>
+            simp only [lowerExpr] at compiled
+            obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
+            obtain ⟨id, s₂, addressRun, rest⟩ := bind_ok.mp rest
+            obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+            cases finished
+            obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
+            cases finished
+            obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
+            obtain ⟨a, e₁, inputBound, inputEq⟩ :=
+              lowerExpr_complete operandRun typed layout valid localsBound enableBound active operandEval
+            obtain ⟨b, e₂, addressBound, addressEq⟩ := fresh_complete addressRun e₁.layout e₁.valid address
+            have chainExt := e₁.trans e₂
+            have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
+              (Or.inr ((chainExt.polynomial enableBound).trans active))
+            have ab : (ArithExpr.var id : ArithExpr F).inBounds s₂.nextVar = true := by
+              simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using addressBound
+            have e₄ := requireCell_complete cellRun e₃.layout e₃.valid
+              ((chainExt.trans e₃).bound enableBound) (e₃.bound ab)
+              (inputBound.mono (e₂.trans e₃).increase) (by
+                intro _
+                change (b id, input.map (ArithExpr.denote b)) ∈ rom.entries
+                rw [addressEq, e₂.value inputBound, inputEq]
+                exact cell)
+            refine ⟨b, (chainExt.trans e₃).trans e₄, ?_, ?_⟩
+            · simpa only [bounded_ptr] using (e₃.trans e₄).bound ab
+            · have shape := congrArg Value.type inputEq
+              simp only [Value.type_map] at shape
+              simp [Value.map, shape, ArithExpr.denote, Scalar.Circuit.ArithExpr.denote, addressEq]
+    | load operand =>
+        cases evaluated with
+        | load operandEval cell shape =>
+            simp only [lowerExpr] at compiled
+            obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
+            cases input with
+            | field | tuple => simp at rest
+            | ptr target address =>
+                obtain ⟨result, s₂, resultRun, rest⟩ := bind_ok.mp rest
+                obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+                cases finished
+                obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
+                cases finished
+                obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
+                obtain ⟨a, e₁, inputBound, inputEq⟩ :=
+                  lowerExpr_complete operandRun typed layout valid localsBound enableBound active operandEval
+                simp only [Value.map, Value.ptr.injEq] at inputEq
+                obtain ⟨b, e₂, resultBound, resultEq⟩ := freshValue_complete resultRun e₁.layout e₁.valid
+                  value (shape.trans inputEq.1.symm)
+                have chainExt := e₁.trans e₂
+                have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
+                  (Or.inr ((chainExt.polynomial enableBound).trans active))
+                have ab := bounded_ptr.mp inputBound
+                have e₄ := requireCell_complete cellRun e₃.layout e₃.valid
+                  ((chainExt.trans e₃).bound enableBound) ((e₂.trans e₃).bound ab)
+                  (resultBound.mono e₃.increase) (by
+                    intro _
+                    simp only [Value.map_map]
+                    change (address.denote b, result.map b) ∈ rom.entries
+                    rw [e₂.polynomial ab, inputEq.2, resultEq]
+                    exact cell)
+                exact ⟨b, (chainExt.trans e₃).trans e₄, resultBound.mono (e₃.trans e₄).increase,
+                  by simpa only [Value.map_map] using resultEq⟩
     | neg expr =>
         cases evaluated with
         | neg inputEval operation =>
@@ -219,7 +285,7 @@ mutual
               (by rw [e₂.value inputBound, inputEq]; exact selected)
               (by
                 rw [chainExt.locals localsBound, Value.map_map]
-                change EvalExprWith calls _ _ (result.map b)
+                change ROMEvalExprWith rom calls _ _ (result.map b)
                 rw [resultEq]
                 exact branchEval)
             have e₄ := excludePairs_complete exclusionRun e₃.layout e₃.valid selectorsBound selection.exclusive
@@ -236,11 +302,11 @@ mutual
       {args : List (Expr F)} {outputs : List (Symbolic F)} {before after : BuildState F}
       (compiled : lowerArgs program function locals enable args before = .ok (outputs, after))
       {calls : CallRelation F} (typed : CallsTyped program calls) {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (localsBound : LocalsBounded before.nextVar locals)
       (enableBound : enable.inBounds before.nextVar = true) (active : enable.denote initial = 1)
-      {values : List (Value F)} (evaluated : EvalArgsWith calls (localsEnvironment locals initial) args values) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      {values : List (Value F)} (evaluated : ROMEvalArgsWith rom calls (localsEnvironment locals initial) args values) :
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         (∀ value ∈ outputs, Bounded after.nextVar value) ∧
         outputs.map (Value.map (ArithExpr.denote assignment)) = values := by
     cases args with
@@ -275,15 +341,15 @@ mutual
       {arms : List (Pattern F × Expr F)} {selectors : List (ArithExpr F)} {before after : BuildState F}
       (compiled : lowerArms program function locals scrutinee result remaining arms before = .ok (selectors, after))
       {calls : CallRelation F} (typed : CallsTyped program calls) {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid calls initial)
+      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (localsBound : LocalsBounded before.nextVar locals)
       (inputBound : Bounded before.nextVar scrutinee) (resultBound : Bounded before.nextVar result)
       (remainingBound : remaining.inBounds before.nextVar = true) (active : remaining.denote initial = 1)
       {matched : Environment F} {body : Expr F}
       (selected : selectArm (scrutinee.map (ArithExpr.denote initial)) arms = some (matched, body))
-      (evaluated : EvalExprWith calls (matched ++ localsEnvironment locals initial) body
+      (evaluated : ROMEvalExprWith rom calls (matched ++ localsEnvironment locals initial) body
         (result.map (ArithExpr.denote initial))) :
-      ∃ assignment, Extension calls before after initial assignment ∧
+      ∃ assignment, Extension rom calls before after initial assignment ∧
         (∀ selector ∈ selectors, selector.inBounds after.nextVar = true) ∧
         Scalar.Circuit.SelectorsValid (1 : F) (selectors.map (ArithExpr.denote assignment)) := by
     cases arms with

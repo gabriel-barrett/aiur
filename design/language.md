@@ -7,7 +7,7 @@ the function definitions.
 
 ## Values and signatures
 
-Types are `Field` and finite tuples of types, nested to any depth. Tuples may have
+Types are `Field`, pointers `&A`, and finite tuples of types, nested to any depth. Tuples may have
 any arity. `()` is unit; `(x,)` is a singleton tuple; `(x)` is grouping. Tuple
 shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
 arrays, structs, sum types, or higher-order values.
@@ -25,7 +25,7 @@ fn sum((x, (y, z)): (Field, (Field, Field))) -> Field {
 ```
 
 Functions take any number of arguments and return one value, which may be a
-tuple. All signatures are available while checking every body. Forward calls and
+tuple or pointer. All signatures are available while checking every body. Forward calls and
 mutual recursion work with tuple arguments and results. Functions are called by
 name and cannot themselves be passed or returned as values.
 
@@ -36,7 +36,7 @@ field. `Nat` is a representation choice, not a source-language type.
 ## Expressions and binding
 
 Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
-tuple construction, zero-based projection (`p.0`, `p.1.0`), blocks, `let`, and
+store `&x`, load `*p`, tuple construction, zero-based projection (`p.0`, `p.1.0`), blocks, `let`, and
 `match`. Arithmetic requires field operands. There is no implicit componentwise
 arithmetic or tuple flattening.
 
@@ -80,20 +80,25 @@ still typechecked. Partial matches are allowed and fail if no arm matches.
 Evaluation is eager in operands, tuple components, call arguments, and `let`
 values. Only the selected match body runs. Discarding or projecting a tuple does
 not skip its components. Division by zero and exhausted fuel are explicit errors.
-Entry arguments are checked against their declared tuple shapes. The inductive
+Entry arguments are checked against their declared shapes and must contain no
+pointers, including inside tuples. Internal calls may receive pointers. The inductive
 evaluation predicate describes finite successful evaluation without fuel.
 
 Each function compiles to one chip. Tuple interfaces preserve shape; rows contain
 only field elements. Local equations remain polynomials equal to zero. See
 [tuples](tuples.md), [circuits](circuits.md), and [correctness](correctness.md).
 
-## Planned pointers
+## Pointers
 
-The next extension introduces typed opaque pointers with `store` and `load`,
-backed by immutable heterogeneous memory. Entry arguments must contain no
-pointers. Pointer equality and arithmetic are excluded from safe code. Circuit
-addresses are field elements chosen by the prover through a ROM table. See
-[pointers and ROM](pointers.md) for the agreed direction and proposed semantics.
+`&x` allocates a fresh immutable cell containing the value of `x`; `*p` loads it.
+`&A` is the pointer type. Pointer equality, arithmetic, numeric patterns, and casts
+are excluded. Tuples and cells may contain pointers, and functions may return
+them. Projections bind tighter than unary loads and stores.
+
+Execution allocates opaque natural-number locations. Circuits use field addresses
+and a single heterogeneous ROM chosen by the prover; stores and loads both require
+the same cell-membership claim. Correctness relates contents instead of comparing
+addresses. See [pointers and ROM](pointers.md) for the model and proved guarantees.
 
 ## Open questions
 

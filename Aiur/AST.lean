@@ -6,6 +6,7 @@ namespace Aiur
 inductive Ty where
   | field
   | tuple (items : List Ty)
+  | ptr (target : Ty)
   deriving Repr, BEq
 
 mutual
@@ -15,6 +16,12 @@ mutual
         match Ty.listDecEq xs ys with
         | .isTrue h => .isTrue (congrArg Ty.tuple h)
         | .isFalse h => .isFalse (fun eq => h (Ty.tuple.inj eq))
+    | .ptr x, .ptr y =>
+        match Ty.decEq x y with
+        | .isTrue h => .isTrue (congrArg Ty.ptr h)
+        | .isFalse h => .isFalse (fun eq => h (Ty.ptr.inj eq))
+    | .ptr _, .field | .ptr _, .tuple _ | .field, .ptr _ | .tuple _, .ptr _ =>
+        .isFalse (by intro h; cases h)
     | .field, .tuple _ => .isFalse (by intro h; cases h)
     | .tuple _, .field => .isFalse (by intro h; cases h)
   termination_by left _ => sizeOf left
@@ -37,13 +44,15 @@ inductive BinOp where
   deriving Repr, BEq, DecidableEq
 
 /-- A structured value whose leaves are field elements (or symbolic field expressions). -/
-inductive Value (α : Type) where
+inductive Value (α : Type) (Address : Type := α) where
   | field (value : α)
-  | tuple (items : List (Value α))
+  | tuple (items : List (Value α Address))
+  | ptr (target : Ty) (address : Address)
   deriving Repr, BEq
 
 mutual
-  def Value.decEq [DecidableEq α] : (left right : Value α) → Decidable (left = right)
+  def Value.decEq [DecidableEq α] [DecidableEq Address] :
+      (left right : Value α Address) → Decidable (left = right)
     | .field x, .field y =>
         if h : x = y then .isTrue (by cases h; rfl)
         else .isFalse (fun eq => h (Value.field.inj eq))
@@ -51,11 +60,16 @@ mutual
         match Value.listDecEq xs ys with
         | .isTrue h => .isTrue (congrArg Value.tuple h)
         | .isFalse h => .isFalse (fun eq => h (Value.tuple.inj eq))
-    | .field _, .tuple _ => .isFalse (by intro h; cases h)
-    | .tuple _, .field _ => .isFalse (by intro h; cases h)
+    | .ptr t x, .ptr u y =>
+        if h : t = u ∧ x = y then .isTrue (by rcases h with ⟨rfl, rfl⟩; rfl)
+        else .isFalse (fun eq => h (Value.ptr.inj eq))
+    | .field _, .tuple _ | .field _, .ptr _ _ | .tuple _, .field _ |
+      .tuple _, .ptr _ _ | .ptr _ _, .field _ | .ptr _ _, .tuple _ =>
+        .isFalse (by intro h; cases h)
   termination_by left _ => sizeOf left
 
-  def Value.listDecEq [DecidableEq α] : (left right : List (Value α)) → Decidable (left = right)
+  def Value.listDecEq [DecidableEq α] [DecidableEq Address] :
+      (left right : List (Value α Address)) → Decidable (left = right)
     | [], [] => .isTrue rfl
     | [], _ :: _ => .isFalse (by intro h; cases h)
     | _ :: _, [] => .isFalse (by intro h; cases h)
@@ -66,24 +80,52 @@ mutual
   termination_by left _ => sizeOf left
 end
 
-instance [DecidableEq α] : DecidableEq (Value α) := Value.decEq
+instance [DecidableEq α] [DecidableEq Address] : DecidableEq (Value α Address) := Value.decEq
 
+/-- Map every circuit leaf, including the field representation of a pointer. -/
 def Value.map (f : α → β) : Value α → Value β
   | .field x => .field (f x)
   | .tuple items => .tuple (items.map (Value.map f))
+  | .ptr target address => .ptr target (f address)
 termination_by value => sizeOf value
 
-def Value.type : Value α → Ty
+/-- Change opaque addresses without changing field data. -/
+def Value.mapAddress (f : A → B) : Value F A → Value F B
+  | .field x => .field x
+  | .tuple items => .tuple (items.map (Value.mapAddress f))
+  | .ptr target address => .ptr target (f address)
+termination_by value => sizeOf value
+
+def Value.type : Value α Address → Ty
   | .field _ => .field
   | .tuple items => .tuple (items.map Value.type)
+  | .ptr target _ => .ptr target
 termination_by value => sizeOf value
 
 def Value.flatten : Value α → List α
   | .field x => [x]
   | .tuple items => items.flatMap Value.flatten
+  | .ptr _ address => [address]
 termination_by value => sizeOf value
 
-instance [OfNat α n] : OfNat (Value α) n := ⟨.field (OfNat.ofNat n)⟩
+def Value.addresses : Value α Address → List Address
+  | .field _ => []
+  | .tuple items => items.flatMap Value.addresses
+  | .ptr _ address => [address]
+termination_by value => sizeOf value
+
+def Ty.pointerFree : Ty → Bool
+  | .field => true
+  | .tuple items => (items.map Ty.pointerFree).all id
+  | .ptr _ => false
+termination_by type => sizeOf type
+
+def Value.pointerFree (value : Value α Address) : Bool := value.type.pointerFree
+
+instance [OfNat α n] : OfNat (Value α Address) n := ⟨.field (OfNat.ofNat n)⟩
+
+/-- Runtime locations are distinct from field-valued circuit addresses. -/
+abbrev SourceValue (F : Type) := Value F Nat
 
 /-- Patterns can test leaves, discard subtrees, or bind entire subtrees. -/
 inductive Pattern (α : Type) where
@@ -139,6 +181,8 @@ inductive Expr (α : Type) where
   | tuple (items : List (Expr α))
   | project (value : Expr α) (index : Nat)
   | letValue (pattern : Pattern α) (value body : Expr α)
+  | store (value : Expr α)
+  | load (pointer : Expr α)
   | neg (value : Expr α)
   | binary (op : BinOp) (left right : Expr α)
   | call (function : String) (args : List (Expr α))
@@ -186,6 +230,8 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .tuple items => .tuple (items.map (Expr.map f))
   | .project value index => .project (value.map f) index
   | .letValue pattern value body => .letValue (pattern.map f) (value.map f) (body.map f)
+  | .store value => .store (value.map f)
+  | .load pointer => .load (pointer.map f)
   | .neg value => .neg (value.map f)
   | .binary op left right => .binary op (left.map f) (right.map f)
   | .call name args => .call name (args.map (Expr.map f))
