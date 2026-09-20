@@ -316,6 +316,60 @@ example : (compile (duplicates.toField (ZMod 7))).map (fun _ => ()) =
 example : eval (sample.toField (ZMod 7)) "nested" [6] =
     .ok (.tuple [6, .tuple [0, .tuple []], .tuple [1]]) := by decide +kernel
 
+/-- info: 'Aiur.evaluation_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.evaluation_complete
+
+/-- info: 'Aiur.compiler_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.compiler_correct
+
+/-- info: 'Aiur.memo_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.memo_complete
+
+/-- info: 'Aiur.memo_eval_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Aiur.memo_eval_complete
+
+-- Completeness supplies the witnesses existentially; these proofs provide no hand-written rows.
+example : CircuitEvaluates callsSystem "main" [.tuple [2, 3]] (.tuple [3, 2]) :=
+  evaluation_complete calls_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+example : CircuitEvaluates overlapSystem "choose" [.tuple [0, 0]] 11 :=
+  evaluation_complete overlap_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+example : CircuitEvaluates overlapSystem "choose" [.tuple [5, 0]] 22 :=
+  evaluation_complete overlap_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+example : CircuitEvaluates overlapSystem "choose" [.tuple [5, 6]] 33 :=
+  evaluation_complete overlap_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+def sampleSystem : System Rat := (compile (sample.toField Rat)).toOption.getD ⟨[]⟩
+
+theorem sample_compiled : compile (sample.toField Rat) = .ok sampleSystem := by
+  have succeeds : (compile (sample.toField Rat)).isOk = true := by decide +kernel
+  cases compiled : compile (sample.toField Rat) with
+  | error error => simp [compiled, Except.isOk, Except.toBool] at succeeds
+  | ok system => simp [sampleSystem, compiled, Except.toOption]
+
+-- Nested and empty leaves, tuple recursion, and inactive failure all use the same general theorem.
+example : CircuitEvaluates sampleSystem "nested" [7]
+    (.tuple [7, .tuple [8, .tuple []], .tuple [9]]) :=
+  evaluation_complete sample_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+example : CircuitEvaluates sampleSystem "deep_match" [.tuple [0, .tuple [1, 0]]] 0 :=
+  evaluation_complete sample_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+example : CircuitEvaluates sampleSystem "lazy" [.tuple [0, 9]] (.tuple [9, 9]) :=
+  evaluation_complete sample_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+example : CircuitEvaluates sampleSystem "call_unit" [2] (.tuple []) :=
+  evaluation_complete sample_compiled (eval_spec (fuel := 10) (by decide +kernel))
+
+example : MemoAccepts sampleSystem "even" [.tuple [4, 0]] (.tuple [1, 4]) :=
+  memo_eval_complete sample_compiled (fuel := 40) (by decide +kernel)
+
 def run : IO Unit := do
   for (label, actual, expected) in rationalTests do
     unless actual = expected do

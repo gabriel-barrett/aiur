@@ -78,6 +78,17 @@ compile P = .ok C →
 
 It unfolds the graph to a tree and applies the tuple compiler's proved source
 soundness. No totality assumption is needed, and cyclic graphs remain accepted
-by the model. Tuple memoized completeness still depends on the unfinished
-compiler completeness proof. The tuple evaluator/predicate correspondence is
-proved in both directions; see [correctness](correctness.md).
+by the model.
+
+Tuple memoized completeness is also proved. `Aiur.memo_complete` embeds the
+closed tree constructed by tuple compiler completeness into a memoized graph:
+
+```text
+compile P = .ok C → EvalCall P f xs y → MemoAccepts C f xs y
+```
+
+`Aiur.memo_eval_complete` starts from `eval P f xs fuel = .ok y` instead, using
+the proved evaluator/predicate correspondence. These constructions do not claim
+acyclicity of the chosen graph references. Conditional soundness examines the
+actual supplied graph, without imposing totality on the source program. See
+[correctness](correctness.md) for the complete tuple proof architecture.

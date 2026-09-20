@@ -81,16 +81,24 @@ describes finite closed trees, while `MemoDerivation` permits sharing and cycles
 The proof that an acyclic graph unfolds into a tree supports tuple messages.
 See [the tuple example](Examples/Tuples.lean) and [tuple tests](AiurTests/Tuples.lean).
 
-**Tuple compiler soundness is proved**: `Aiur.compiler_sound` converts any closed
-compiled-chip derivation into a source evaluation. `Aiur.memo_acyclic_sound`
-does the same for acyclic memoized graphs, without assuming source totality.
-The proofs include nested tuple patterns, bindings, and first-match priority.
+**Tuple compiler correctness is proved.** After successful compilation,
+`Aiur.compiler_correct` establishes:
 
-**Tuple compiler completeness is still pending.** The original field-only
-implementation and its completed compiler and memoized correctness proofs are
-preserved under `Aiur.Scalar` (`scalar_aiur%`). The existing circuit and semantics
-examples use that reference implementation. No admitted proofs stand in for
-tuple correctness.
+```text
+EvalCall P f xs y ↔ CircuitEvaluates C f xs y
+```
+
+`Aiur.evaluation_complete` constructs closed derivations from source evaluation;
+`Aiur.compiler_sound` recovers source evaluation from any closed derivation.
+`Aiur.memo_complete` and `Aiur.memo_eval_complete` provide memoized graphs.
+`Aiur.memo_acyclic_sound` recovers evaluation from acyclic graphs without a
+source-totality assumption. These proofs include arbitrary nested tuples,
+first-match overlapping patterns, and inactive branches, with no admitted steps
+or added axioms. Automatic executable witness generation remains separate work.
+
+The original field-only implementation and its completed proofs are preserved
+under `Aiur.Scalar` (`scalar_aiur%`). Existing scalar examples continue to use
+that reference implementation.
 
 The living [design directory](design/README.md) records the language, tuple
 lowering, semantic models, and precise proof boundaries.
