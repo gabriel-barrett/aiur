@@ -56,8 +56,12 @@ Both models now carry structured messages. Acyclic graphs are proved to unfold
 into trees; unrestricted cyclic acceptance intentionally admits self-justification.
 
 The tuple compiler has proved source soundness for both closed derivation trees
-and acyclic memoized graphs. The proofs include nested pattern indicators,
-bindings, first-match selectors, structured equalities, and calls. Compiler
-completeness still needs witness construction for active and inactive code.
+and acyclic memoized graphs, and completeness for trees and memoized graphs.
+The proofs include nested pattern indicators, bindings, first-match selectors,
+structured equalities, and witness construction for active and inactive code.
 The earlier full compiler proof is preserved under `Aiur.Scalar`.
 See [correctness](correctness.md) and [memoization](memoization.md).
+
+The planned [pointer extension](pointers.md) adds a prover-chosen ROM table.
+Stores and loads both require lookups in that same table. Its source/circuit
+correspondence and allocation-capacity hypothesis will require new proofs.

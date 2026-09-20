@@ -13,6 +13,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   semantic questions.
 - [Tuples](tuples.md): nested values and patterns, explicit signatures, structured
   circuit interfaces, first-match equations, and proof boundaries.
+- [Pointers and ROM](pointers.md): planned typed opaque pointers, a prover-chosen
+  heterogeneous table, allocation bounds, and source/circuit correspondence.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
