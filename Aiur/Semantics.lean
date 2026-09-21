@@ -11,6 +11,8 @@ mutual
         EvalExpr program locals (.var name) heap value heap
     | tuple (items : EvalArgs program locals exprs before values after) :
         EvalExpr program locals (.tuple exprs) before (.tuple values) after
+    | construct (items : EvalArgs program locals exprs before values after) :
+        EvalExpr program locals (.construct name ctor exprs) before (.construct name ctor values) after
     | project (value : EvalExpr program locals expr before input after)
         (projected : projectValue input index = .ok result) :
         EvalExpr program locals (.project expr index) before result after

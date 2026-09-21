@@ -93,6 +93,11 @@ theorem evalExpr_spec [Field F] [DecidableEq F] {program : Program F}
           obtain ⟨values, middle, itemsRun, finished⟩ := Evaluation.bind_ok.mp executed
           obtain ⟨rfl, rfl⟩ := Evaluation.pure_ok.mp finished
           exact .tuple (evalArgs_of_mapM (fun _ _ _ _ h => ih h) itemsRun)
+      | construct name ctor items =>
+          simp only [evalExpr] at executed
+          obtain ⟨values, middle, itemsRun, finished⟩ := Evaluation.bind_ok.mp executed
+          obtain ⟨rfl, rfl⟩ := Evaluation.pure_ok.mp finished
+          exact .construct (evalArgs_of_mapM (fun _ _ _ _ h => ih h) itemsRun)
       | project value index =>
           simp only [evalExpr] at executed
           obtain ⟨input, middle, operand, operation⟩ := Evaluation.bind_ok.mp executed
@@ -170,7 +175,7 @@ theorem EvalExpr.eventually_runs [Field F] [DecidableEq F] {program : Program F}
       cases fuel with
       | zero => omega
       | succ fuel => simp [evalExpr, lookup, pure, StateT.pure, Except.pure]
-  | tuple _ ih =>
+  | tuple _ ih | construct _ ih =>
       obtain ⟨minimum, runs⟩ := ih
       refine ⟨minimum + 1, ?_⟩
       intro fuel enough

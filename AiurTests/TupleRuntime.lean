@@ -113,7 +113,7 @@ run_cmd do
     | .ok _ => throwError "unexpectedly accepted invalid source: {source}"
 
 
-def system : System Rat := (compile (sample.toField Rat)).toOption.getD ⟨[]⟩
+def system : System Rat := (compile (sample.toField Rat)).toOption.getD { chips := [] }
 theorem compiled : compile (sample.toField Rat) = .ok system := by
   have succeeds : (compile (sample.toField Rat)).isOk = true := by decide +kernel
   cases lowered : compile (sample.toField Rat) with
@@ -121,7 +121,7 @@ theorem compiled : compile (sample.toField Rat) = .ok system := by
   | ok chips => simp [system, lowered, Except.toOption]
 
 -- A tuple-only run allocates nothing, so its completeness needs no field-capacity bound.
-example : Circuit.EntryDerives system ⟨"reduce", entryValues [.tuple [4, 0]], .tuple [0, 10]⟩ := by
+example : Circuit.EncodedEntryDerives system "reduce" (entryValues [.tuple [4, 0]]) (.tuple [0, 10]) := by
   have executed : run (sample.toField Rat) "reduce" [.tuple [4, 0]] 40 =
       .ok (.tuple [.field 0, .field 10], []) := by decide +kernel
   obtain ⟨_, entry, locals, expr, prepared, body⟩ := run_eq_ok_iff.mp executed

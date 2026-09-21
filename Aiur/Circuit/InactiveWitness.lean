@@ -1,10 +1,11 @@
-import Aiur.Circuit.SelectorWitness
+import Aiur.Circuit.InactiveBasics
 
 namespace Aiur.Circuit.Compiler
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
-set_option maxHeartbeats 1600000
+set_option maxHeartbeats 2000000
+set_option maxRecDepth 4096
 
 mutual
   /-- Disabled expressions still admit all unconditional pattern-test witnesses. -/
@@ -37,21 +38,53 @@ mutual
         obtain ⟨assignment, extension, bounded⟩ :=
           lowerArgs_inactive itemsRun layout valid localsBound enableBound inactive
         exact ⟨assignment, extension, bounded_tuple.mpr bounded⟩
+    | construct name ctor args =>
+        cases found : program.enums.findEnum? name with
+        | none => simp [lowerExpr, found] at compiled
+        | some definition =>
+            cases atIndex : definition.constructors[definition.constructors.findIdx (·.name == ctor)]? with
+            | none => simp [lowerExpr, found, atIndex] at compiled
+            | some constructor =>
+                simp only [lowerExpr, found, atIndex] at compiled
+                obtain ⟨wires, s₁, argsRun, rest⟩ := bind_ok.mp compiled
+                split at rest
+                · simp [StateT.bind, bind, Except.bind] at rest
+                · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+                  obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+                  obtain ⟨typeLayout, middle, layoutRun, rest⟩ := bind_ok.mp rest
+                  obtain ⟨_, rfl⟩ := getLayout_eq layoutRun
+                  split at rest
+                  · simp [StateT.bind, bind, Except.bind] at rest
+                  · obtain ⟨⟨⟩, middle, unchanged, finished⟩ := bind_ok.mp rest
+                    obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+                    obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+                    obtain ⟨a, ext, valuesBound⟩ := lowerArgs_inactive argsRun layout valid localsBound enableBound inactive
+                    refine ⟨a, ext, ?_⟩
+                    intro polynomial member
+                    simp only [List.mem_cons, List.mem_append] at member
+                    rcases member with rfl | member | member
+                    · rfl
+                    · obtain ⟨wire, member, leaf⟩ := List.mem_flatMap.mp member
+                      exact valuesBound wire member polynomial leaf
+                    · have zero : polynomial = .const 0 := List.eq_of_mem_replicate member
+                      subst polynomial; rfl
     | project value index =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, middle, valueRun, rest⟩ := bind_ok.mp compiled
-        cases input with
-        | field | ptr => simp at rest
-        | tuple items =>
+        rcases input with ⟨type, words⟩
+        cases type with
+        | field | ptr | enum => simp at rest
+        | tuple types =>
+            dsimp only at rest
+            obtain ⟨items, last, splitRun, rest⟩ := bind_ok.mp rest
+            have unchanged := (splitValues_spec splitRun).1
+            subst last
             cases projected : items[index]? with
             | none => simp [projected] at rest
             | some result =>
-                simp only [projected, pure_ok] at rest
-                obtain ⟨rfl, rfl⟩ := rest
-                obtain ⟨assignment, extension, bounded⟩ :=
-                  lowerExpr_inactive valueRun layout valid localsBound enableBound inactive
-                exact ⟨assignment, extension,
-                  bounded_tuple.mp bounded result (List.mem_of_getElem? projected)⟩
+                obtain ⟨rfl, rfl⟩ := pure_ok.mp (by simpa only [projected] using rest)
+                obtain ⟨a, ext, bounded⟩ := lowerExpr_inactive valueRun layout valid localsBound enableBound inactive
+                exact ⟨a, ext, splitValues_bounded splitRun bounded result (List.mem_of_getElem? projected)⟩
     | letValue pattern value body =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, valueRun, rest⟩ := bind_ok.mp compiled
@@ -72,53 +105,65 @@ mutual
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
         obtain ⟨id, s₂, addressRun, rest⟩ := bind_ok.mp rest
-        obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
-        cases finished
-        obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
-        cases finished
-        obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
-        obtain ⟨a, e₁, inputBound⟩ :=
-          lowerExpr_inactive operandRun layout valid localsBound enableBound inactive
+        obtain ⟨⟨⟩, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+        obtain ⟨⟨⟩, s₄, validationRun, rest⟩ := bind_ok.mp rest
+        obtain ⟨⟨⟩, s₅, cellRun, finished⟩ := bind_ok.mp rest
+        obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+        obtain ⟨a, e₁, inputBound⟩ := lowerExpr_inactive operandRun layout valid localsBound enableBound inactive
         obtain ⟨b, e₂, addressBound, _⟩ := fresh_complete addressRun e₁.layout e₁.valid 0
         have chainExt := e₁.trans e₂
         have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
           (Or.inl ((chainExt.polynomial enableBound).trans inactive))
         have ab : (ArithExpr.var id : ArithExpr F).inBounds s₂.nextVar = true := by
-          simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using addressBound
-        have e₄ := requireCell_complete cellRun e₃.layout e₃.valid
-          ((chainExt.trans e₃).bound enableBound) (e₃.bound ab)
-          (inputBound.mono (e₂.trans e₃).increase) (by
+          simpa [Scalar.Circuit.ArithExpr.inBounds] using addressBound
+        have throughBoolean := chainExt.trans e₃
+        obtain ⟨c, e₄⟩ := validateValue_inactive validationRun e₃.layout e₃.valid
+          (throughBoolean.bound enableBound) (inputBound.mono (e₂.trans e₃).increase)
+          ((throughBoolean.polynomial enableBound).trans inactive)
+        have throughValidation := throughBoolean.trans e₄
+        have e₅ := requireCell_complete cellRun e₄.layout e₄.valid
+          (throughValidation.bound enableBound) ((e₃.trans e₄).bound ab)
+          (inputBound.mono ((e₂.trans e₃).trans e₄).increase) (by
             intro active
-            have zero := ((chainExt.trans e₃).polynomial enableBound).trans inactive
+            have zero := (throughValidation.polynomial enableBound).trans inactive
             exact (zero_ne_one (zero.symm.trans active)).elim)
-        exact ⟨b, (chainExt.trans e₃).trans e₄, by
-          simpa only [bounded_ptr] using (e₃.trans e₄).bound ab⟩
+        exact ⟨c, throughValidation.trans e₅, by
+          simpa only [bounded_ptr] using ((e₃.trans e₄).trans e₅).bound ab⟩
     | load operand =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, operandRun, rest⟩ := bind_ok.mp compiled
-        cases input with
-        | field | tuple => simp at rest
-        | ptr target address =>
-            obtain ⟨result, s₂, resultRun, rest⟩ := bind_ok.mp rest
-            obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
-            cases finished
-            obtain ⟨finished, s₄, cellRun, rest⟩ := bind_ok.mp rest
-            cases finished
-            obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
-            obtain ⟨a, e₁, inputBound⟩ :=
-              lowerExpr_inactive operandRun layout valid localsBound enableBound inactive
-            obtain ⟨b, e₂, resultBound, _⟩ := freshValue_complete resultRun e₁.layout e₁.valid
-              (zeroValue target) (zeroValue_type _)
-            have chainExt := e₁.trans e₂
-            have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
-              (Or.inl ((chainExt.polynomial enableBound).trans inactive))
-            have e₄ := requireCell_complete cellRun e₃.layout e₃.valid
-              ((chainExt.trans e₃).bound enableBound) ((e₂.trans e₃).bound (bounded_ptr.mp inputBound))
-              (resultBound.mono e₃.increase) (by
-                intro active
-                have zero := ((chainExt.trans e₃).polynomial enableBound).trans inactive
-                exact (zero_ne_one (zero.symm.trans active)).elim)
-            exact ⟨b, (chainExt.trans e₃).trans e₄, resultBound.mono (e₃.trans e₄).increase⟩
+        rcases input with ⟨type, words⟩
+        cases type with
+        | field | tuple | enum => simp at rest
+        | ptr target =>
+            cases words with
+            | nil => simp at rest
+            | cons address words => cases words with
+              | cons => simp at rest
+              | nil =>
+                  dsimp only at rest
+                  obtain ⟨result, s₂, resultRun, rest⟩ := bind_ok.mp rest
+                  obtain ⟨⟨⟩, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+                  obtain ⟨⟨⟩, s₄, validationRun, rest⟩ := bind_ok.mp rest
+                  obtain ⟨⟨⟩, s₅, cellRun, finished⟩ := bind_ok.mp rest
+                  obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+                  obtain ⟨a, e₁, inputBound⟩ := lowerExpr_inactive operandRun layout valid localsBound enableBound inactive
+                  obtain ⟨b, e₂, resultBound⟩ := freshValue_zero_complete resultRun e₁.layout e₁.valid
+                  have chainExt := e₁.trans e₂
+                  have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
+                    (Or.inl ((chainExt.polynomial enableBound).trans inactive))
+                  have throughBoolean := chainExt.trans e₃
+                  obtain ⟨c, e₄⟩ := validateValue_inactive validationRun e₃.layout e₃.valid
+                    (throughBoolean.bound enableBound) (resultBound.mono e₃.increase)
+                    ((throughBoolean.polynomial enableBound).trans inactive)
+                  have throughValidation := throughBoolean.trans e₄
+                  have e₅ := requireCell_complete cellRun e₄.layout e₄.valid
+                    (throughValidation.bound enableBound) (((e₂.trans e₃).trans e₄).bound (inputBound address (by simp)))
+                    (resultBound.mono (e₃.trans e₄).increase) (by
+                      intro active
+                      have zero := (throughValidation.polynomial enableBound).trans inactive
+                      exact (zero_ne_one (zero.symm.trans active)).elim)
+                  exact ⟨c, throughValidation.trans e₅, resultBound.mono ((e₃.trans e₄).trans e₅).increase⟩
     | neg value =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, valueRun, rest⟩ := bind_ok.mp compiled
@@ -165,24 +210,37 @@ mutual
         | some callee =>
             simp only [lowerExpr, found] at compiled
             obtain ⟨arguments, s₁, argsRun, rest⟩ := bind_ok.mp compiled
-            obtain ⟨result, s₂, resultRun, rest⟩ := bind_ok.mp rest
-            obtain ⟨finished, s₃, booleanRun, rest⟩ := bind_ok.mp rest
-            cases finished
-            simp [StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at rest
-            obtain ⟨rfl, rfl⟩ := rest
-            obtain ⟨a, e₁, argsBound⟩ := lowerArgs_inactive argsRun layout valid localsBound enableBound inactive
-            obtain ⟨b, e₂, resultBound, _⟩ := freshValue_complete resultRun e₁.layout e₁.valid
-              (zeroValue callee.result) (zeroValue_type _)
-            have chainExt := e₁.trans e₂
-            have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
-              (Or.inl ((chainExt.polynomial enableBound).trans inactive))
-            have e₄ := send_complete e₃.layout e₃.valid ⟨name, arguments, result, enable⟩
-              (send_bounded (fun value h => (argsBound value h).mono (e₂.trans e₃).increase)
-                (resultBound.mono e₃.increase) ((chainExt.trans e₃).bound enableBound)) (by
-                  intro active
-                  have zero := ((chainExt.trans e₃).polynomial enableBound).trans inactive
-                  exact (zero_ne_one (zero.symm.trans active)).elim)
-            exact ⟨b, (chainExt.trans e₃).trans e₄, resultBound.mono (e₃.trans e₄).increase⟩
+            split at rest
+            · simp [StateT.bind, bind, Except.bind] at rest
+            · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+              obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+              obtain ⟨result, s₂, resultRun, rest⟩ := bind_ok.mp rest
+              obtain ⟨⟨⟩, s₃, booleanRun, rest⟩ := bind_ok.mp rest
+              obtain ⟨⟨⟩, s₄, argsValidation, rest⟩ := bind_ok.mp rest
+              obtain ⟨⟨⟩, s₅, resultValidation, rest⟩ := bind_ok.mp rest
+              simp [StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at rest
+              obtain ⟨rfl, rfl⟩ := rest
+              obtain ⟨a, e₁, argsBound⟩ := lowerArgs_inactive argsRun layout valid localsBound enableBound inactive
+              obtain ⟨b, e₂, resultBound⟩ := freshValue_zero_complete resultRun e₁.layout e₁.valid
+              have chainExt := e₁.trans e₂
+              have e₃ := boolean_complete booleanRun e₂.layout e₂.valid (chainExt.bound enableBound)
+                (Or.inl ((chainExt.polynomial enableBound).trans inactive))
+              have throughBoolean := chainExt.trans e₃
+              obtain ⟨c, e₄⟩ := validateValues_inactive argsValidation e₃.layout e₃.valid
+                (throughBoolean.bound enableBound) (fun w h => (argsBound w h).mono (e₂.trans e₃).increase)
+                ((throughBoolean.polynomial enableBound).trans inactive)
+              have throughArgs := throughBoolean.trans e₄
+              obtain ⟨d, e₅⟩ := validateValue_inactive resultValidation e₄.layout e₄.valid
+                (throughArgs.bound enableBound) (resultBound.mono (e₃.trans e₄).increase)
+                ((throughArgs.polynomial enableBound).trans inactive)
+              have throughResult := throughArgs.trans e₅
+              have e₆ := send_complete e₅.layout e₅.valid ⟨name, arguments, result, enable⟩
+                (send_bounded (fun value h => (argsBound value h).mono (((e₂.trans e₃).trans e₄).trans e₅).increase)
+                  (resultBound.mono ((e₃.trans e₄).trans e₅).increase) (throughResult.bound enableBound)) (by
+                    intro active
+                    have zero := (throughResult.polynomial enableBound).trans inactive
+                    exact (zero_ne_one (zero.symm.trans active)).elim)
+              exact ⟨d, throughResult.trans e₆, resultBound.mono (((e₃.trans e₄).trans e₅).trans e₆).increase⟩
     | matchValue scrutinee arms =>
         simp only [lowerExpr] at compiled
         obtain ⟨checked, s₁, checkRun, rest⟩ := bind_ok.mp compiled
@@ -191,18 +249,20 @@ mutual
         obtain ⟨_, rfl⟩ := lift_eq_ok typeRun
         obtain ⟨input, s₃, scrutineeRun, rest⟩ := bind_ok.mp rest
         obtain ⟨result, s₄, resultRun, rest⟩ := bind_ok.mp rest
-        obtain ⟨selectors, s₅, armsRun, rest⟩ := bind_ok.mp rest
-        obtain ⟨finished, s₆, exclusionRun, rest⟩ := bind_ok.mp rest
-        cases finished
-        obtain ⟨finished, s₇, sumRun, finishedRun⟩ := bind_ok.mp rest
-        cases finished
-        obtain ⟨rfl, rfl⟩ := pure_ok.mp finishedRun
+        obtain ⟨⟨⟩, s₅, validationRun, rest⟩ := bind_ok.mp rest
+        obtain ⟨selectors, s₆, armsRun, rest⟩ := bind_ok.mp rest
+        obtain ⟨⟨⟩, s₇, exclusionRun, rest⟩ := bind_ok.mp rest
+        obtain ⟨⟨⟩, s₈, sumRun, finished⟩ := bind_ok.mp rest
+        obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
         obtain ⟨a, e₁, inputBound⟩ := lowerExpr_inactive scrutineeRun layout valid localsBound enableBound inactive
-        obtain ⟨b, e₂, resultBound, _⟩ := freshValue_complete resultRun e₁.layout e₁.valid
-          (zeroValue type) (zeroValue_type _)
-        have chainExt := e₁.trans e₂
-        obtain ⟨c, e₃, selectorsBound, selectorsZero⟩ := lowerArms_inactive armsRun e₂.layout e₂.valid
-          (localsBound.mono chainExt.increase) (inputBound.mono e₂.increase) resultBound
+        obtain ⟨b, e₂, resultBound⟩ := freshValue_zero_complete resultRun e₁.layout e₁.valid
+        have initialExt := e₁.trans e₂
+        obtain ⟨v, validationExt⟩ := validateValue_inactive validationRun e₂.layout e₂.valid
+          (initialExt.bound enableBound) resultBound ((initialExt.polynomial enableBound).trans inactive)
+        have chainExt := initialExt.trans validationExt
+        obtain ⟨c, e₃, selectorsBound, selectorsZero⟩ := lowerArms_inactive armsRun validationExt.layout validationExt.valid
+          (localsBound.mono chainExt.increase) (inputBound.mono (e₂.trans validationExt).increase)
+          (resultBound.mono validationExt.increase)
           (chainExt.bound enableBound) ((chainExt.polynomial enableBound).trans inactive)
         have selection := Scalar.Circuit.SelectorsValid.zeros
           (selectors := selectors.map (ArithExpr.denote c)) (by
@@ -211,7 +271,8 @@ mutual
         have e₅ := sum_complete sumRun e₄.layout e₄.valid
           (fun p h => e₄.bound (selectorsBound p h)) (((chainExt.trans e₃).trans e₄).bound enableBound)
           (by rw [((chainExt.trans e₃).trans e₄).polynomial enableBound, inactive]; exact selection.sum)
-        exact ⟨c, ((chainExt.trans e₃).trans e₄).trans e₅, resultBound.mono ((e₃.trans e₄).trans e₅).increase⟩
+        exact ⟨c, ((chainExt.trans e₃).trans e₄).trans e₅,
+          resultBound.mono (((validationExt.trans e₃).trans e₄).trans e₅).increase⟩
   termination_by sizeOf expr
 
   theorem lowerArgs_inactive [Field F] [DecidableEq F]

@@ -1,44 +1,81 @@
 import Aiur.Circuit.BuildFacts
+import Aiur.TypecheckFacts
+import Aiur.EncodingTypes
 
 namespace Aiur.Circuit
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
 private theorem except_bind_ok {first : Except ε α} {next : α → Except ε β} {result : β} :
     (first >>= next) = .ok result ↔ ∃ value, first = .ok value ∧ next value = .ok result := by
   cases first <;> simp [bind, Except.bind]
 
-/-- Expose the actual stages of compiling a function, without changing the compiler. -/
+/-- Expose interface validation separately from the function body. -/
 theorem Compiler.lowerFunction_stages [Field F] [DecidableEq F]
     {program : Program F} {fn : Function F} {chip : Chip F}
     (compiled : Compiler.lowerFunction program fn = .ok chip) :
-    ∃ inputs output s₁ s₂ body s₃ s₄,
-      Compiler.freshValues (fn.params.map Prod.snd) {} = .ok (inputs, s₁) ∧
-      Compiler.freshValue fn.result s₁ = .ok (output, s₂) ∧
+    ∃ inputs output s₁ s₂ s₃ s₄ body s₅ s₆,
+      Compiler.freshValues program.enums (fn.params.map Prod.snd) {} = .ok (inputs, s₁) ∧
+      Compiler.freshValue program.enums fn.result s₁ = .ok (output, s₂) ∧
+      Compiler.validateValues program.enums (.const 1)
+        (inputs.map (WireValue.map ArithExpr.var)) s₂ = .ok ((), s₃) ∧
+      Compiler.validateValue program.enums (.const 1) (output.map ArithExpr.var) s₃ = .ok ((), s₄) ∧
       Compiler.lowerExpr program fn.name
-        ((fn.params.map Prod.fst).zip (inputs.map (Value.map ArithExpr.var)))
-        (.const 1) fn.body s₂ = .ok (body, s₃) ∧
-      Compiler.constrainValue (.const 1) (output.map ArithExpr.var) body s₃ = .ok ((), s₄) ∧
-      chip = ⟨fn.name, inputs, output, s₄.nextVar, s₄.constraints.toList, s₄.sends.toList, s₄.memory.toList⟩ := by
+        ((fn.params.map Prod.fst).zip (inputs.map (WireValue.map ArithExpr.var)))
+        (.const 1) fn.body s₄ = .ok (body, s₅) ∧
+      Compiler.constrainValue (.const 1) (output.map ArithExpr.var) body s₅ = .ok ((), s₆) ∧
+      chip = ⟨fn.name, inputs, output, s₆.nextVar, s₆.constraints.toList, s₆.sends.toList, s₆.memory.toList⟩ := by
   unfold Compiler.lowerFunction at compiled
   obtain ⟨⟨⟨inputs, output⟩, state⟩, run, finished⟩ := except_bind_ok.mp compiled
   simp only [pure, Except.pure, Except.ok.injEq] at finished
   subst chip
   obtain ⟨inputs, s₁, inputsRun, rest⟩ := Compiler.bind_ok.mp run
   obtain ⟨output, s₂, outputRun, rest⟩ := Compiler.bind_ok.mp rest
-  obtain ⟨body, s₃, bodyRun, rest⟩ := Compiler.bind_ok.mp rest
-  obtain ⟨finished, s₄, constraintRun, rest⟩ := Compiler.bind_ok.mp rest
-  cases finished
+  obtain ⟨⟨⟩, s₃, inputsValid, rest⟩ := Compiler.bind_ok.mp rest
+  obtain ⟨⟨⟩, s₄, outputValid, rest⟩ := Compiler.bind_ok.mp rest
+  obtain ⟨body, s₅, bodyRun, rest⟩ := Compiler.bind_ok.mp rest
+  obtain ⟨⟨⟩, s₆, constraintRun, rest⟩ := Compiler.bind_ok.mp rest
   obtain ⟨⟨rfl, rfl⟩, rfl⟩ := Compiler.pure_ok.mp rest
-  exact ⟨inputs, output, s₁, s₂, body, s₃, s₄, inputsRun, outputRun, bodyRun, constraintRun, rfl⟩
+  exact ⟨inputs, output, s₁, s₂, s₃, s₄, body, s₅, s₆,
+    inputsRun, outputRun, inputsValid, outputValid, bodyRun, constraintRun, rfl⟩
 
 theorem Compiler.lowerFunction_interface [Field F] [DecidableEq F]
     {program : Program F} {fn : Function F} {chip : Chip F}
     (compiled : Compiler.lowerFunction program fn = .ok chip) :
-    chip.name = fn.name ∧ chip.inputs.map Value.type = fn.params.map Prod.snd ∧
+    chip.name = fn.name ∧ chip.inputs.map WireValue.type = fn.params.map Prod.snd ∧
       chip.output.type = fn.result := by
-  obtain ⟨_, _, _, _, _, _, _, inputsRun, outputRun, _, _, rfl⟩ := lowerFunction_stages compiled
+  obtain ⟨_, _, _, _, _, _, _, _, _, inputsRun, outputRun, _, _, _, _, rfl⟩ := lowerFunction_stages compiled
   exact ⟨rfl, (freshValues_spec inputsRun).2.2.1, (freshValue_spec outputRun).2.2.1⟩
+
+/-- Compilation checks field tag injectivity independently of allocation capacity. -/
+theorem compile_stages [Field F] [DecidableEq F] {program : Program F} {system : System F}
+    (compiled : compile program = .ok system) :
+    typecheck program = .ok () ∧ program.enums.tagsValid F = true ∧
+      program.functions.mapM (Compiler.lowerFunction program) = .ok system.chips ∧
+      system.enums = program.enums := by
+  unfold compile at compiled
+  obtain ⟨⟨⟩, checked, rest⟩ := except_bind_ok.mp compiled
+  have checked : typecheck program = .ok () := by
+    cases h : typecheck program with
+    | error error => simp [h, Except.mapError] at checked
+    | ok unit => cases unit; rfl
+  obtain ⟨⟨⟩, tags, rest⟩ := except_bind_ok.mp rest
+  obtain ⟨chips, mapped, finished⟩ := except_bind_ok.mp rest
+  have same := except_pure_ok.mp finished
+  subst system
+  refine ⟨checked, ?_, mapped, rfl⟩
+  apply (Declarations.tagsValid_spec program.enums).mpr
+  have each := forIn_ok (items := program.enums) (action := checkEnumTags F) (by
+    have combined := congrArg (fun r : Except CompileError PUnit => r >>= fun _ =>
+      (pure () : Except CompileError Unit)) tags
+    simpa only [bind, Except.bind, pure, Except.pure] using combined)
+  intro decl member
+  have accepted := each decl member
+  unfold checkEnumTags at accepted
+  split at accepted
+  · assumption
+  · cases accepted
+
 
 private theorem forall₂_of_mapM_ok {f : α → Except ε β} {xs : List α} {ys : List β}
     (mapped : xs.mapM f = .ok ys) : List.Forall₂ (fun x y => f x = .ok y) xs ys := by
@@ -59,17 +96,7 @@ theorem compile_functions [Field F] [DecidableEq F] {program : Program F} {syste
     (compiled : compile program = .ok system) :
     List.Forall₂ (fun fn chip => Compiler.lowerFunction program fn = .ok chip)
       program.functions system.chips := by
-  unfold compile at compiled
-  cases checked : typecheck program with
-  | error error => simp [checked] at compiled; cases compiled
-  | ok checkedUnit =>
-      cases checkedUnit
-      cases mapped : program.functions.mapM (Compiler.lowerFunction program) with
-      | error error => simp [checked, mapped] at compiled
-      | ok chips =>
-          simp [checked, mapped] at compiled
-          subst system
-          exact forall₂_of_mapM_ok mapped
+  exact forall₂_of_mapM_ok (compile_stages compiled).2.2.1
 
 private theorem lookup_functions [Field F] [DecidableEq F] {program : Program F}
     {fns : List (Function F)} {chips : List (Chip F)}

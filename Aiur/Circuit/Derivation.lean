@@ -2,14 +2,14 @@ import Aiur.Circuit.Basic
 
 namespace Aiur.Circuit
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
 mutual
   /--
   A closed, finite derivation of a message. Local validity is a side condition;
   all enabled calls must be discharged by child derivations. There is no assumption rule.
   -/
-  inductive Derivation [Field F] [DecidableEq F] (system : System F) (rom : ROM F) : Message F → Type where
+  inductive Derivation [Field F] [DecidableEq F] (system : System F) (rom : WireROM F) : Message F → Type where
     | node (chip : Chip F) (row : Row F)
         (lookup : system.findChip? row.chip = some chip)
         (valid : chip.ValidRow rom row)
@@ -17,19 +17,19 @@ mutual
         Derivation system rom (chip.receive row)
 
   /-- A finite list of proofs indexed by its list of premise occurrences. -/
-  inductive Derivations [Field F] [DecidableEq F] (system : System F) (rom : ROM F) : List (Message F) → Type where
+  inductive Derivations [Field F] [DecidableEq F] (system : System F) (rom : WireROM F) : List (Message F) → Type where
     | nil : Derivations system rom []
     | cons (head : Derivation system rom message) (tail : Derivations system rom messages) :
         Derivations system rom (message :: messages)
 end
 
 /-- Derivability asserts the existence of a closed derivation tree. -/
-def Derives [Field F] [DecidableEq F] (system : System F) (rom : ROM F) (message : Message F) : Prop :=
+def Derives [Field F] [DecidableEq F] (system : System F) (rom : WireROM F) (message : Message F) : Prop :=
   Nonempty (Derivation system rom message)
 
 /-- The circuit relation for one function's arguments and claimed result. -/
-def CircuitEvaluates [Field F] [DecidableEq F] (system : System F) (rom : ROM F)
-    (function : String) (args : List (Value F)) (result : Value F) : Prop :=
+def CircuitEvaluates [Field F] [DecidableEq F] (system : System F) (rom : WireROM F)
+    (function : String) (args : List (WireValue F)) (result : WireValue F) : Prop :=
   Derives system rom ⟨function, args, result⟩
 
 /-- Assemble a forest from proofs of every premise, retaining repeated occurrences. -/

@@ -15,8 +15,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   circuit interfaces, first-match equations, and proof boundaries.
 - [Pointers and ROM](pointers.md): typed opaque pointers, a prover-chosen
   heterogeneous table, allocation bounds, and source/circuit correspondence.
-- [Enum proposal](enums.md): payloads, recursion through pointers, semantic values,
-  circuit layouts, and the proposed proof extension; not implemented.
+- [Enums](enums.md): payloads, recursion through pointers, semantic values,
+  canonical circuit layouts, root validity, and proved correspondence.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,

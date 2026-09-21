@@ -1,6 +1,5 @@
 import Aiur.Memory.Encoding
 import Aiur.Memory.Representation
-import Aiur.Completeness
 import Mathlib.Data.Fintype.EquivFin
 
 namespace Aiur
@@ -30,6 +29,9 @@ theorem EvalExpr.toROM [Field F] [DecidableEq F] {program : Program F}
   | tuple _ ih =>
       intro cells
       simpa only [Value.mapAddress] using ROMEvalExpr.tuple (ih cells)
+  | construct _ ih =>
+      intro cells
+      simpa only [Value.mapAddress] using ROMEvalExpr.construct (ih cells)
   | project _ projected ih =>
       intro cells
       refine .project (ih cells) ?_
@@ -51,7 +53,7 @@ theorem EvalExpr.toROM [Field F] [DecidableEq F] {program : Program F}
   | @load locals expr before input after result pointer loaded ih =>
       intro cells
       cases input with
-      | field | tuple => cases loaded
+      | field | tuple | construct => cases loaded
       | ptr target address =>
           cases found : after[address]? with
           | none => simp [loadValue, found] at loaded

@@ -15,6 +15,7 @@ inductive EvalError where
   | expectedField
   | expectedTuple
   | expectedPointer
+  | malformedValue (type : Ty)
   | danglingPointer (address : Nat)
   | memoryTypeMismatch (expected actual : Ty)
   | pointerEntryArgument (index : Nat)
@@ -32,6 +33,8 @@ mutual
     | .wildcard, _ => some []
     | .bind name, value => some [(name, value)]
     | .tuple patterns, .tuple values => Pattern.bindingsList patterns values
+    | .construct name ctor patterns, .construct other ctor' values =>
+        if name = other ∧ ctor = ctor' then Pattern.bindingsList patterns values else none
     | _, _ => none
   termination_by pattern _ => sizeOf pattern
 
@@ -54,7 +57,7 @@ def selectArm [DecidableEq F] (value : Value F Address) :
 
 def evalNeg [Field F] : Value F Address → Except EvalError (Value F Address)
   | .field x => .ok (.field (-x))
-  | .tuple _ | .ptr _ _ => .error .expectedField
+  | .tuple _ | .ptr _ _ | .construct _ _ _ => .error .expectedField
 
 def evalBinOp [Field F] [DecidableEq F] (op : BinOp) :
     Value F Address → Value F Address → Except EvalError (Value F Address)
@@ -79,6 +82,7 @@ def prepareCall (program : Program F) (name : String) (args : List (Value F Addr
     throw (.arityMismatch name fn.params.length args.length)
   for (param, arg) in fn.params.zip args do
     if param.2 ≠ arg.type then throw (.argumentTypeMismatch name param.2 arg.type)
+    if !arg.wellFormed program.enums then throw (.malformedValue arg.type)
   return ((fn.params.map Prod.fst).zip args, fn.body)
 
 /-- Loads check their declared cell type; source pointers remain opaque to the language. -/

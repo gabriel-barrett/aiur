@@ -3,14 +3,14 @@
 Aiur is a first-order programming language for zero-knowledge circuits, formalized
 in Lean. Source programs use arithmetic, calls, and pattern matching rather than
 gates or wires. A Lean elaborator accepts a Rust-like source string containing all
-the function definitions.
+enum declarations and function definitions.
 
 ## Values and signatures
 
-Types are `Field`, pointers `&A`, and finite tuples of types, nested to any depth. Tuples may have
+Types are `Field`, nominal enums, pointers `&A`, and finite tuples of types, nested to any depth. Tuples may have
 any arity. `()` is unit; `(x,)` is a singleton tuple; `(x)` is grouping. Tuple
 shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
-arrays, structs, sum types, or higher-order values.
+arrays, structs, generics, or higher-order values.
 
 Every parameter and return type must be explicit, including `Field` and `()`:
 
@@ -25,7 +25,7 @@ fn sum((x, (y, z)): (Field, (Field, Field))) -> Field {
 ```
 
 Functions take any number of arguments and return one value, which may be a
-tuple or pointer. All signatures are available while checking every body. Forward calls and
+tuple, enum, or pointer. All signatures are available while checking every body. Forward calls and
 mutual recursion work with tuple arguments and results. Functions are called by
 name and cannot themselves be passed or returned as values.
 
@@ -36,7 +36,7 @@ field. `Nat` is a representation choice, not a source-language type.
 ## Expressions and binding
 
 Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
-store `&x`, load `*p`, tuple construction, zero-based projection (`p.0`, `p.1.0`), blocks, `let`, and
+store `&x`, load `*p`, tuple and qualified enum construction, zero-based projection (`p.0`, `p.1.0`), blocks, `let`, and
 `match`. Arithmetic requires field operands. There is no implicit componentwise
 arithmetic or tuple flattening.
 
@@ -48,15 +48,17 @@ fn combine(p: (Field, (Field, Field))) -> (Field, Field) {
 ```
 
 `let` and parameter patterns must be irrefutable: bindings, wildcards, or tuples
-of irrefutable patterns. A name may occur only once within a pattern or the
+of irrefutable patterns, or a sole enum constructor with irrefutable payload
+patterns. A name may occur only once within a pattern or the
 complete parameter list. `let` bindings may shadow outer variables and are
 visible in their continuation. Match bindings are visible only in their arm.
 
 ## Matching
 
-A pattern is a field literal, `_`, a binding name, or a tuple of patterns.
+A pattern is a field literal, `_`, a binding name, a tuple of patterns, or a
+qualified constructor with payload patterns.
 Patterns must have the scrutinee's shape. Literals test leaves; wildcards and
-names accept entire subtrees. Tuple patterns match componentwise.
+names accept entire subtrees. Tuple and constructor payload patterns match componentwise.
 
 Overlapping patterns use first-match order:
 
@@ -77,14 +79,15 @@ still typechecked. Partial matches are allowed and fail if no arm matches.
 
 ## Evaluation and circuits
 
-Evaluation is eager in operands, tuple components, call arguments, and `let`
+Evaluation is eager in operands, tuple components, constructor arguments, call arguments, and `let`
 values. Only the selected match body runs. Discarding or projecting a tuple does
 not skip its components. Division by zero and exhausted fuel are explicit errors.
 Entry arguments are checked against their declared shapes and must contain no
-pointers, including inside tuples. Internal calls may receive pointers. The inductive
+pointers, including inside tuples or the selected enum payload. Internal calls may receive pointers. The inductive
 evaluation predicate describes finite successful evaluation without fuel.
 
-Each function compiles to one chip. Tuple interfaces preserve shape; rows contain
+Each function compiles to one chip. Interfaces retain type metadata and flat
+canonical encodings; rows contain
 only field elements. Local equations remain polynomials equal to zero. See
 [tuples](tuples.md), [circuits](circuits.md), and [correctness](correctness.md).
 
@@ -100,9 +103,28 @@ and a single heterogeneous ROM chosen by the prover; stores and loads both requi
 the same cell-membership claim. Correctness relates contents instead of comparing
 addresses. See [pointers and ROM](pointers.md) for the model and proved guarantees.
 
+## Enums
+
+Enums use qualified constructors in both expressions and patterns:
+
+```rust
+enum Item { Empty, Pair(Field, Field), Wrapped((Field, Field)) }
+enum List { Nil, Cons(Item, &List) }
+```
+
+Enum names determine type identity. Every recursive type cycle must cross a
+pointer, including cycles hidden through tuples or mutual declarations. Only
+explicit stores allocate. Function and enum declarations may be interleaved,
+and forward references are supported. Partial matches remain permitted.
+
+The frontend records constructor identity independently of any field. Compilation
+assigns declaration-order field tags and rejects collisions. Active encodings
+require valid tags, selected payloads, and zero padding. See [enums](enums.md)
+for layout, boundary conditions, and the complete proof model.
+
 ## Open questions
 
 - Concrete fields and circuit backends for applications.
 - Whether division by zero and partial matches remain runtime errors.
-- Additional data structures and binding forms beyond immutable tuples.
+- Additional data structures and binding forms beyond tuples and enums.
 - Constraints enforcing depth or other termination measures, deliberately deferred.

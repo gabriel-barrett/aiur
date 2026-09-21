@@ -11,6 +11,8 @@ mutual
         ROMEvalExpr rom program locals (.var name) value
     | tuple (items : ROMEvalArgs rom program locals exprs values) :
         ROMEvalExpr rom program locals (.tuple exprs) (.tuple values)
+    | construct (items : ROMEvalArgs rom program locals exprs values) :
+        ROMEvalExpr rom program locals (.construct name ctor exprs) (.construct name ctor values)
     | project (value : ROMEvalExpr rom program locals expr input)
         (projected : projectValue input index = .ok result) :
         ROMEvalExpr rom program locals (.project expr index) result

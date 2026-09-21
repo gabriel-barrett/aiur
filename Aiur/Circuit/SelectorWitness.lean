@@ -1,9 +1,9 @@
-import Aiur.Circuit.PatternWitness
+import Aiur.Circuit.IndicatorWitness
 import Aiur.Scalar.Circuit.WitnessBasic
 
 namespace Aiur.Circuit.Compiler
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
 private theorem excludeHead_complete [Field F] {calls : CallRelation F}
     (selector : ArithExpr F) (rest : List (ArithExpr F)) {before after : BuildState F}

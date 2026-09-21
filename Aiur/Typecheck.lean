@@ -1,8 +1,11 @@
-import Aiur.AST
+import Aiur.Declarations
 
 namespace Aiur
 
 inductive CheckError where
+  | invalidDeclarations (error : DeclError)
+  | unknownConstructor (enumName constructor : String)
+  | constructorArity (enumName constructor : String) (expected actual : Nat)
   | duplicateFunction (name : String)
   | duplicateParameter (function name : String)
   | duplicateBinding (function name : String)
@@ -20,6 +23,10 @@ inductive CheckError where
 
 instance : ToString CheckError where
   toString
+    | .invalidDeclarations error => toString error
+    | .unknownConstructor name ctor => s!"unknown constructor '{name}::{ctor}'"
+    | .constructorArity name ctor expected actual =>
+        s!"constructor '{name}::{ctor}' has {actual} arguments; expected {expected}"
     | .duplicateFunction name => s!"duplicate function '{name}'"
     | .duplicateParameter fn name => s!"duplicate parameter '{name}' in function '{fn}'"
     | .duplicateBinding fn name => s!"duplicate pattern binding '{name}' in function '{fn}'"
@@ -47,7 +54,7 @@ def requireType (caller : String) (expected actual : Ty) : Except CheckError Uni
   if expected = actual then .ok () else .error (.typeMismatch caller expected actual)
 
 mutual
-  def patternTypes (caller : String) (pattern : Pattern α) (type : Ty) :
+  def patternTypes (decls : Declarations) (caller : String) (pattern : Pattern α) (type : Ty) :
       Except CheckError (List (String × Ty)) := do
     match pattern with
     | .wildcard => return []
@@ -57,22 +64,29 @@ mutual
         let .tuple types := type | throw (.expectedTuple caller)
         if patterns.length != types.length then
           throw (.tupleArity caller types.length patterns.length)
-        patternTypesList caller patterns types
+        patternTypesList decls caller patterns types
+    | .construct name ctor patterns =>
+        requireType caller (.enum name) type
+        let some definition := decls.findConstructor? name ctor
+          | throw (.unknownConstructor name ctor)
+        if patterns.length != definition.fields.length then
+          throw (.constructorArity name ctor definition.fields.length patterns.length)
+        patternTypesList decls caller patterns definition.fields
   termination_by sizeOf pattern
 
-  def patternTypesList (caller : String) (patterns : List (Pattern α)) (types : List Ty) :
+  def patternTypesList (decls : Declarations) (caller : String) (patterns : List (Pattern α)) (types : List Ty) :
       Except CheckError (List (String × Ty)) := do
     match patterns, types with
     | [], [] => return []
     | pattern :: patterns, type :: types =>
-        return (← patternTypes caller pattern type) ++ (← patternTypesList caller patterns types)
+        return (← patternTypes decls caller pattern type) ++ (← patternTypesList decls caller patterns types)
     | _, _ => throw (.tupleArity caller types.length patterns.length)
   termination_by sizeOf patterns
 end
 
-def checkPattern (caller : String) (pattern : Pattern α) (type : Ty) :
+def checkPattern (decls : Declarations) (caller : String) (pattern : Pattern α) (type : Ty) :
     Except CheckError (List (String × Ty)) := do
-  let bindings ← patternTypes caller pattern type
+  let bindings ← patternTypes decls caller pattern type
   if let some name := findDuplicate (bindings.map Prod.fst) [] then
     throw (.duplicateBinding caller name)
   return bindings
@@ -86,14 +100,23 @@ mutual
         let some (_, type) := locals.find? (·.1 == name) | throw (.unboundVariable caller name)
         return type
     | .tuple items => return .tuple (← inferTypes program caller locals items)
+    | .construct name ctor args =>
+        let some definition := program.enums.findConstructor? name ctor
+          | throw (.unknownConstructor name ctor)
+        if args.length != definition.fields.length then
+          throw (.constructorArity name ctor definition.fields.length args.length)
+        let types ← inferTypes program caller locals args
+        for (expected, actual) in definition.fields.zip types do
+          requireType caller expected actual
+        return .enum name
     | .project value index =>
         let .tuple types ← inferType program caller locals value | throw (.expectedTuple caller)
         let some type := types[index]? | throw (.projectionBounds caller index types.length)
         return type
     | .letValue pattern value body =>
         let type ← inferType program caller locals value
-        let bindings ← checkPattern caller pattern type
-        if !pattern.irrefutable then throw (.refutableBinding caller)
+        let bindings ← checkPattern program.enums caller pattern type
+        if !pattern.irrefutable program.enums then throw (.refutableBinding caller)
         inferType program caller (bindings ++ locals) body
     | .store value => return .ptr (← inferType program caller locals value)
     | .load pointer =>
@@ -119,7 +142,7 @@ mutual
         match arms with
         | [] => throw (.emptyMatch caller)
         | (pattern, body) :: rest =>
-            let bindings ← checkPattern caller pattern type
+            let bindings ← checkPattern program.enums caller pattern type
             let result ← inferType program caller (bindings ++ locals) body
             checkArms program caller locals type result rest
             return result
@@ -138,18 +161,24 @@ mutual
     match arms with
     | [] => return ()
     | (pattern, body) :: rest =>
-        let bindings ← checkPattern caller pattern scrutinee
+        let bindings ← checkPattern program.enums caller pattern scrutinee
         requireType caller result (← inferType program caller (bindings ++ locals) body)
         checkArms program caller locals scrutinee result rest
   termination_by sizeOf arms
 end
 
+def checkFunction (program : Program α) (fn : Function α) : Except CheckError Unit := do
+  for (_, type) in fn.params do
+    (type.checkNames program.enums).mapError CheckError.invalidDeclarations
+  (fn.result.checkNames program.enums).mapError CheckError.invalidDeclarations
+  if let some name := findDuplicate (fn.params.map Prod.fst) [] then
+    throw (.duplicateParameter fn.name name)
+  requireType fn.name fn.result (← inferType program fn.name fn.params fn.body)
+
 def typecheck (program : Program α) : Except CheckError Unit := do
+  (checkDeclarations program.enums).mapError CheckError.invalidDeclarations
   if let some name := findDuplicate (program.functions.map (·.name)) [] then
     throw (.duplicateFunction name)
-  for fn in program.functions do
-    if let some name := findDuplicate (fn.params.map Prod.fst) [] then
-      throw (.duplicateParameter fn.name name)
-    requireType fn.name fn.result (← inferType program fn.name fn.params fn.body)
+  for fn in program.functions do checkFunction program fn
 
 end Aiur

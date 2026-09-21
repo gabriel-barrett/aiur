@@ -1,11 +1,11 @@
-# Proposal: enums with payloads
+# Enums with payloads
 
-Status: design proposal only. Enums are not implemented, and the existing
-correctness theorems do not yet cover them. This document proposes a complete
-first version, distinguishing the agreed recursion rule from implementation
-choices still open for review.
+Status: implemented and proved. Nominal enums are supported by the frontend,
+evaluator, relational semantics, compiler, ROM encoding, derivation trees, and
+memoized graphs. Completeness and soundness for trees, and soundness for acyclic
+memoized graphs, have no admitted steps or additional axioms.
 
-## Requirements and recommendation
+## Accepted design
 
 The agreed recursion rule is that recursive types must use pointers. Every cycle
 between enum definitions must pass through `&`; direct or mutual recursion
@@ -14,10 +14,10 @@ entirely through inline payloads is rejected. There is no implicit allocation.
 Existing language decisions continue to apply: explicit function signatures,
 first-order functions, first-match pattern ordering, arbitrary nested tuples,
 typed opaque pointers, a prover-chosen heterogeneous ROM, and pointer-free public
-entry arguments. Constructor arguments should evaluate eagerly, left to right,
+entry arguments. Constructor arguments evaluate eagerly, left to right,
 like tuple components and function arguments.
 
-The recommendation is:
+The design uses:
 
 - Named, nominal enum types with a finite, nonempty list of constructors. Each
   constructor has zero or more explicitly typed arguments.
@@ -30,12 +30,12 @@ The recommendation is:
   with a constructor tag and a canonically padded payload.
 
 Generics, named constructor fields, user-specified discriminants, tag casts,
-enum equality operations, and empty enums are deferred in this proposal. This
+enum equality operations, and empty enums are deferred. This
 does not change any existing pointer restrictions.
 
 ## Source interface
 
-Proposed Rust-like syntax:
+Rust-like syntax:
 
 ```rust
 enum Item {
@@ -106,24 +106,26 @@ recursive call, with no new restriction on function recursion or termination.
 inline cycle spread across multiple enum declarations or nested through tuples.
 A cycle such as `A` containing `&B` and `B` containing `A` is permitted.
 
-The declaration checker builds a dependency graph with an edge from `E` to `D`
-for an inline occurrence of `D` in an `E` payload. It traverses tuples and stops
-at pointer types. This graph must be acyclic. A separate name-validity check
-still visits pointer targets, so `&Unknown` is an error. A topological rank of
-the inline dependency graph supplies the termination argument for type-directed
-layout computation and decoding.
+The checker validates every enum's inline expansion. `Declarations.expand`
+consumes depth only when following an enum reference; tuples preserve the depth,
+and pointers stop expansion. A bound of `decls.length + 1` suffices for any
+acyclic path. Inline cycles cannot finish expansion and are rejected. A separate
+name check still visits pointer targets, so `&Unknown` is an error.
+`Declarations.layout_total` proves that checked declarations supply a finite
+layout for every type whose names resolve. Decoding recurses over that finite
+layout without following pointers.
 
 This restriction concerns type layout, not function-call cycles or ROM-table
 cycles. It introduces no totality condition or recursion-depth constraint.
 
 ## Lean representation and typing
 
-Add an enum declaration environment to `Program`. Each declaration records an
+`Program.enums` stores the declaration environment. Each declaration records an
 enum identifier and a list of constructors, each with a name and `List Ty`
 payload signature. Constructor identifiers are scoped to their enum; resolved
 identifiers survive field specialization unchanged.
 
-Conceptual additions, with exact Lean names to be decided during implementation:
+The AST additions are:
 
 ```text
 Ty.enum(enumId)
@@ -151,12 +153,12 @@ a pointer type or computing its layout does not unfold the pointee.
 
 Thus an inductive generic value representation and a dependent-sum interpretation
 serve different purposes and are compatible. A literally dependent value type
-throughout the evaluator and compiler is an alternative, but the proposed
-extrinsic approach is closer to the current implementation and avoids making
+throughout the evaluator and compiler is an alternative, but the
+extrinsic representation avoids making
 every operation transport values between dependent payload types.
 
-A declaration-dependent `WellTyped` predicate and executable value checker are
-needed. Computing `.type = Ty.enum E` alone cannot validate a constructor ID,
+`Value.WellTyped`, `Value.hasType`, and `Value.wellFormed` check values against
+the declaration environment. Computing `.type = Ty.enum E` alone cannot validate a constructor ID,
 arity, or payload. Public evaluator inputs must be checked recursively, including
 values constructed directly through the Lean API. Pointer typing validates the
 pointee type, not the existence or contents of its cell; those remain the job
@@ -164,12 +166,12 @@ of memory evaluation and the representation relation.
 
 `Program.toField` continues to cast only source field literals, including literal
 patterns inside constructor patterns. It copies enum declarations and identifiers
-unchanged. Source constructors remain distinct even if a proposed circuit tag
+unchanged. Source constructors remain distinct even if the circuit tag
 encoding would collide in a particular field.
 
 ## Evaluation, patterns, and the entry boundary
 
-The executable evaluator, `EvalExpr`, and `ROMEvalExpr` gain constructor cases.
+The executable evaluator, `EvalExpr`, and `ROMEvalExpr` include constructor cases.
 They evaluate arguments from left to right and assemble a constructor value.
 Only selected match bodies run. Loads and stores retain their current semantics.
 
@@ -187,30 +189,24 @@ constructors are different conditions. The first irrefutable arm ends the
 effective match under the current discard policy; all source arms are still
 typechecked. Partial matches continue to fail when no arm matches.
 
-Proposed irrefutability rule: a constructor pattern is irrefutable only if its
+Irrefutability rule: a constructor pattern is irrefutable only if its
 enum has exactly one constructor and all its argument patterns are irrefutable.
 This supports such patterns in `let` and function parameters while preserving
 their existing irrefutability requirement. It makes the irrefutability check
 depend on declarations and the scrutinee type.
 
-The recommended interpretation of pointer-free entry arguments is about the
-actual value: inspect only the selected constructor's arguments, recursively.
-This would allow `List::Nil` at the public entry boundary and reject a
-`List::Cons` containing a pointer. It does not allow callers to supply pointers
-or implicitly construct an input ROM. This policy is a proposal for review:
-with enums, unlike tuples, “this value has no pointers” differs from “this type
-has no pointer-bearing variants.” The current `Value.pointerFree` implementation
-via `Ty.pointerFree` would need to change accordingly. Static type-level
-pointer-freedom may remain as a sufficient condition.
+Pointer-free entry arguments are checked by actual value: inspect only the
+selected constructor's arguments, recursively. `List::Nil` is allowed, while
+`List::Cons` containing a pointer is rejected. This does not supply an input ROM.
+`Value.pointerFree` follows selected payloads; `Ty.pointerFree` conservatively
+returns false for nominal enums.
 
 ## Circuit values and layouts
 
-The present compiler uses `Value (ArithExpr F)` and `Value Var`, whose constructor
-shape is fixed at compilation time. Simply adding semantic constructor values
-does not let a fresh function result or a load choose its enum constructor at
-runtime. The proposal separates semantic values from circuit values.
-
-Use a type-labelled field sequence for circuit values:
+The compiler uses a separate representation for dynamic enum values. Fresh
+function and load results can choose their constructor at runtime; their
+constructor shape is not fixed in the semantic AST at compilation time.
+Circuit values are type-labelled field sequences:
 
 ```text
 WireValue α = { type : Ty, words : List α }
@@ -218,8 +214,7 @@ WireValue α = { type : Ty, words : List α }
 
 The static invariant is `words.length = width(type)` for the checked declaration
 environment. Types and enum identities remain metadata, as tuple shape and
-pointee types are metadata today. They are not extra field columns. A list with
-a proved length invariant is proposed rather than a fully dependent vector API.
+pointee types are metadata today. They are not extra field columns. `WireValue.Sized` records the column-count invariant.
 
 For constructor `c` of enum `E`, define:
 
@@ -247,7 +242,7 @@ Padding is not a semantic value or a pointer. Zero remains a usable ROM address;
 using zero padding does not reserve it. Tag values likewise do not consume or
 reserve addresses in the allocation namespace.
 
-The initial tag proposal is declaration-order indices cast into the chosen
+Tags are declaration-order indices cast into the chosen
 field, with compilation checking that tags are pairwise distinct within each
 enum. This check is separate from source typing. In positive characteristic,
 natural-number casts can collide even when the field has more elements than
@@ -256,9 +251,9 @@ tag assignment could later support additional constructors in extension fields.
 Any theorem must assume successful tag checking, not infer injectivity merely
 from the field's cardinality.
 
-Define a canonical encoder and a partial decoder for well-typed semantic values
+`Value.encode` and `WireValue.decode` are the canonical encoder and partial decoder for well-typed semantic values
 with field addresses. Decoding follows the selected tag, checks widths and
-padding, and reconstructs typed arguments. It never follows pointers. Prove:
+padding, and reconstructs typed arguments. It never follows pointers. The proved laws are:
 
 - Decoding an encoded well-typed value returns that value.
 - Encoding a successfully decoded word sequence returns exactly that sequence.
@@ -326,7 +321,7 @@ an execution order to circuit constraints.
 
 ## ROM and derivation models
 
-Circuit messages and lookups should carry type-labelled encoded values. In
+Circuit messages and lookups carry type-labelled encoded values. In
 particular, memory membership includes both the stored type and its words:
 
 ```text
@@ -365,29 +360,27 @@ still permits shared nodes and cycles; its soundness theorem continues to assume
 acyclicity of the supplied function-call graph. Enums introduce no new kind of
 call premise, and constructor creation itself is local computation.
 
-## Proof plan
+## Proven correspondence
 
-This is a plan to extend the proofs, not a claim that they already handle enums.
-
-1. Prove declaration validation gives well-formed types and an acyclic inline
-   dependency relation; derive finite layouts and terminating decoding.
-2. Extend value typing, pattern typing and binding, evaluation preservation, and
-   the executable/relational evaluator correspondence. Include constructor
-   evaluation order and the selected-payload entry check.
-3. Prove the encoder/decoder laws and the active-value validation gadget's
-   soundness and completeness. Separately prove inactive validation imposes no
-   restriction on data columns and has suitable auxiliary witnesses.
-4. Prove constructor-pattern indicators are exact on canonical scrutinees and
-   that bindings decode correctly when the full pattern indicator is one.
-   Do not assume an inactive constructor's payload interpretation is well-typed.
-5. Generalize the compiler's local expression and witness lemmas to relate
-   semantic values to encoded values. Cover constructors, matches, tuple slices,
-   calls, and typed ROM lookups, including inactive branches.
-6. Reestablish the fixed-ROM equivalence, then the heap correspondence and the
-   non-memoized and memoized end-to-end results.
+- `DeclarationTotal`, `DeclarationFacts`, and `EncodingTypes` establish finite
+  layouts and their correspondence to declared types.
+- `WireRoundtrip`, `WireCanonical`, and `WireBoundary` establish both codec laws,
+  including tag distinctness and canonical padding.
+- `ValidationCorrectness` and `ValidationWitness` prove active encoding validity
+  and construct auxiliary witnesses, including unrestricted inactive payloads.
+- `PatternEncoding`, `PatternCorrectness`, and `PatternIrrefutable` connect
+  encoded patterns and bindings to semantic matching. Irrefutability requires
+  a canonically decoded scrutinee, including for a single-constructor enum.
+- `ExpressionCorrectness`, `ExpressionWitness`, `InactiveWitness`, and the local
+  function lemmas cover every compiler case and every fresh column.
+- `Memory/Typing` proves that checked source evaluation preserves value and heap
+  validity. `Memory/WireEncoding` encodes that heap into a raw ROM and proves
+  that decoding recovers the original table.
+- `Correctness`, `Completeness`, `MemoCompleteness`, `MemoSoundness`, and
+  `MemoryCorrectness` combine these results into the full theorem suite.
 
 For a checked program, well-typed arguments and result, and a fixed raw table
-`R`, the proposed intermediate equivalence has the shape:
+`R`, the intermediate equivalence has the shape:
 
 ```text
 ROMEvalCall (decodeROM R) program f args result
@@ -395,11 +388,11 @@ ROMEvalCall (decodeROM R) program f args result
 ```
 
 Declaration and tag-encoding parameters are suppressed here. This is where the
-new layout layer enters the existing proof structure. Table functionality is
+layout layer enters the existing proof structure. Table functionality is
 needed subsequently for reconstruction of a source heap, as in the current
 soundness proof.
 
-The intended theorem assumptions remain:
+The theorem assumptions are:
 
 | Result | Assumptions beyond successful compilation and valid inputs |
 | --- | --- |
@@ -415,14 +408,15 @@ soundness result assumes totality. Pointer-containing results correspond through
 contents; pointer-free decoded results agree exactly. Existing scalar and tuple
 reference models remain available throughout the extension.
 
-## Validation and implementation sequence
+## Validation
 
-Implement source declarations and semantics first, then the layout/codec and its
-proofs, then the compiler and ROM encoding, and finally restore the complete
-end-to-end theorem suite. Existing language behavior and proofs must continue to
-be exercised; this proposal does not authorize starting that implementation.
+`AiurTests/Enums.lean` checks frontend and evaluation behavior,
+`AiurTests/EnumEncoding.lean` checks codecs, generated polynomial constraints,
+and public root validation, and `AiurTests/EnumProofs.lean` applies the complete
+theorems to recursive enum programs and nominal tuple payloads. Existing scalar,
+tuple, and pointer regression suites remain enabled.
 
-The regression plan includes:
+The regression coverage includes:
 
 - Nullary and multi-argument constructors, unit and nested tuple payloads, nominal
   type distinctions, nested enums, and constructors/matches in non-tail positions.
@@ -434,15 +428,31 @@ The regression plan includes:
   allocations from construction or copying enum values.
 - Unknown active tags and nonzero active padding rejected; inactive alternatives
   imposing no validity requirement on overlapping payload columns.
-- Constructor tag collisions after specialization, including the distinction
-  between characteristic and cardinality; tag-selection behavior in small fields.
+- Constructor tag collisions after specialization and tag selection in small
+  fields. The characteristic/cardinality distinction is an explicit condition
+  of the model.
 - Typed ROM lookups for enum cells, loads followed by constructor matching,
   pointer-free variants accepted at entry and pointer-containing variants rejected.
 - All evaluator, tree, and memoized correctness results checked without `sorry`
   or added axioms, with the same explicit conditional-soundness boundary.
 
-The principal choices still open for review are the proposed surface scope
-(including deferring generics), extrinsic semantic values plus a separate flat
-circuit representation, declaration-order field tags, canonical zero padding,
-and checking pointer-freedom of the selected payload rather than the whole enum
-type. Pointer-mediated recursion is already a requirement, not an open choice.
+The remaining extensions are generics, named fields, custom or alternative tag
+assignments, equality operations, and empty enums. These are outside this change.
+
+## Root claims and representable tags
+
+A public root claim must be well-formed: its argument and result words decode to
+values of their stated nominal types, including valid constructor tags, payload
+shapes, and canonical zero padding. Its actual arguments must be pointer-free.
+This is an admissibility assumption, not an assumption that the claimed function
+result is true. Soundness must prove the latter from the derivation, and in the
+memoized model additionally from the graph's acyclicity. Compiled chips also
+constrain the validity of active enum encodings at interfaces and ROM accesses.
+
+Each enum's declaration-order tags must remain distinct when cast to the chosen
+field. Compilation checks this injectivity explicitly. For a field of positive
+characteristic p, a declaration can have at most p constructors with this tag
+scheme. Field cardinality alone is insufficient for extension fields: natural
+number tags lie in the prime subfield. In characteristic zero every finite list
+of constructor tags is representable. This condition is separate from the
+allocation bound used to encode source addresses in ROM.

@@ -6,7 +6,7 @@ import Mathlib.Order.WellFounded
 
 namespace Aiur.Circuit.MemoDerivation
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
 variable [Field F] [DecidableEq F] {system : System F} {message : Message F}
 

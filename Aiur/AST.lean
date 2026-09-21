@@ -7,6 +7,7 @@ inductive Ty where
   | field
   | tuple (items : List Ty)
   | ptr (target : Ty)
+  | enum (name : String)
   deriving Repr, BEq
 
 mutual
@@ -20,7 +21,12 @@ mutual
         match Ty.decEq x y with
         | .isTrue h => .isTrue (congrArg Ty.ptr h)
         | .isFalse h => .isFalse (fun eq => h (Ty.ptr.inj eq))
-    | .ptr _, .field | .ptr _, .tuple _ | .field, .ptr _ | .tuple _, .ptr _ =>
+    | .enum x, .enum y =>
+        if h : x = y then .isTrue (by cases h; rfl)
+        else .isFalse (fun eq => h (Ty.enum.inj eq))
+    | .enum _, .field | .enum _, .tuple _ | .enum _, .ptr _ |
+      .field, .enum _ | .tuple _, .enum _ | .ptr _, .enum _ |
+      .ptr _, .field | .ptr _, .tuple _ | .field, .ptr _ | .tuple _, .ptr _ =>
         .isFalse (by intro h; cases h)
     | .field, .tuple _ => .isFalse (by intro h; cases h)
     | .tuple _, .field => .isFalse (by intro h; cases h)
@@ -39,6 +45,27 @@ end
 
 instance : DecidableEq (Ty) := Ty.decEq
 
+/-- Constructor identity is nominal and independent of the chosen field. -/
+structure ConstructorDecl where
+  name : String
+  fields : List Ty
+  deriving Repr, BEq, DecidableEq
+
+structure EnumDecl where
+  name : String
+  constructors : List ConstructorDecl
+  deriving Repr, BEq, DecidableEq
+
+abbrev Declarations := List EnumDecl
+
+def Declarations.findEnum? (decls : Declarations) (name : String) : Option EnumDecl :=
+  decls.find? (·.name == name)
+
+def Declarations.findConstructor? (decls : Declarations) (name constructor : String) :
+    Option ConstructorDecl := do
+  let decl ← decls.findEnum? name
+  decl.constructors.find? (·.name == constructor)
+
 inductive BinOp where
   | add | sub | mul | div
   deriving Repr, BEq, DecidableEq
@@ -48,6 +75,7 @@ inductive Value (α : Type) (Address : Type := α) where
   | field (value : α)
   | tuple (items : List (Value α Address))
   | ptr (target : Ty) (address : Address)
+  | construct (enumName constructor : String) (args : List (Value α Address))
   deriving Repr, BEq
 
 mutual
@@ -63,7 +91,15 @@ mutual
     | .ptr t x, .ptr u y =>
         if h : t = u ∧ x = y then .isTrue (by rcases h with ⟨rfl, rfl⟩; rfl)
         else .isFalse (fun eq => h (Value.ptr.inj eq))
-    | .field _, .tuple _ | .field _, .ptr _ _ | .tuple _, .field _ |
+    | .construct e c xs, .construct e' c' ys =>
+        if h : e = e' ∧ c = c' then
+          match Value.listDecEq xs ys with
+          | .isTrue hs => .isTrue (by rcases h with ⟨rfl, rfl⟩; cases hs; rfl)
+          | .isFalse hs => .isFalse (fun eq => hs (Value.construct.inj eq).2.2)
+        else .isFalse (fun eq => h ⟨(Value.construct.inj eq).1, (Value.construct.inj eq).2.1⟩)
+    | .construct _ _ _, .field _ | .construct _ _ _, .tuple _ | .construct _ _ _, .ptr _ _ |
+      .field _, .construct _ _ _ | .tuple _, .construct _ _ _ | .ptr _ _, .construct _ _ _ |
+      .field _, .tuple _ | .field _, .ptr _ _ | .tuple _, .field _ |
       .tuple _, .ptr _ _ | .ptr _ _, .field _ | .ptr _ _, .tuple _ =>
         .isFalse (by intro h; cases h)
   termination_by left _ => sizeOf left
@@ -87,6 +123,7 @@ def Value.map (f : α → β) : Value α → Value β
   | .field x => .field (f x)
   | .tuple items => .tuple (items.map (Value.map f))
   | .ptr target address => .ptr target (f address)
+  | .construct name ctor args => .construct name ctor (args.map (Value.map f))
 termination_by value => sizeOf value
 
 /-- Change opaque addresses without changing field data. -/
@@ -94,33 +131,43 @@ def Value.mapAddress (f : A → B) : Value F A → Value F B
   | .field x => .field x
   | .tuple items => .tuple (items.map (Value.mapAddress f))
   | .ptr target address => .ptr target (f address)
+  | .construct name ctor args => .construct name ctor (args.map (Value.mapAddress f))
 termination_by value => sizeOf value
 
 def Value.type : Value α Address → Ty
   | .field _ => .field
   | .tuple items => .tuple (items.map Value.type)
   | .ptr target _ => .ptr target
+  | .construct name _ _ => .enum name
 termination_by value => sizeOf value
 
 def Value.flatten : Value α → List α
   | .field x => [x]
   | .tuple items => items.flatMap Value.flatten
   | .ptr _ address => [address]
+  | .construct _ _ args => args.flatMap Value.flatten
 termination_by value => sizeOf value
 
 def Value.addresses : Value α Address → List Address
   | .field _ => []
   | .tuple items => items.flatMap Value.addresses
   | .ptr _ address => [address]
+  | .construct _ _ args => args.flatMap Value.addresses
 termination_by value => sizeOf value
 
 def Ty.pointerFree : Ty → Bool
   | .field => true
   | .tuple items => (items.map Ty.pointerFree).all id
-  | .ptr _ => false
+  | .ptr _ | .enum _ => false
 termination_by type => sizeOf type
 
-def Value.pointerFree (value : Value α Address) : Bool := value.type.pointerFree
+/-- Only the selected constructor payload is part of an enum value. -/
+def Value.pointerFree : Value α Address → Bool
+  | .field _ => true
+  | .tuple items => (items.map Value.pointerFree).all id
+  | .ptr _ _ => false
+  | .construct _ _ args => (args.map Value.pointerFree).all id
+termination_by value => sizeOf value
 
 instance [OfNat α n] : OfNat (Value α Address) n := ⟨.field (OfNat.ofNat n)⟩
 
@@ -133,6 +180,7 @@ inductive Pattern (α : Type) where
   | wildcard
   | bind (name : String)
   | tuple (items : List (Pattern α))
+  | construct (enumName constructor : String) (args : List (Pattern α))
   deriving Repr, BEq
 
 mutual
@@ -148,6 +196,17 @@ mutual
         match Pattern.listDecEq xs ys with
         | .isTrue h => .isTrue (congrArg Pattern.tuple h)
         | .isFalse h => .isFalse (fun eq => h (Pattern.tuple.inj eq))
+    | .construct e c xs, .construct e' c' ys =>
+        if h : e = e' ∧ c = c' then
+          match Pattern.listDecEq xs ys with
+          | .isTrue hs => .isTrue (by rcases h with ⟨rfl, rfl⟩; cases hs; rfl)
+          | .isFalse hs => .isFalse (fun eq => hs (Pattern.construct.inj eq).2.2)
+        else .isFalse (fun eq => h ⟨(Pattern.construct.inj eq).1, (Pattern.construct.inj eq).2.1⟩)
+    | .construct _ _ _, .literal _ | .construct _ _ _, .wildcard |
+      .construct _ _ _, .bind _ | .construct _ _ _, .tuple _ |
+      .literal _, .construct _ _ _ | .wildcard, .construct _ _ _ |
+      .bind _, .construct _ _ _ | .tuple _, .construct _ _ _ =>
+        .isFalse (by intro h; cases h)
     | .literal _, .wildcard => .isFalse (by intro h; cases h)
     | .literal _, .bind _ => .isFalse (by intro h; cases h)
     | .literal _, .tuple _ => .isFalse (by intro h; cases h)
@@ -179,6 +238,7 @@ inductive Expr (α : Type) where
   | literal (value : α)
   | var (name : String)
   | tuple (items : List (Expr α))
+  | construct (enumName constructor : String) (args : List (Expr α))
   | project (value : Expr α) (index : Nat)
   | letValue (pattern : Pattern α) (value body : Expr α)
   | store (value : Expr α)
@@ -198,6 +258,7 @@ structure Function (α : Type) where
 
 structure Program (α : Type) where
   functions : List (Function α)
+  enums : Declarations := []
   deriving Repr, BEq
 
 def Program.findFunction? (program : Program α) (name : String) : Option (Function α) :=
@@ -208,19 +269,25 @@ def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .wildcard => .wildcard
   | .bind name => .bind name
   | .tuple items => .tuple (items.map (Pattern.map f))
+  | .construct name ctor args => .construct name ctor (args.map (Pattern.map f))
 termination_by pattern => sizeOf pattern
 
 /-- Bindings and wildcards accept every value of their checked type. -/
-def Pattern.irrefutable : Pattern α → Bool
+def Pattern.irrefutable (decls : Declarations) : Pattern α → Bool
   | .literal _ => false
   | .wildcard | .bind _ => true
-  | .tuple items => (items.map Pattern.irrefutable).all id
+  | .tuple items => (items.map (Pattern.irrefutable decls)).all id
+  | .construct name ctor args =>
+      match decls.findEnum? name with
+      | some ⟨_, [only]⟩ => only.name == ctor && (args.map (Pattern.irrefutable decls)).all id
+      | _ => false
 termination_by pattern => sizeOf pattern
 
 /-- Ignore binder names when checking duplicate matching conditions. -/
 def Pattern.condition : Pattern α → Pattern α
   | .bind _ => .wildcard
   | .tuple items => .tuple (items.map Pattern.condition)
+  | .construct name ctor args => .construct name ctor (args.map Pattern.condition)
   | pattern => pattern
 termination_by pattern => sizeOf pattern
 
@@ -228,6 +295,7 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .literal value => .literal (f value)
   | .var name => .var name
   | .tuple items => .tuple (items.map (Expr.map f))
+  | .construct name ctor args => .construct name ctor (args.map (Expr.map f))
   | .project value index => .project (value.map f) index
   | .letValue pattern value body => .letValue (pattern.map f) (value.map f) (body.map f)
   | .store value => .store (value.map f)
@@ -252,7 +320,7 @@ def Function.map (f : α → β) (function : Function α) : Function β :=
   { function with body := function.body.map f }
 
 def Program.map (f : α → β) (program : Program α) : Program β :=
-  { functions := program.functions.map (Function.map f) }
+  { program with functions := program.functions.map (Function.map f) }
 
 def Program.toField (F : Type) [NatCast F] (program : Program Nat) : Program F :=
   program.map (fun n => (Nat.cast n : F))

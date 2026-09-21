@@ -1,7 +1,7 @@
 # Evaluation and circuit correctness
 
-The main implementation supports fields, arbitrary nested tuples, and typed
-pointers. The completed field-only and tuple-only formalizations remain as
+The main implementation supports fields, arbitrary nested tuples, nominal enums,
+and typed pointers. The completed field-only and tuple-only formalizations remain as
 reference snapshots in `Aiur.Scalar` and `Aiur.Tuple`.
 
 ## Source evaluation
@@ -17,7 +17,7 @@ EvalFn   P function arguments before value after
 `EvalCall P f xs y` means that `xs` contains no pointers and there is a finite
 `EvalFn P f xs [] y heap`. Each store appends a cell. Loads use the heap after
 evaluating their pointer operand. Internal calls share the heap; selected
-branches, tuple items, arguments, and operands retain left-to-right evaluation.
+branches, tuple items, constructor arguments, and operands retain left-to-right evaluation.
 
 `evalExpr_spec` and `EvalExpr.eventually_runs` establish both directions between
 the predicate and successful execution, including the exact final heap.
@@ -51,14 +51,24 @@ contains the evaluated value; a load retrieves a cell of the declared type.
 There is no allocation order in this relation. With successful compilation:
 
 ```text
-ROMEvalCall ROM P f xs y ↔ CircuitEvaluates C ROM f xs y
+ROMEvalCall (R.decode P.enums) P f xs y
+  ↔ EncodedEvaluates P.enums C R f xs y
 ```
 
 `compiler_correct`, `evaluation_complete`, and `compiler_sound` prove this
-fixed-table equivalence. It holds even for a nonfunctional table; table
+fixed-table equivalence. `EncodedEvaluates` existentially supplies raw argument
+and result words, their canonical decodings, and a `CircuitEvaluates` tree.
+`evaluation_complete_encoded` also accepts any supplied canonical encodings.
+`derivation_sound` recovers decodable arguments and a correct result from the
+compiled row constraints themselves. It holds even for a nonfunctional table; table
 functionality is required by the subsequent source-soundness bridge.
-`EntryDerives` requires pointer-free arguments and existentially quantifies
+`EntryDerives` requires a well-formed raw root, pointer-free decoded arguments,
+and existentially quantifies
 one valid ROM for the whole tree. The prover cannot choose a new table per call.
+Root validity is not truth of the claimed result. Tags must be in range and
+payload padding canonical, but evaluation correctness is a theorem conclusion.
+Successful compilation checks injective constructor tags independently of ROM
+capacity. See [enums](enums.md#root-claims-and-representable-tags).
 
 ## Source/ROM bridge
 
@@ -66,6 +76,10 @@ one valid ROM for the whole tree. The prover cannot choose a new table per call.
 and constructs a table from the final heap. `EvalExpr.toROM` and `EvalFn.toROM`
 prove that source evaluation transfers to any table containing the encoded
 cells. An injection on the allocated indices ensures unique table addresses.
+`Memory/Typing.lean` proves preservation of constructor validity and pointer
+annotations for checked execution. `Memory/WireEncoding.lean` then canonically
+encodes each cell; decoding this raw table recovers the semantic table exactly.
+Completeness therefore needs no additional hypothesis about heap enum validity.
 
 `Memory/Soundness.lean` proves the converse for every valid table. Induction on
 finite ROM evaluation reconstructs fresh source allocations. The `Represents`
@@ -73,7 +87,10 @@ logical relation connects pointer contents and remains true as the heap grows.
 It permits different source locations to represent the same circuit address.
 ROM functionality ensures that a later load agrees with the earlier store.
 
-The end-to-end API is in `MemoryCorrectness.lean`:
+The end-to-end API is in `MemoryCorrectness.lean`. `EncodedEntryDerives` and
+`EncodedMemoEntryDerives` relate semantic entry arguments/results to raw public
+claims using canonical decoding:
+
 
 - `compiler_heap_complete`: completeness under a supplied injective address map.
 - `compiler_heap_complete_finite`: completeness when the final heap length is
@@ -105,7 +122,13 @@ inverse, selector, store-address, load-result, and call-result witnesses.
 `InactiveWitness` fills unused code while leaving its calls and lookups inactive.
 `RowWitness` materializes finite rows; `LocalWitness` builds whole chip instances.
 
-The proofs cover empty and singleton tuples, overlapping tuple patterns,
+`ValidationCorrectness` and `ValidationWitness` establish active canonical
+encoding validity and unrestricted inactive witnesses. Codec round trips supply
+uniqueness of flat encodings. Selected constructor payloads are validated under
+their tag indicators; alternative payload views can be noncanonical.
+
+The proofs cover empty and singleton tuples, nominal enum payloads, recursive
+pointer enums, overlapping tuple and constructor patterns,
 field-specific duplicate pattern rejection, arbitrary recursive calls, and
 inactive failing expressions. `MemoAcyclic` unfolds finite acyclic graphs to
 trees; unrestricted cyclic graphs remain admitted by the memoized model.
@@ -116,8 +139,9 @@ There are no admitted proof steps or new axioms. Regression axiom reports check
 evaluator correspondence, compiler completeness, heap soundness, and acyclic
 memoized soundness. Pointer tests check field addresses distinct from source
 indices, shared circuit addresses, invalid tables, entry restrictions, nested
-cells, and mutual recursion carrying pointers. Both reference suites remain
-checked.
+cells, and mutual recursion carrying pointers. Enum tests cover nominal type errors, malformed root encodings, zero padding,
+small-field tag collisions, inactive payload views, and end-to-end recursive
+enum execution. Both reference suites remain checked.
 
 Automatic executable circuit-witness generation, a theorem connecting the exact
 multiset row checker to trees, concrete memory layouts, cryptographic lookup

@@ -25,6 +25,11 @@ justified in the circuit, despite having no result leaves.
 
 ## Circuit layout
 
+The tree representation described below is retained in the `Aiur.Tuple` snapshot.
+The main compiler now uses `WireValue` with a static type and flat words, so tuple
+components may include runtime-selected enums. Tuple shape remains in the type
+metadata; slicing is determined by the checked layouts. See [enums](enums.md).
+
 A chip's inputs and output are trees of variable indices. Field leaves receive
 contiguous indices, traversing inputs and then outputs from left to right;
 auxiliary variables follow. Every call allocates a fresh result variable per
@@ -86,6 +91,6 @@ arity. They have no `sorry` or replacement axiom. The scalar reference proofs
 remain in `Aiur.Scalar`. See [correctness](correctness.md) for the complete proof
 architecture. Depth constraints remain deferred.
 
-The main `Aiur` implementation extends tuple leaves with typed pointers, each
+The main `Aiur` implementation extends tuples with nominal enums and typed pointers, each pointer
 occupying one field column. The source/ROM bridge and capacity-bounded
 completeness are documented in [pointers](pointers.md) and [correctness](correctness.md).

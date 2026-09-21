@@ -6,8 +6,9 @@ namespace Aiur.Circuit
 inductive CompileError where
   | invalidProgram (error : CheckError)
   | duplicatePattern (function : String)
+  | tagCollision (enumName : String)
   | invalidShape
-  deriving Repr, BEq, DecidableEq
+  deriving Repr, BEq
 
 namespace Compiler
 
@@ -18,7 +19,7 @@ structure BuildState (F : Type) where
   memory : Array (MemoryLookup F) := #[]
 
 abbrev Build (F : Type) := StateT (BuildState F) (Except CompileError)
-abbrev Symbolic (F : Type) := Value (ArithExpr F)
+abbrev Symbolic (F : Type) := WireValue (ArithExpr F)
 abbrev Locals (F : Type) := List (String × Symbolic F)
 
 def fresh : Build F Var := do
@@ -37,31 +38,33 @@ def boolean [Field F] (selector : ArithExpr F) : Build F Unit :=
 def requireCell (enable address : ArithExpr F) (value : Symbolic F) : Build F Unit :=
   modify fun state => { state with memory := state.memory.push ⟨address, value, enable⟩ }
 
-mutual
-  def freshValue (type : Ty) : Build F (Value Var) := do
-    match type with
-    | .field => return .field (← fresh)
-    | .tuple types => return .tuple (← freshValues types)
-    | .ptr target => return .ptr target (← fresh)
-  termination_by sizeOf type
+def getLayout (decls : Declarations) (type : Ty) : Build F Layout :=
+  liftM ((decls.layout type).mapError (CompileError.invalidProgram ∘ CheckError.invalidDeclarations))
 
-  def freshValues (types : List Ty) : Build F (List (Value Var)) := do
-    match types with
-    | [] => return []
-    | type :: rest => return (← freshValue type) :: (← freshValues rest)
-  termination_by sizeOf types
-end
+def freshWords (count : Nat) : Build F (List Var) := do
+  let state ← get
+  set { state with nextVar := state.nextVar + count }
+  return List.range' state.nextVar count
 
-def checkPatterns [DecidableEq F] (function : String) :
-    List (Pattern F × Expr F) → List (Pattern F) → Except CompileError Unit
-  | [], _ => pure ()
-  | (pattern, _) :: rest, seen => do
-      if seen.any (fun other => decide (pattern.condition = other)) then
-        throw (.duplicatePattern function)
-      if pattern.irrefutable then return ()
-      checkPatterns function rest (pattern.condition :: seen)
+/-- An opaque result gets a variable for every column, including enum tags and padding. -/
+def freshValue (decls : Declarations) (type : Ty) : Build F (WireValue Var) := do
+  let layout ← getLayout decls type
+  return ⟨type, ← freshWords layout.width⟩
 
-/-- A zero test is exact in every field; its inverse is a witness, never division in a constraint. -/
+def freshValues (decls : Declarations) (types : List Ty) : Build F (List (WireValue Var)) :=
+  types.mapM (freshValue decls)
+
+/-- Split a flat tuple/payload using its static types; no witness-dependent slicing occurs. -/
+def splitValues (decls : Declarations) : List Ty → List α → Build F (List (WireValue α))
+  | [], [] => pure []
+  | type :: types, words => do
+      let layout ← getLayout decls type
+      if words.length < layout.width then throw .invalidShape
+      return ⟨type, words.take layout.width⟩ ::
+        (← splitValues decls types (words.drop layout.width))
+  | [], _ :: _ => throw .invalidShape
+
+/-- A zero test is exact in every field; inverses are auxiliary witnesses. -/
 def equalIndicator [Field F] (difference : ArithExpr F) : Build F (ArithExpr F) := do
   let equal := ArithExpr.var (← fresh)
   let inverse := ArithExpr.var (← fresh)
@@ -70,55 +73,117 @@ def equalIndicator [Field F] (difference : ArithExpr F) : Build F (ArithExpr F) 
   constrain (.sub (.mul difference inverse) (.sub (.const 1) equal))
   return equal
 
+def zeroWords (enable : ArithExpr F) : List (ArithExpr F) → Build F Unit
+  | [] => pure ()
+  | word :: words => do
+      guarded enable word
+      zeroWords enable words
+
 mutual
-  /-- A pattern's indicator and bindings, including nested conjunctions of leaf tests. -/
-  def lowerPattern [Field F] (pattern : Pattern F) (value : Symbolic F) :
+  /-- Only the selected constructor's payload view is required to be canonical. -/
+  def validate [Field F] : Layout → ArithExpr F → List (ArithExpr F) → Build F Unit
+    | .field, _, [_] | .ptr _, _, [_] => pure ()
+    | .tuple layouts, enable, words => validateList layouts enable words
+    | .enum _ constructors, enable, tag :: payload => do
+        if payload.length != Layout.payloadWidth constructors then throw .invalidShape
+        let tests ← validateConstructors constructors enable tag payload 0
+        guarded enable (.sub (tests.foldl ArithExpr.add (.const 0)) (.const 1))
+    | _, _, _ => throw .invalidShape
+  termination_by layout _ _ => sizeOf layout
+
+  def validateList [Field F] : List Layout → ArithExpr F → List (ArithExpr F) → Build F Unit
+    | [], _, [] => pure ()
+    | layout :: layouts, enable, words => do
+        if words.length < layout.width then throw .invalidShape
+        validate layout enable (words.take layout.width)
+        validateList layouts enable (words.drop layout.width)
+    | [], _, _ :: _ => throw .invalidShape
+  termination_by layouts _ _ => sizeOf layouts
+
+  def validateConstructors [Field F] : List (String × Layout) → ArithExpr F → ArithExpr F →
+      List (ArithExpr F) → Nat → Build F (List (ArithExpr F))
+    | [], _, _, _, _ => pure []
+    | (_, layout) :: constructors, enable, tag, payload, index => do
+        let test ← equalIndicator (.sub tag (.const (index : F)))
+        let selected := ArithExpr.mul enable test
+        validate layout selected (payload.take layout.width)
+        zeroWords selected (payload.drop layout.width)
+        return test :: (← validateConstructors constructors enable tag payload (index + 1))
+  termination_by constructors _ _ _ _ => sizeOf constructors
+end
+
+def validateValue [Field F] (decls : Declarations) (enable : ArithExpr F) (value : Symbolic F) :
+    Build F Unit := do
+  validate (← getLayout decls value.type) enable value.words
+
+def validateValues [Field F] (decls : Declarations) (enable : ArithExpr F) :
+    List (Symbolic F) → Build F Unit
+  | [] => pure ()
+  | value :: values => do
+      validateValue decls enable value
+      validateValues decls enable values
+
+def checkPatterns [DecidableEq F] (decls : Declarations) (function : String) :
+    List (Pattern F × Expr F) → List (Pattern F) → Except CompileError Unit
+  | [], _ => pure ()
+  | (pattern, _) :: rest, seen => do
+      if seen.any (fun other => decide (pattern.condition = other)) then
+        throw (.duplicatePattern function)
+      if pattern.irrefutable decls then return ()
+      checkPatterns decls function rest (pattern.condition :: seen)
+
+mutual
+  def lowerPattern [Field F] (decls : Declarations) (pattern : Pattern F) (value : Symbolic F) :
       Build F (ArithExpr F × Locals F) := do
-    match pattern, value with
-    | .wildcard, _ => return (.const 1, [])
-    | .bind name, value => return (.const 1, [(name, value)])
-    | .literal literal, .field value =>
-        return (← equalIndicator (.sub value (.const literal)), [])
-    | .tuple patterns, .tuple values => lowerPatterns patterns values
-    | _, _ => throw .invalidShape
+    match pattern with
+    | .wildcard => return (.const 1, [])
+    | .bind name => return (.const 1, [(name, value)])
+    | .literal literal =>
+        let ⟨.field, [word]⟩ := value | throw .invalidShape
+        return (← equalIndicator (.sub word (.const literal)), [])
+    | .tuple patterns =>
+        let .tuple types := value.type | throw .invalidShape
+        lowerPatterns decls patterns (← splitValues decls types value.words)
+    | .construct name ctor patterns =>
+        if value.type ≠ .enum name then throw .invalidShape
+        let some definition := decls.findEnum? name | throw .invalidShape
+        let index := definition.constructors.findIdx (·.name == ctor)
+        let some constructor := definition.constructors[index]? | throw .invalidShape
+        let tag :: payload := value.words | throw .invalidShape
+        let layout ← getLayout decls (.tuple constructor.fields)
+        let values ← splitValues decls constructor.fields (payload.take layout.width)
+        let tagTest ← equalIndicator (.sub tag (.const (index : F)))
+        let (payloadTest, bindings) ← lowerPatterns decls patterns values
+        return (.mul tagTest payloadTest, bindings)
   termination_by sizeOf pattern
 
-  def lowerPatterns [Field F] (patterns : List (Pattern F)) (values : List (Symbolic F)) :
-      Build F (ArithExpr F × Locals F) := do
+  def lowerPatterns [Field F] (decls : Declarations) (patterns : List (Pattern F))
+      (values : List (Symbolic F)) : Build F (ArithExpr F × Locals F) := do
     match patterns, values with
     | [], [] => return (.const 1, [])
     | pattern :: patterns, value :: values =>
-        let (test, bindings) ← lowerPattern pattern value
-        let (tests, rest) ← lowerPatterns patterns values
+        let (test, bindings) ← lowerPattern decls pattern value
+        let (tests, rest) ← lowerPatterns decls patterns values
         return (.mul test tests, bindings ++ rest)
     | _, _ => throw .invalidShape
   termination_by sizeOf patterns
 end
 
-mutual
-  def constrainValue (enable : ArithExpr F) (left right : Symbolic F) : Build F Unit := do
-    match left, right with
-    | .field left, .field right => guarded enable (.sub left right)
-    | .tuple left, .tuple right => constrainValues enable left right
-    | .ptr leftType left, .ptr rightType right =>
-        if leftType = rightType then guarded enable (.sub left right) else throw .invalidShape
-    | _, _ => throw .invalidShape
-  termination_by sizeOf left
+def constrainWords (enable : ArithExpr F) : List (ArithExpr F) → List (ArithExpr F) → Build F Unit
+  | [], [] => pure ()
+  | x :: xs, y :: ys => do
+      guarded enable (.sub x y)
+      constrainWords enable xs ys
+  | _, _ => throw .invalidShape
 
-  def constrainValues (enable : ArithExpr F) (left right : List (Symbolic F)) : Build F Unit := do
-    match left, right with
-    | [], [] => return ()
-    | left :: ls, right :: rs =>
-        constrainValue enable left right
-        constrainValues enable ls rs
-    | _, _ => throw .invalidShape
-  termination_by sizeOf left
-end
+/-- Equality is componentwise on the entire canonical encoding. -/
+def constrainValue (enable : ArithExpr F) (left right : Symbolic F) : Build F Unit := do
+  if left.type ≠ right.type then throw .invalidShape
+  constrainWords enable left.words right.words
 
 def asField : Symbolic F → Build F (ArithExpr F)
-  | .field value => pure value
-  | .tuple _ => throw .invalidShape
-  | .ptr _ _ => throw .invalidShape
+  | ⟨.field, [word]⟩ => pure word
+  | _ => throw .invalidShape
 
 def excludePairs (selectors : List (ArithExpr F)) : Build F Unit := do
   match selectors with
@@ -137,28 +202,44 @@ mutual
           | throw (.invalidProgram (.unboundVariable function name))
         return value
     | .tuple items => return .tuple (← lowerArgs program function locals enable items)
+    | .construct name ctor args =>
+        let some definition := program.enums.findEnum? name | throw .invalidShape
+        let index := definition.constructors.findIdx (·.name == ctor)
+        let some constructor := definition.constructors[index]? | throw .invalidShape
+        let values ← lowerArgs program function locals enable args
+        if values.map WireValue.type ≠ constructor.fields then throw .invalidShape
+        let layout ← getLayout program.enums (.enum name)
+        let payload := values.flatMap WireValue.words
+        if payload.length + 1 > layout.width then throw .invalidShape
+        return ⟨.enum name, .const (index : F) ::
+          (payload ++ List.replicate (layout.width - 1 - payload.length) (.const 0))⟩
     | .project value index =>
-        let .tuple items ← lowerExpr program function locals enable value | throw .invalidShape
-        let some value := items[index]? | throw .invalidShape
-        return value
+        let value ← lowerExpr program function locals enable value
+        let .tuple types := value.type | throw .invalidShape
+        let items ← splitValues program.enums types value.words
+        let some result := items[index]? | throw .invalidShape
+        return result
     | .letValue pattern value body =>
         let value ← lowerExpr program function locals enable value
-        let (test, bindings) ← lowerPattern pattern value
+        let (test, bindings) ← lowerPattern program.enums pattern value
         guarded enable (.sub test (.const 1))
         lowerExpr program function (bindings ++ locals) enable body
     | .store operand =>
         let value ← lowerExpr program function locals enable operand
         let address ← fresh
         boolean enable
+        validateValue program.enums enable value
         requireCell enable (.var address) value
         return .ptr value.type (.var address)
     | .load operand =>
-        let .ptr target address ← lowerExpr program function locals enable operand
-          | throw .invalidShape
-        let result ← freshValue target
+        let pointer ← lowerExpr program function locals enable operand
+        let ⟨.ptr target, [address]⟩ := pointer | throw .invalidShape
+        let result ← freshValue program.enums target
+        let value := result.map ArithExpr.var
         boolean enable
-        requireCell enable address (result.map ArithExpr.var)
-        return result.map ArithExpr.var
+        validateValue program.enums enable value
+        requireCell enable address value
+        return value
     | .neg value =>
         return .field (.sub (.const 0) (← asField (← lowerExpr program function locals enable value)))
     | .binary op left right =>
@@ -176,16 +257,20 @@ mutual
         let some callee := program.findFunction? name
           | throw (.invalidProgram (.unknownFunction function name))
         let args ← lowerArgs program function locals enable args
-        let result ← freshValue callee.result
+        if args.map WireValue.type ≠ callee.params.map Prod.snd then throw .invalidShape
+        let result ← freshValue program.enums callee.result
         boolean enable
+        validateValues program.enums enable args
+        validateValue program.enums enable (result.map ArithExpr.var)
         modify fun state => { state with sends := state.sends.push ⟨name, args, result, enable⟩ }
         return result.map ArithExpr.var
     | .matchValue scrutinee arms =>
-        liftM (checkPatterns function arms [])
+        liftM (checkPatterns program.enums function arms [])
         let type ← liftM ((inferType program function
           (locals.map fun (name, value) => (name, value.type)) expr).mapError CompileError.invalidProgram)
         let scrutinee ← lowerExpr program function locals enable scrutinee
-        let result ← freshValue type
+        let result ← freshValue program.enums type
+        validateValue program.enums enable (result.map ArithExpr.var)
         let selectors ← lowerArms program function locals scrutinee
           (result.map ArithExpr.var) enable arms
         excludePairs selectors
@@ -209,13 +294,13 @@ mutual
     match arms with
     | [] => return []
     | (pattern, body) :: rest =>
-        let (test, bindings) ← lowerPattern pattern scrutinee
+        let (test, bindings) ← lowerPattern program.enums pattern scrutinee
         let selector := ArithExpr.var (← fresh)
         boolean selector
         constrain (.sub selector (.mul remaining test))
         let body ← lowerExpr program function (bindings ++ locals) selector body
         constrainValue selector result body
-        if pattern.irrefutable then return [selector]
+        if pattern.irrefutable program.enums then return [selector]
         let rest ← lowerArms program function locals scrutinee result
           (.mul remaining (.sub (.const 1) test)) rest
         return selector :: rest
@@ -224,10 +309,12 @@ end
 
 def lowerFunction [Field F] [DecidableEq F] (program : Program F) (fn : Function F) :
     Except CompileError (Chip F) := do
-  let build : Build F (List (Value Var) × Value Var) := do
-    let inputs ← freshValues (fn.params.map Prod.snd)
-    let output ← freshValue fn.result
-    let locals := (fn.params.map Prod.fst).zip (inputs.map (Value.map ArithExpr.var))
+  let build : Build F (List (WireValue Var) × WireValue Var) := do
+    let inputs ← freshValues program.enums (fn.params.map Prod.snd)
+    let output ← freshValue program.enums fn.result
+    validateValues program.enums (.const 1) (inputs.map (WireValue.map ArithExpr.var))
+    validateValue program.enums (.const 1) (output.map ArithExpr.var)
+    let locals := (fn.params.map Prod.fst).zip (inputs.map (WireValue.map ArithExpr.var))
     let body ← lowerExpr program fn.name locals (.const 1) fn.body
     constrainValue (.const 1) (output.map ArithExpr.var) body
     return (inputs, output)
@@ -237,11 +324,15 @@ def lowerFunction [Field F] [DecidableEq F] (program : Program F) (fn : Function
 
 end Compiler
 
-/-- One chip per function, with one fresh variable for each field leaf of a call result. -/
+def checkEnumTags (F : Type) [NatCast F] [DecidableEq F] (declaration : EnumDecl) :
+    Except CompileError Unit :=
+  if ((List.range declaration.constructors.length).map (fun i : Nat => (i : F))).Nodup then
+    pure ()
+  else throw (.tagCollision declaration.name)
+
 def compile [Field F] [DecidableEq F] (program : Program F) : Except CompileError (System F) := do
-  match typecheck program with
-  | .error error => throw (.invalidProgram error)
-  | .ok () => pure ()
-  return ⟨← program.functions.mapM (Compiler.lowerFunction program)⟩
+  let _ ← (typecheck program).mapError CompileError.invalidProgram
+  for declaration in program.enums do checkEnumTags F declaration
+  return ⟨← program.functions.mapM (Compiler.lowerFunction program), program.enums⟩
 
 end Aiur.Circuit

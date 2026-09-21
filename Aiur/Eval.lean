@@ -15,6 +15,8 @@ def evalExpr [Field F] [DecidableEq F] (program : Program F)
           let some (_, value) := locals.find? (·.1 == name) | throw (.unboundVariable name)
           return value
       | .tuple items => return .tuple (← items.mapM (evalExpr program locals fuel))
+      | .construct name ctor args =>
+          return .construct name ctor (← args.mapM (evalExpr program locals fuel))
       | .project value index => liftM (projectValue (← evalExpr program locals fuel value) index)
       | .letValue pattern value body =>
           let value ← evalExpr program locals fuel value

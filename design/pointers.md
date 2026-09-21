@@ -116,3 +116,14 @@ memoized soundness is deliberately not asserted. No depth constraint is added.
 
 All these theorems are proved without `sorry` or new axioms. The correspondence
 is an abstract semantic statement, not a concrete cryptographic security theorem.
+
+## Enum payloads and raw ROMs
+
+With enums, `ROM F` stores semantic `Value F`, while the circuit uses `WireROM F`
+with typed flat `WireValue F` cells. `Memory/WireEncoding` proves that the canonical
+encoding of a checked execution's heap decodes back to the same semantic ROM.
+Soundness decodes the prover's raw table, omitting unused malformed cells; every
+active lookup is constrained to be canonical and survives decoding. Pointer
+freedom is checked recursively in the selected enum payload. Public completeness
+returns `EncodedEntryDerives` or `EncodedMemoEntryDerives`, keeping the same
+allocation-capacity condition and content-based pointer correspondence.
