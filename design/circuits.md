@@ -7,15 +7,15 @@ constraints consisting only of polynomials equal to zero. Polynomials contain
 constants, variables, addition, subtraction, and multiplication. Their order has
 no semantic significance.
 
-Calls emit messages with a function name, structured arguments, and a structured
-result. Each field or pointer leaf of the result is a fresh variable. The model abstracts
+Calls emit messages with a function name and type-labelled flat arguments and
+result. Every result column is a fresh variable, including enum tags and padding. The model abstracts
 away lookup arguments, fingerprints, and cryptographic protocol details.
 
 `Circuit.compile (source.toField F)` checks the program and produces one chip per
 function without unfolding callees. All interface leaves are allocated before
-auxiliary variables. A tuple is a tree of field expressions, typed pointer addresses, or variable indices;
-the row is a flat list of field elements. Shape remains part of the message, so
-different tuple nestings cannot be confused by flattening.
+auxiliary variables. `WireValue` stores a type and flat words: field expressions
+during lowering, variable indices at interfaces, and field elements in messages.
+Type metadata preserves tuple shape, nominal enum identity, and pointer targets.
 
 ## Arithmetic and calls
 
@@ -24,16 +24,16 @@ the current enable `p` give `p * (b * u - 1) = 0`; the expression returns `a * u
 An active division requires a nonzero denominator. Inactive divisions place no
 restriction on the denominator.
 
-A call allocates a result tree with one fresh variable per leaf, constrains its
-enable to be Boolean, and emits a send carrying the complete structured call.
+A call allocates one fresh variable per result column, constrains its
+enable to be Boolean, and emits a send carrying the complete typed call.
 Returning `()` allocates no result variables but still emits the send. Calls in
 inactive branches do not contribute premises.
 
 ## Matching
 
-Patterns are typed trees of literals, wildcards, and bindings. Equality indicators
+Patterns are typed trees of literals, wildcards, bindings, and constructors. Equality indicators
 are constrained by zero tests with inverse witnesses. An arm's indicator is the
-product of its leaf tests. Branch selectors additionally require every earlier
+product of its literal and constructor-tag tests. Branch selectors additionally require every earlier
 arm's indicator to be zero. The exact equations and their interpretation appear
 in [tuples](tuples.md).
 
@@ -47,13 +47,14 @@ arms after the first irrefutable pattern are discarded.
 ## Acceptance and proofs
 
 `System.check` takes a shared ROM, checks address uniqueness, pointer-free entry
-arguments, active memory lookups, bounds, row lengths, polynomial equations, and exact
+arguments, canonical root encodings, active memory lookups, bounds, row lengths,
+polynomial equations, and exact
 multiset message balance for supplied rows and one entry request. It does not
 generate assignments. Its bridge to derivation semantics remains separate work.
 
 `Derivation` is a finite closed tree: every enabled send needs a child proof.
 `MemoDerivation` is a finite explicit graph with sharing and permitted cycles.
-Both models now carry structured messages. Acyclic graphs are proved to unfold
+Both models carry typed flat messages. Acyclic graphs are proved to unfold
 into trees; unrestricted cyclic acceptance intentionally admits self-justification.
 
 The compiler has proved source soundness for both closed derivation trees
@@ -70,3 +71,10 @@ The table is fixed across the entire derivation. Typed pointers occupy one field
 column; a store address and every load-result leaf receive fresh variables.
 Source completeness assumes enough field addresses for the allocation count.
 Source soundness relates stored contents and permits representation sharing.
+
+The [enum extension](enums.md) adds canonical tags and zero-padded payloads.
+Polynomial gadgets validate active interfaces, calls, and ROM values; only the
+selected constructor's payload interpretation is required to be valid. The
+compiler rejects constructor-tag collisions in the selected field. The raw
+`WireROM` is decoded once into a semantic `ROM`; active cells are guaranteed to
+survive that decoding by their local validation constraints.

@@ -1,6 +1,5 @@
 import Aiur.Memory.Operations
-import Aiur.Correctness
-import Aiur.MemoSoundness
+import Aiur.Memory.Encoding
 
 namespace Aiur
 
@@ -37,6 +36,10 @@ theorem ROMEvalExpr.realize [Field F] [DecidableEq F] (valid : rom.Valid)
       intro heap locals related
       obtain ⟨sources, after, evaluated, grows, results⟩ := ih heap locals related
       exact ⟨.tuple sources, after, .tuple evaluated, grows, .tuple results⟩
+  | construct _ ih =>
+      intro heap locals related
+      obtain ⟨sources, after, evaluated, grows, results⟩ := ih heap locals related
+      exact ⟨_, after, .construct evaluated, grows, .construct results⟩
   | project _ projected ih =>
       intro heap locals related
       obtain ⟨source, after, evaluated, grows, result⟩ := ih heap locals related

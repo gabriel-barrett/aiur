@@ -4,21 +4,21 @@ import Aiur.Semantics.CallTypes
 
 namespace Aiur
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
-private theorem compiled_typechecked [Field F] [DecidableEq F]
-    {program : Program F} {system : Circuit.System F} (compiled : Circuit.compile program = .ok system) :
-    typecheck program = .ok () := by
-  cases checked : typecheck program with
-  | error error => simp [Circuit.compile, checked] at compiled; cases compiled
-  | ok finished => cases finished; rfl
+/-- Derivability of the canonical flat encodings of a semantic call. -/
+def Circuit.EncodedEvaluates [Field F] [DecidableEq F] (decls : Declarations)
+    (system : Circuit.System F) (rom : WireROM F) (name : String)
+    (args : List (Value F)) (result : Value F) : Prop :=
+  ∃ wires output, DecodesValues decls wires args ∧ output.decode decls = some result ∧
+    Circuit.CircuitEvaluates system rom name wires output
 
-/-- Compiled call premises carry the function's declared structural result type. -/
+/-- Compiled premises carry the declared result type and a well-formed nominal value. -/
 theorem circuit_calls_typed [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F} (compiled : Circuit.compile program = .ok system) :
-    CallsTyped program (Circuit.CircuitEvaluates system rom) := by
+    CallsTyped program (Circuit.EncodedEvaluates program.enums system rom) := by
   intro name args result derives fn found
-  obtain ⟨tree⟩ := derives
+  obtain ⟨wires, output, _, decoded, ⟨tree⟩⟩ := derives
   cases tree with
   | node chip row lookup valid children =>
       obtain ⟨source, sourceFound, lowered⟩ := Circuit.compile_find_chip compiled lookup
@@ -27,20 +27,40 @@ theorem circuit_calls_typed [Field F] [DecidableEq F]
       rw [names] at found
       have same : fn = source := Option.some.inj (found.symm.trans sourceFound)
       subst fn
-      simpa only [Circuit.Chip.receive, Value.type_map] using (Circuit.Compiler.lowerFunction_interface lowered).2.2
+      refine ⟨?_, (WireValue.decode_spec decoded).2.1⟩
+      exact (WireValue.decode_spec decoded).1.trans (by
+        simpa only [Circuit.Chip.receive, WireValue.type_map] using
+          (Circuit.Compiler.lowerFunction_interface lowered).2.2)
 
-/-- Every finite ROM evaluation produces a closed derivation of the compiled chips. -/
+theorem circuit_calls_complete [Field F] [DecidableEq F]
+    {program : Program F} {system : Circuit.System F} (compiled : Circuit.compile program = .ok system) :
+    Circuit.Compiler.CallsComplete program.enums (Circuit.EncodedEvaluates program.enums system rom)
+      (Circuit.CircuitEvaluates system rom) := by
+  intro name args result evaluated wires output arguments decoded
+  obtain ⟨otherArgs, otherResult, otherArguments, otherDecoded, derived⟩ := evaluated
+  have checked := typecheck_declarations (Circuit.compile_stages compiled).1
+  have sameArgs := arguments.wires_unique checked otherArguments
+  have sameResult := WireValue.decode_injective checked decoded otherDecoded
+  simpa only [sameArgs, sameResult] using derived
+
+/-- Every finite ROM evaluation produces a closed derivation of its canonical encodings. -/
 theorem evaluation_complete [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
-    {name : String} {args : List (Value F)} {result : Value F} (evaluated : ROMEvalCall rom program name args result) :
-    Circuit.CircuitEvaluates system rom name args result := by
+    {name : String} {args : List (Value F)} {result : Value F}
+    (evaluated : ROMEvalCall (rom.decode program.enums) program name args result) :
+    Circuit.EncodedEvaluates program.enums system rom name args result := by
+  have stages := Circuit.compile_stages compiled
+  have declarations := typecheck_declarations stages.1
   induction evaluated using ROMEvalCall.rec
-    (motive_1 := fun locals expr value _ => ROMEvalExprWith rom (Circuit.CircuitEvaluates system rom) locals expr value)
-    (motive_2 := fun locals exprs values _ => ROMEvalArgsWith rom (Circuit.CircuitEvaluates system rom) locals exprs values) with
+    (motive_1 := fun locals expr value _ =>
+      ROMEvalExprWith (rom.decode program.enums) (Circuit.EncodedEvaluates program.enums system rom) locals expr value)
+    (motive_2 := fun locals exprs values _ =>
+      ROMEvalArgsWith (rom.decode program.enums) (Circuit.EncodedEvaluates program.enums system rom) locals exprs values) with
   | literal => exact .literal
   | var lookup => exact .var lookup
   | tuple _ ih => exact .tuple ih
+  | construct _ ih => exact .construct ih
   | project _ projected ih => exact .project ih projected
   | letValue _ matched _ inputIH bodyIH => exact .letValue inputIH matched bodyIH
   | store _ cell ih => exact .store ih cell
@@ -52,24 +72,40 @@ theorem evaluation_complete [Field F] [DecidableEq F]
   | nil => exact .nil
   | cons _ _ headIH tailIH => exact .cons headIH tailIH
   | intro prepared _ bodyIH =>
-      obtain ⟨fn, lookup, types, rfl, rfl⟩ := prepareCall_spec prepared
+      obtain ⟨fn, lookup, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
       obtain ⟨chip, found, lowered⟩ := Circuit.compile_find_function compiled lookup
-      have checked := typecheck_function (compiled_typechecked compiled) (List.mem_of_find?_eq_some lookup)
-      obtain ⟨row, rowName, valid, receive, premises⟩ := Circuit.Compiler.lowerFunction_complete
-        lowered (circuit_calls_typed compiled) checked types bodyIH
+      have checked := typecheck_function stages.1 (List.mem_of_find?_eq_some lookup)
+      obtain ⟨row, rowName, valid, arguments, decoded, premises⟩ := Circuit.Compiler.lowerFunction_complete
+        declarations stages.2.1 lowered (circuit_calls_typed compiled) (circuit_calls_complete compiled)
+        checked types formed bodyIH
       have name := Circuit.findFunction_name lookup
       have rowLookup : system.findChip? row.chip = some chip := by rw [rowName, name]; exact found
       obtain ⟨children⟩ := Circuit.derivations_nonempty_iff.mpr premises
       have tree := Circuit.Derivation.node chip row rowLookup valid children
-      rw [receive, name] at tree
-      exact ⟨tree⟩
+      refine ⟨(chip.receive row).args, (chip.receive row).result, arguments, decoded, ?_⟩
+      have chipName := (Circuit.Compiler.lowerFunction_interface lowered).1.trans name
+      simpa only [Circuit.Chip.receive, chipName] using Nonempty.intro tree
 
-/-- Successful compilation preserves and reflects evaluation, including arbitrary nested tuples. -/
+/-- Completeness also holds for any supplied canonical encodings of the root values. -/
+theorem evaluation_complete_encoded [Field F] [DecidableEq F]
+    {program : Program F} {system : Circuit.System F}
+    (compiled : Circuit.compile program = .ok system)
+    {name : String} {args : List (Value F)} {result : Value F}
+    (evaluated : ROMEvalCall (rom.decode program.enums) program name args result)
+    {wires : List (WireValue F)} {output : WireValue F}
+    (arguments : DecodesValues program.enums wires args) (decoded : output.decode program.enums = some result) :
+    Circuit.CircuitEvaluates system rom name wires output :=
+  circuit_calls_complete compiled name args result (evaluation_complete compiled evaluated) wires output arguments decoded
+
+/-- The compiled rules preserve and reflect evaluation of nominal, canonically encoded values. -/
 theorem compiler_correct [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
     {name : String} {args : List (Value F)} {result : Value F} :
-    ROMEvalCall rom program name args result ↔ Circuit.CircuitEvaluates system rom name args result :=
-  ⟨evaluation_complete compiled, compiler_sound compiled⟩
+    ROMEvalCall (rom.decode program.enums) program name args result ↔
+      Circuit.EncodedEvaluates program.enums system rom name args result := by
+  refine ⟨evaluation_complete compiled, ?_⟩
+  rintro ⟨_, _, arguments, decoded, derived⟩
+  exact compiler_sound compiled derived arguments decoded
 
 end Aiur

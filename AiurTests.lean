@@ -3,6 +3,9 @@ import AiurTests.Circuit
 import AiurTests.Semantics
 import AiurTests.Memo
 import AiurTests.TupleRuntime
+import AiurTests.Enums
+import AiurTests.EnumEncoding
+import AiurTests.EnumProofs
 import AiurTests.Pointers
 import AiurTests.Tuples
 import Mathlib.Algebra.Field.Rat
@@ -161,3 +164,5 @@ def main : IO Unit := do
   AiurTupleTests.run
   AiurPointerTests.run
   AiurTupleRuntimeTests.run
+  AiurEnumTests.run
+  AiurEnumEncodingTests.run

@@ -2,10 +2,10 @@ import Aiur.Circuit.Derivation
 
 namespace Aiur.Circuit
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
 /-- One locally checked rule instance, without proofs of its call premises. -/
-structure RuleInstance [Field F] (system : System F) (rom : ROM F) where
+structure RuleInstance [Field F] (system : System F) (rom : WireROM F) where
   chip : Chip F
   row : Row F
   lookup : system.findChip? row.chip = some chip
@@ -22,7 +22,7 @@ A finite graph of locally valid rules. Every enabled call has an explicit target
 with the required conclusion. References may be shared or cyclic, including self-references.
 There is no ordering, rank, multiplicity, or source-termination condition.
 -/
-structure MemoDerivation [Field F] [DecidableEq F] (system : System F) (rom : ROM F)
+structure MemoDerivation [Field F] [DecidableEq F] (system : System F) (rom : WireROM F)
     (message : Message F) where
   size : Nat
   node : Fin size → RuleInstance system rom
@@ -32,11 +32,11 @@ structure MemoDerivation [Field F] [DecidableEq F] (system : System F) (rom : RO
   target_claim : ∀ i j, (node (target i j)).conclusion = (node i).premises[j]
 
 /-- Memoized acceptance asserts the existence of a finite, possibly cyclic graph. -/
-def MemoDerives [Field F] [DecidableEq F] (system : System F) (rom : ROM F) (message : Message F) : Prop :=
+def MemoDerives [Field F] [DecidableEq F] (system : System F) (rom : WireROM F) (message : Message F) : Prop :=
   Nonempty (MemoDerivation system rom message)
 
-def MemoAccepts [Field F] [DecidableEq F] (system : System F) (rom : ROM F)
-    (function : String) (args : List (Value F)) (result : Value F) : Prop :=
+def MemoAccepts [Field F] [DecidableEq F] (system : System F) (rom : WireROM F)
+    (function : String) (args : List (WireValue F)) (result : WireValue F) : Prop :=
   MemoDerives system rom ⟨function, args, result⟩
 
 /-- The claims represented anywhere in a graph, including its root. -/

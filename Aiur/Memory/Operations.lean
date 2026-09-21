@@ -65,11 +65,19 @@ mutual
         | field => simp only [Pattern.bindings]; split
                    · exact .some .nil
                    · exact .none
-        | tuple | ptr => simp only [Pattern.bindings]; exact .none
+        | tuple | ptr | construct => simp only [Pattern.bindings]; exact .none
     | tuple patterns =>
         cases related with
-        | field | ptr => simp only [Pattern.bindings]; exact .none
+        | field | ptr | construct => simp only [Pattern.bindings]; exact .none
         | tuple items => simpa only [Pattern.bindings] using Pattern.representsList patterns items
+    | construct name ctor patterns =>
+        cases related with
+        | field | ptr | tuple => simp only [Pattern.bindings]; exact .none
+        | construct items =>
+            simp only [Pattern.bindings]
+            split
+            · exact Pattern.representsList patterns items
+            · exact .none
   termination_by sizeOf pattern
 
   theorem Pattern.representsList [DecidableEq F] (patterns : List (Pattern F))
@@ -115,7 +123,7 @@ theorem Represents.project {source : SourceValue F} {target result : Value F} {i
     (related : Represents rom heap source target) (projected : projectValue target index = .ok result) :
     ∃ value, projectValue source index = .ok value ∧ Represents rom heap value result := by
   cases related with
-  | field | ptr => cases projected
+  | field | ptr | construct => cases projected
   | @tuple sources targets items =>
       cases found : targets[index]? with
       | none => simp [projectValue, found] at projected
@@ -130,7 +138,7 @@ theorem Represents.neg [Field F] {source : SourceValue F} {target result : Value
     ∃ value, evalNeg source = .ok value ∧ Represents rom heap value result := by
   cases related with
   | field => cases operation; exact ⟨_, rfl, .field⟩
-  | tuple | ptr => cases operation
+  | tuple | ptr | construct => cases operation
 
 theorem Represents.binary [Field F] [DecidableEq F]
     {left right : SourceValue F} {x y result : Value F} {op : BinOp}
@@ -138,10 +146,10 @@ theorem Represents.binary [Field F] [DecidableEq F]
     (operation : evalBinOp op x y = .ok result) :
     ∃ value, evalBinOp op left right = .ok value ∧ Represents rom heap value result := by
   cases l with
-  | tuple | ptr => cases operation
+  | tuple | ptr | construct => cases operation
   | field =>
       cases r with
-      | tuple | ptr => cases operation
+      | tuple | ptr | construct => cases operation
       | field =>
           cases op with
           | add | sub | mul => cases operation; exact ⟨_, rfl, .field⟩
@@ -159,7 +167,16 @@ theorem prepareCall_represents {program : Program F} {name : String}
     (prepared : prepareCall program name targets = .ok (locals, body)) :
     ∃ sourceLocals, prepareCall program name sources = .ok (sourceLocals, body) ∧
       RepresentsEnv rom heap sourceLocals locals := by
-  obtain ⟨fn, found, types, rfl, rfl⟩ := prepareCall_spec prepared
-  exact ⟨_, prepareCall_of_types found (types.trans related.types.symm), related.zip _⟩
+  obtain ⟨fn, found, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
+  refine ⟨_, prepareCall_of_types found (types.trans related.types.symm) ?_, related.zip _⟩
+  clear types prepared found
+  induction related with
+  | nil => simp
+  | cons head tail ih =>
+      intro source member
+      rcases List.mem_cons.mp member with rfl | member
+      · rw [head.wellFormed program.enums]
+        exact formed _ (by simp)
+      · exact ih (fun v h => formed v (by simp [h])) source member
 
 end Aiur

@@ -7,7 +7,7 @@ namespace Aiur
 @[simp] theorem Value.type_mapAddress (encode : A → B) (value : Value F A) :
     (value.mapAddress encode).type = value.type := by
   cases value with
-  | field | ptr => simp [Value.mapAddress, Value.type]
+  | field | ptr | construct => simp [Value.mapAddress, Value.type]
   | tuple values =>
       simp only [Value.mapAddress, Value.type, List.map_map, Ty.tuple.injEq]
       apply List.map_congr_left
@@ -24,8 +24,8 @@ theorem Value.mapAddress_free (value : Value F A) (free : value.pointerFree = tr
   cases value with
   | field => simp [Value.mapAddress]
   | ptr => simp [Value.pointerFree, Value.type, Ty.pointerFree] at free
-  | tuple items =>
-      simp only [Value.mapAddress, Value.tuple.injEq]
+  | tuple items | construct _ _ items =>
+      simp only [Value.mapAddress, Value.tuple.injEq, Value.construct.injEq, true_and]
       have itemsFree : ∀ item ∈ items, item.pointerFree = true := by
         simpa [Value.pointerFree, Value.type, Ty.pointerFree] using free
       exact List.map_congr_left (fun item member => Value.mapAddress_free item (itemsFree item member) left right)
@@ -46,14 +46,22 @@ mutual
     | bind => simp [Pattern.bindings, encodeEnv]
     | literal =>
         cases value with
-        | tuple | ptr => simp [Value.mapAddress, Pattern.bindings]
+        | tuple | ptr | construct => simp [Value.mapAddress, Pattern.bindings]
         | field => simp only [Value.mapAddress, Pattern.bindings]; split <;> rfl
     | tuple patterns =>
         cases value with
-        | field | ptr => simp [Value.mapAddress, Pattern.bindings]
+        | field | ptr | construct => simp [Value.mapAddress, Pattern.bindings]
         | tuple values =>
             simpa only [Value.mapAddress, Pattern.bindings] using
               Pattern.bindingsList_mapAddress patterns values encode
+    | construct name ctor patterns =>
+        cases value with
+        | field | ptr | tuple => simp [Value.mapAddress, Pattern.bindings]
+        | construct actual actualCtor values =>
+            simp only [Value.mapAddress, Pattern.bindings]
+            split
+            · exact Pattern.bindingsList_mapAddress patterns values encode
+            · rfl
   termination_by sizeOf pattern
 
   theorem Pattern.bindingsList_mapAddress [DecidableEq F] (patterns : List (Pattern F))
@@ -87,7 +95,7 @@ theorem selectArm_mapAddress [DecidableEq F] (value : Value F A)
 theorem projectValue_mapAddress (value : Value F A) (index : Nat) (encode : A → B) :
     projectValue (value.mapAddress encode) index = (projectValue value index).map (Value.mapAddress encode) := by
   cases value with
-  | field | ptr => simp [Value.mapAddress, projectValue, Except.map]
+  | field | ptr | construct => simp [Value.mapAddress, projectValue, Except.map]
   | tuple items =>
       cases found : items[index]? <;> simp [Value.mapAddress, projectValue, List.getElem?_map, found, Except.map,
         pure, Except.pure]
@@ -104,14 +112,39 @@ theorem evalBinOp_mapAddress [Field F] [DecidableEq F]
   cases op <;> simp [Value.mapAddress]
   split <;> simp [Value.mapAddress]
 
+@[simp] theorem Value.wellFormed_mapAddress (decls : Declarations) (encode : A → B)
+    (value : Value F A) : (value.mapAddress encode).wellFormed decls = value.wellFormed decls := by
+  cases value with
+  | field | ptr => simp [Value.mapAddress, Value.wellFormed]
+  | tuple values =>
+      simp only [Value.mapAddress, Value.wellFormed, List.map_map]
+      congr 1
+      apply List.map_congr_left
+      intro value member
+      exact Value.wellFormed_mapAddress decls encode value
+  | construct name ctor values =>
+      simp only [Value.mapAddress, Value.wellFormed]
+      cases decls.findConstructor? name ctor with
+      | none => rfl
+      | some definition =>
+          simp only [List.map_map, Function.comp_def, Value.type_mapAddress]
+          congr 2
+          apply List.map_congr_left
+          intro value member
+          exact Value.wellFormed_mapAddress decls encode value
+termination_by sizeOf value
+
 theorem prepareCall_mapAddress {program : Program F} {name : String} {args : List (Value F A)}
     {locals : Environment F A} {body : Expr F}
     (prepared : prepareCall program name args = .ok (locals, body)) (encode : A → B) :
     prepareCall program name (args.map (Value.mapAddress encode)) = .ok (encodeEnv encode locals, body) := by
-  obtain ⟨fn, found, types, rfl, rfl⟩ := prepareCall_spec prepared
+  obtain ⟨fn, found, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
   have shape : fn.params.map Prod.snd = (args.map (Value.mapAddress encode)).map Value.type := by
     simpa only [List.map_map, Function.comp_def, Value.type_mapAddress] using types
-  have prepared := prepareCall_of_types found shape
+  have prepared := prepareCall_of_types found shape (by
+    intro value member
+    obtain ⟨source, sourceMember, rfl⟩ := List.mem_map.mp member
+    simpa using formed source sourceMember)
   have localsMap : encodeEnv encode ((fn.params.map Prod.fst).zip args) =
       (fn.params.map Prod.fst).zip (args.map (Value.mapAddress encode)) := by
     simp only [encodeEnv, List.zip_map_right]
@@ -125,7 +158,7 @@ theorem EvalExpr.grows [Field F] [DecidableEq F] {program : Program F}
     (motive_2 := fun _ _ before _ after _ => before <+: after)
     (motive_3 := fun _ _ before _ after _ => before <+: after) with
   | literal | var | nil => exact List.prefix_refl _
-  | tuple _ ih | project _ _ ih | neg _ _ ih | load _ _ ih | intro _ _ ih => exact ih
+  | tuple _ ih | construct _ ih | project _ _ ih | neg _ _ ih | load _ _ ih | intro _ _ ih => exact ih
   | letValue _ _ _ a b | binary _ _ _ a b | call _ _ a b | matchValue _ _ _ a b | cons _ _ a b => exact a.trans b
   | store _ ih => exact ih.trans ⟨_, rfl⟩
 

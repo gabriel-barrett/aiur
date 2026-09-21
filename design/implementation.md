@@ -2,12 +2,16 @@
 
 ## Current modules
 
-- `Aiur/AST.lean`: recursive field, tuple, and pointer types, values, patterns, expressions, explicitly typed
+- `Aiur/AST.lean`: recursive field, tuple, enum, and pointer types, values, patterns, expressions, explicitly typed
   signatures, and field specialization.
+- `Aiur/Declarations.lean` and `DeclarationTotal.lean`: name checks, rejection
+  of inline type cycles, finite layouts, and layout existence for valid types.
+- `Aiur/Wire.lean` and the `Wire*`/`EncodingTypes` lemmas: flat typed values,
+  canonical enum codecs, tag conditions, round trips, and decoded ROM tables.
 - `Aiur/Typecheck.lean`: expression inference against declared signatures; tuple
-  shapes, projections, scoped bindings, and result agreement.
+  shapes, nominal constructor payloads, projections, scoped bindings, and result agreement.
 - `Aiur/TypecheckFacts.lean` and `Semantics/CallTypes.lean`: preservation of
-  inferred tuple shapes, function-body checks, and entry argument-shape facts.
+  inferred shapes and constructor validity, function-body checks, and entry argument-shape facts.
 - `Aiur/Frontend.lean`: `aiur%` elaborates a string into a checked `Program Nat`.
   Parameter destructuring lowers to lets with generated parameter names that
   cannot collide with source identifiers.
@@ -17,12 +21,14 @@
   `EvalFn`, and pointer-free public `EvalCall`.
 - `Aiur/EvalCorrectness.lean`: both directions of evaluator correspondence and
   expression and call determinism.
-- `Aiur/Circuit/Basic.lean`: tuple-shaped interfaces and messages, flat rows, and
+- `Aiur/Circuit/Basic.lean`: typed flat interfaces and messages, flat rows, and
   ROM lookup requirements and exact channel balance. Polynomial syntax and rows reuse the scalar reference.
-- `Aiur/Circuit/Compile.lean`: one chip per function, fresh result leaves, tuple
+- `Aiur/Circuit/Compile.lean`: one chip per function, fresh result columns, constructor and tuple
   pattern indicators, and first-match branch selectors.
-- `Aiur/Circuit/PatternFacts.lean`: the literal equality-test equations are sound
+- `Aiur/Circuit/Indicator.lean` and `IndicatorWitness.lean`: the literal equality-test equations are sound
   and have witnesses in every field.
+- `Aiur/Circuit/ValidationCorrectness.lean` and `ValidationWitness.lean`:
+  polynomial validation of active enum values and witnesses for inactive views.
 - `Aiur/Circuit/PatternCorrectness.lean` and `ValueCorrectness.lean`: exact
   recursive pattern indicators and bindings, and guarded structured equality.
 - `Aiur/Circuit/ExpressionCorrectness.lean`, `CompileFacts.lean`, and
@@ -45,10 +51,11 @@
 - `Aiur/Memory.lean`, `Runtime.lean`, and `ROMSemantics.lean`: separate source
   heaps and field-valued tables, execution helpers, and pure ROM evaluation.
 - `Aiur/Memory/`: address encoding and capacity, heap growth, contents-based
-  representation, and both directions of the source/ROM bridge.
-- `Aiur/MemoryCorrectness.lean`: end-to-end pointer soundness, capacity-bounded
+  representation, evaluation/heap typing preservation, canonical table encoding,
+  and both directions of the source/ROM bridge.
+- `Aiur/MemoryCorrectness.lean`: end-to-end enum and pointer soundness, capacity-bounded
   completeness, and acyclic memoized soundness.
-- `Aiur/Circuit/Entry.lean`: public acceptance with pointer-free arguments and
+- `Aiur/Circuit/Entry.lean`: public acceptance with a canonical root, pointer-free decoded arguments, and
   an existentially chosen valid table.
 
 The previously proved field-only implementation remains under `Aiur/Scalar/`,
@@ -60,7 +67,10 @@ preserved under `Aiur/Tuple/`, namespace `Aiur.Tuple`, frontend `tuple_aiur%`.
 
 ## Syntax and checking
 
-All function parameter and return annotations are mandatory. Expression types
+Enums use qualified constructors and explicit payload types. All declarations
+are collected before checking bodies, allowing forward and mutual references.
+Only pointer-mediated type recursion is accepted. All function parameter and
+return annotations are mandatory. Expression types
 are inferred from signatures and lexical bindings; signatures are not inferred.
 Projections bind tighter than unary negation, store, and load, which bind tighter than
 multiplication and division, then addition and subtraction. Binary operators
@@ -74,7 +84,7 @@ The checker examines every body and arm. It rejects duplicate definitions and
 bindings, unknown names, wrong call arity, type mismatches, wrong tuple pattern
 shapes, invalid projections, refutable lets, and inconsistent arm result types.
 It does not establish termination, exhaustiveness, or nonzero denominators.
-Field-specific pattern duplicates are checked by compilation.
+Field-specific pattern duplicates and constructor-tag collisions are checked by compilation.
 
 ## Evaluation and validation
 
@@ -91,7 +101,7 @@ The semantic definitions and compiler are total Lean definitions. Only frontend
 traversal uses metaprogramming. Constraints have no execution order. Automatic
 circuit witness generation remains separate work.
 
-`lake build` checks the pointer implementation and both preserved reference models.
+`lake build` checks the enum and pointer implementation and both preserved reference models.
 `AiurTests/Tuples.lean` exercises nested, wide, empty, and singleton tuples,
 bindings, projections, strictness, recursion, shape errors, finite-field pattern
 collisions, structured messages, and forged branch selectors. General soundness
@@ -104,3 +114,9 @@ soundness against admitted proofs. `AiurTests/Pointers.lean` checks pointer synt
 heterogeneous cells, internal pointer calls, entry rejection, table consistency,
 shared field addresses, and the new end-to-end theorems. `lake test` runs all
 runtime suites, including the original tuple cases against the main API.
+
+`AiurTests/Enums.lean` covers syntax, nominal typing, recursion through pointers,
+matching, strict evaluation, and tag/pattern collisions. `EnumEncoding.lean`
+checks canonical decoding, root validity, and generated polynomial gadgets.
+`EnumProofs.lean` applies the source and memoized completeness theorems to recursive
+enum programs and rejects a well-formed but false claimed result using soundness.

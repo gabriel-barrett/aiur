@@ -15,6 +15,8 @@ mutual
         ROMEvalExprWith rom calls locals (.var name) value
     | tuple (items : ROMEvalArgsWith rom calls locals exprs values) :
         ROMEvalExprWith rom calls locals (.tuple exprs) (.tuple values)
+    | construct (items : ROMEvalArgsWith rom calls locals exprs values) :
+        ROMEvalExprWith rom calls locals (.construct name ctor exprs) (.construct name ctor values)
     | project (value : ROMEvalExprWith rom calls locals expr input)
         (projected : projectValue input index = .ok result) :
         ROMEvalExprWith rom calls locals (.project expr index) result
@@ -57,6 +59,7 @@ theorem ROMEvalExprWith.toEvalExpr [Field F] [DecidableEq F] {program : Program 
   | literal => exact .literal
   | var lookup => exact .var lookup
   | tuple _ ih => exact .tuple ih
+  | construct _ ih => exact .construct ih
   | project _ projected ih => exact .project ih projected
   | letValue _ matched _ valueIH bodyIH => exact .letValue valueIH matched bodyIH
   | store _ cell ih => exact .store ih cell
@@ -78,6 +81,7 @@ theorem ROMEvalExpr.toEvalExprWith [Field F] [DecidableEq F] {program : Program 
   | literal => exact .literal
   | var lookup => exact .var lookup
   | tuple _ ih => exact .tuple ih
+  | construct _ ih => exact .construct ih
   | project _ projected ih => exact .project ih projected
   | letValue _ matched _ valueIH bodyIH => exact .letValue valueIH matched bodyIH
   | store _ cell ih => exact .store ih cell

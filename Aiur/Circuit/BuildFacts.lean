@@ -1,13 +1,12 @@
 import Aiur.Circuit.Compile
-import Aiur.Semantics.WithCalls
-import Aiur.ValueFacts
+import Aiur.WireFacts
 import Aiur.Scalar.Circuit.CompileFacts
 
 namespace Aiur.Circuit.Compiler
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
-def localsEnvironment [Field F] (locals : Locals F) (assignment : Var → F) : Environment F :=
+def localsEnvironment [Field F] (locals : Locals F) (assignment : Var → F) : WireEnvironment F :=
   locals.map fun binding => (binding.1, binding.2.map (ArithExpr.denote assignment))
 
 @[simp] theorem localsEnvironment_append [Field F] (left right : Locals F) (assignment : Var → F) :
@@ -15,11 +14,11 @@ def localsEnvironment [Field F] (locals : Locals F) (assignment : Var → F) : E
       localsEnvironment left assignment ++ localsEnvironment right assignment := List.map_append
 
 /-- Validity of all equations and enabled calls in a simultaneous assignment. -/
-structure BuildState.Valid [Field F] (state : BuildState F) (rom : ROM F) (calls : CallRelation F)
+structure BuildState.Valid [Field F] (state : BuildState F) (rom : WireROM F) (calls : CallRelation F)
     (assignment : Var → F) : Prop where
   constraints : Satisfies state.constraints.toList assignment
   calls : ∀ send ∈ state.sends.toList, send.enable.denote assignment = 1 →
-    calls send.channel (send.args.map (Value.map (ArithExpr.denote assignment)))
+    calls send.channel (send.args.map (WireValue.map (ArithExpr.denote assignment)))
       (send.result.map assignment)
   memory : ∀ lookup ∈ state.memory.toList, lookup.Valid rom assignment
 
@@ -110,54 +109,77 @@ theorem boolean_valid [Field F] {before after : BuildState F} {selector : ArithE
 theorem asField_ok {value : Symbolic F} {polynomial : ArithExpr F}
     {before after : BuildState F} (compiled : asField value before = .ok (polynomial, after)) :
     value = .field polynomial ∧ before = after := by
-  cases value with
-  | field value =>
-      simp only [asField, pure_ok] at compiled
-      obtain ⟨rfl, rfl⟩ := compiled
+  rcases value with ⟨type, words⟩
+  cases type with
+  | tuple | ptr | enum => simp [asField] at compiled
+  | field =>
+      cases words with
+      | nil => simp [asField] at compiled
+      | cons word rest =>
+          cases rest with
+          | cons => simp [asField] at compiled
+          | nil =>
+              simpa [asField, WireValue.field, pure_ok] using compiled
+
+@[simp] theorem freshWords_apply (count : Nat) (state : BuildState F) :
+    freshWords count state = .ok (List.range' state.nextVar count,
+      { state with nextVar := state.nextVar + count }) := rfl
+
+theorem getLayout_eq {decls : Declarations} {type : Ty} {layout : Layout}
+    {before after : BuildState F}
+    (compiled : getLayout decls type before = .ok (layout, after)) :
+    decls.layout type = .ok layout ∧ before = after := by
+  cases expanded : decls.layout type with
+  | error error => simp [getLayout, expanded, Except.mapError] at compiled
+  | ok result =>
+      simp only [getLayout, expanded, Except.mapError, lift_ok, Except.ok.injEq, Prod.mk.injEq] at compiled
+      rcases compiled with ⟨rfl, rfl⟩
       exact ⟨rfl, rfl⟩
-  | tuple values => simp [asField] at compiled
-  | ptr => simp [asField] at compiled
 
-mutual
-  theorem freshValue_spec {type : Ty} {value : Value Var} {before after : BuildState F}
-      (compiled : freshValue type before = .ok (value, after)) :
-      after.constraints = before.constraints ∧ after.sends = before.sends ∧ value.type = type ∧ after.memory = before.memory := by
-    cases type with
-    | field | ptr _ =>
-        simp [freshValue, StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at compiled
-        rcases compiled with ⟨rfl, rfl⟩
-        exact ⟨rfl, rfl, by simp [Value.type], rfl⟩
-    | tuple types =>
-        simp only [freshValue] at compiled
-        obtain ⟨values, middle, run, finished⟩ := bind_ok.mp compiled
-        obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-        obtain ⟨constraints, sends, shape, memory⟩ := freshValues_spec run
-        exact ⟨constraints, sends, by simp [Value.type, shape], memory⟩
-  termination_by sizeOf type
+theorem freshValue_eq {decls : Declarations} {type : Ty} {value : WireValue Var}
+    {before after : BuildState F}
+    (compiled : freshValue decls type before = .ok (value, after)) :
+    ∃ layout, decls.layout type = .ok layout ∧
+      value = ⟨type, List.range' before.nextVar layout.width⟩ ∧
+      after = { before with nextVar := before.nextVar + layout.width } := by
+  simp only [freshValue] at compiled
+  obtain ⟨layout, middle, expanded, rest⟩ := bind_ok.mp compiled
+  obtain ⟨layoutEq, rfl⟩ := getLayout_eq expanded
+  obtain ⟨words, last, allocated, finished⟩ := bind_ok.mp rest
+  obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+  simp only [freshWords_apply, Except.ok.injEq, Prod.mk.injEq] at allocated
+  rcases allocated with ⟨rfl, rfl⟩
+  exact ⟨layout, layoutEq, rfl, rfl⟩
 
-  theorem freshValues_spec {types : List Ty} {values : List (Value Var)}
-      {before after : BuildState F}
-      (compiled : freshValues types before = .ok (values, after)) :
-      after.constraints = before.constraints ∧ after.sends = before.sends ∧
-        values.map Value.type = types ∧ after.memory = before.memory := by
-    cases types with
-    | nil =>
-        simp only [freshValues, pure_ok] at compiled
-        rcases compiled with ⟨rfl, rfl⟩
-        exact ⟨rfl, rfl, rfl, rfl⟩
-    | cons type types =>
-        simp only [freshValues] at compiled
-        obtain ⟨value, middle, head, rest⟩ := bind_ok.mp compiled
-        obtain ⟨tail, last, tailRun, finished⟩ := bind_ok.mp rest
-        obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-        obtain ⟨hc, hs, ht, hm⟩ := freshValue_spec head
-        obtain ⟨tc, ts, tt, tm⟩ := freshValues_spec tailRun
-        exact ⟨tc.trans hc, ts.trans hs, by simp [ht, tt], tm.trans hm⟩
-  termination_by sizeOf types
-end
+theorem freshValue_spec {decls : Declarations} {type : Ty} {value : WireValue Var}
+    {before after : BuildState F}
+    (compiled : freshValue decls type before = .ok (value, after)) :
+    after.constraints = before.constraints ∧ after.sends = before.sends ∧
+      value.type = type ∧ after.memory = before.memory := by
+  obtain ⟨_, _, rfl, rfl⟩ := freshValue_eq compiled
+  exact ⟨rfl, rfl, rfl, rfl⟩
 
-theorem freshValue_valid [Field F] {type : Ty} {value : Value Var}
-    {before after : BuildState F} (compiled : freshValue type before = .ok (value, after))
+theorem freshValues_spec {decls : Declarations} {types : List Ty} {values : List (WireValue Var)}
+    {before after : BuildState F}
+    (compiled : freshValues decls types before = .ok (values, after)) :
+    after.constraints = before.constraints ∧ after.sends = before.sends ∧
+      values.map WireValue.type = types ∧ after.memory = before.memory := by
+  induction types generalizing before values with
+  | nil =>
+      simp only [freshValues, List.mapM_nil, pure_ok] at compiled
+      rcases compiled with ⟨rfl, rfl⟩
+      exact ⟨rfl, rfl, rfl, rfl⟩
+  | cons type types ih =>
+      simp only [freshValues, List.mapM_cons] at compiled
+      obtain ⟨value, middle, head, rest⟩ := bind_ok.mp compiled
+      obtain ⟨tail, last, tailRun, finished⟩ := bind_ok.mp rest
+      obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+      obtain ⟨hc, hs, ht, hm⟩ := freshValue_spec head
+      obtain ⟨tc, ts, tt, tm⟩ := ih tailRun
+      exact ⟨tc.trans hc, ts.trans hs, by simp [ht, tt], tm.trans hm⟩
+
+theorem freshValue_valid [Field F] {decls : Declarations} {type : Ty} {value : WireValue Var}
+    {before after : BuildState F} (compiled : freshValue decls type before = .ok (value, after))
     {calls : CallRelation F} {assignment : Var → F} (valid : after.Valid rom calls assignment) :
     before.Valid rom calls assignment := by
   obtain ⟨constraints, sends, _, memory⟩ := freshValue_spec compiled

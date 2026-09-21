@@ -84,7 +84,7 @@ example : run (sample.toField Rat) "branch" [0, 7] 10 = .ok (7, []) := by decide
 example : EvalCall (sample.toField Rat) "tuple_memory" [7] 15 :=
   eval_spec (fuel := 20) (by decide +kernel)
 
-def sampleSystem : System Rat := (compile (sample.toField Rat)).toOption.getD ⟨[]⟩
+def sampleSystem : System Rat := (compile (sample.toField Rat)).toOption.getD { chips := [] }
 theorem sample_compiled : compile (sample.toField Rat) = .ok sampleSystem := by
   have succeeds : (compile (sample.toField Rat)).isOk = true := by decide +kernel
   cases compiled : compile (sample.toField Rat) with
@@ -98,13 +98,18 @@ example : CircuitEvaluates sampleSystem ⟨[]⟩ "branch" [.field 0, .field 7] (
   obtain ⟨_, _, locals, expr, prepared, body⟩ := run_eq_ok_iff.mp executed
   have evaluated := EvalFn.intro prepared (evalExpr_spec body)
   have romEval := evaluated.toROM (ROM.ofHeap_cells [] (fun _ => (0 : Rat)))
-  simpa [ROM.ofHeap, Value.mapAddress] using evaluation_complete sample_compiled romEval
+  have decodedEval : ROMEvalCall ((⟨[]⟩ : WireROM Rat).decode sample.enums)
+      (sample.toField Rat) "branch" [.field 0, .field 7] (.field 7) := by
+    simpa [ROM.ofHeap, WireROM.decode, Value.mapAddress] using romEval
+  exact evaluation_complete_encoded sample_compiled decodedEval
+    (.cons (WireValue.decode_field _ 0) (.cons (WireValue.decode_field _ 7) .nil))
+    (WireValue.decode_field _ 7)
 
 -- A circuit address need not equal the source allocator's location.
 def roundtrip : Program Nat := aiur% "fn f(x: Field) -> Field { let p = &x; *p }"
 def roundtripSystem : System Rat :=
-  match Circuit.compile (roundtrip.toField Rat) with | .ok system => system | .error _ => ⟨[]⟩
-def goodROM : ROM Rat := ⟨[(99, 7)]⟩
+  match Circuit.compile (roundtrip.toField Rat) with | .ok system => system | .error _ => { chips := [] }
+def goodROM : WireROM Rat := ⟨[(99, 7)]⟩
 def roundtripRow : Row Rat := ⟨"f", [7, 7, 99, 7]⟩
 
 theorem roundtrip_compiled : Circuit.compile (roundtrip.toField Rat) = .ok roundtripSystem := by
@@ -125,7 +130,7 @@ example : roundtripSystem.check goodROM ⟨"f", [.ptr .field 99], 7⟩ [roundtri
 -- Circuit stores may share one cell even though the source allocates twice.
 def shared : Program Nat := aiur% "fn f(x: Field) -> (&Field, &Field) { (&x, &x) }"
 def sharedSystem : System Rat :=
-  match Circuit.compile (shared.toField Rat) with | .ok system => system | .error _ => ⟨[]⟩
+  match Circuit.compile (shared.toField Rat) with | .ok system => system | .error _ => { chips := [] }
 example : run (shared.toField Rat) "f" [7] 10 =
     .ok (.tuple [.ptr .field 0, .ptr .field 1], [7, 7]) := by decide +kernel
 example : sharedSystem.check goodROM ⟨"f", [7], .tuple [.ptr .field 99, .ptr .field 99]⟩
@@ -133,20 +138,20 @@ example : sharedSystem.check goodROM ⟨"f", [7], .tuple [.ptr .field 99, .ptr .
 
 instance : Fact (Nat.Prime 7) := ⟨by decide⟩
 def finiteSystem : System (ZMod 7) :=
-  match Circuit.compile (roundtrip.toField (ZMod 7)) with | .ok system => system | .error _ => ⟨[]⟩
+  match Circuit.compile (roundtrip.toField (ZMod 7)) with | .ok system => system | .error _ => { chips := [] }
 theorem finite_compiled : Circuit.compile (roundtrip.toField (ZMod 7)) = .ok finiteSystem := by
   have succeeds : (compile (roundtrip.toField (ZMod 7))).isOk = true := by decide +kernel
   cases compiled : compile (roundtrip.toField (ZMod 7)) with
   | error error => simp [compiled, Except.isOk, Except.toBool] at succeeds
   | ok system => simp [finiteSystem, compiled]
 example : ∃ encode : Nat → ZMod 7,
-    Circuit.EntryDerives finiteSystem ⟨"f", entryValues [3], (3 : SourceValue (ZMod 7)).mapAddress encode⟩ :=
+    Circuit.EncodedEntryDerives finiteSystem "f" (entryValues [3]) ((3 : SourceValue (ZMod 7)).mapAddress encode) :=
   compiler_run_complete finite_compiled
     (show run (roundtrip.toField (ZMod 7)) "f" [3] 10 = .ok (3, [3]) from by decide +kernel)
     (by decide +kernel)
 
 -- Any accepted finite proof must return the same field value as execution.
-example (accepted : Circuit.EntryDerives roundtripSystem ⟨"f", entryValues [7], 8⟩) : False := by
+example (accepted : Circuit.EncodedEntryDerives roundtripSystem "f" (entryValues [7]) 8) : False := by
   have wrong := compiler_entry_sound roundtrip_compiled accepted
     (by decide +kernel)
   have actual : EvalCall (roundtrip.toField Rat) "f" [7] 7 :=

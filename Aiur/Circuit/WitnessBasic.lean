@@ -1,24 +1,24 @@
-import Aiur.Circuit.PatternCorrectness
+import Aiur.Circuit.Indicator
 
 namespace Aiur.Circuit.Compiler
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
 /-- All leaves of a symbolic tuple refer only to allocated variables. -/
 def Bounded (bound : Nat) (value : Symbolic F) : Prop :=
-  ∀ polynomial ∈ value.flatten, polynomial.inBounds bound = true
+  ∀ polynomial ∈ value.words, polynomial.inBounds bound = true
 
 @[simp] theorem bounded_field {bound : Nat} {polynomial : ArithExpr F} :
     Bounded bound (.field polynomial) ↔ polynomial.inBounds bound = true := by
-  simp [Bounded, Value.flatten]
+  simp [Bounded, WireValue.field, WireValue.ptr]
 
 @[simp] theorem bounded_ptr {bound : Nat} {target : Ty} {address : ArithExpr F} :
     Bounded bound (.ptr target address) ↔ address.inBounds bound = true := by
-  simp [Bounded, Value.flatten]
+  simp [Bounded, WireValue.field, WireValue.ptr]
 
 @[simp] theorem bounded_tuple {bound : Nat} {values : List (Symbolic F)} :
     Bounded bound (.tuple values) ↔ ∀ value ∈ values, Bounded bound value := by
-  simp only [Bounded, Value.flatten, List.mem_flatMap, forall_exists_index, and_imp]
+  simp only [Bounded, WireValue.tuple, List.mem_flatMap, forall_exists_index, and_imp]
   constructor
   · intro h value member p leaf
     exact h p value member leaf
@@ -101,12 +101,12 @@ theorem BuildState.Valid.of_agree [Field F] {state : BuildState F} {calls : Call
     have enabled : send.enable.denote after = send.enable.denote before :=
       Scalar.Circuit.ArithExpr.denote_eq_of_agree agree bounded.1.2
     have result : send.result.map after = send.result.map before :=
-      Value.map_congr _ (fun id inside => agree id (bounded.1.1 id inside))
-    have args : send.args.map (Value.map (ArithExpr.denote after)) =
-        send.args.map (Value.map (ArithExpr.denote before)) := by
+      WireValue.map_congr _ (fun id inside => agree id (bounded.1.1 id inside))
+    have args : send.args.map (WireValue.map (ArithExpr.denote after)) =
+        send.args.map (WireValue.map (ArithExpr.denote before)) := by
       apply List.map_congr_left
       intro value inside
-      apply Value.map_congr
+      apply WireValue.map_congr
       intro p leaf
       exact Scalar.Circuit.ArithExpr.denote_eq_of_agree agree
         (bounded.2 p (List.mem_flatMap.mpr ⟨value, inside, leaf⟩))
@@ -118,7 +118,7 @@ theorem BuildState.Valid.of_agree [Field F] {state : BuildState F} {calls : Call
     simp only [MemoryLookup.inBounds, Bool.and_eq_true, List.all_eq_true] at bounded
     have enabled := Scalar.Circuit.ArithExpr.denote_eq_of_agree agree bounded.1.2
     have address := Scalar.Circuit.ArithExpr.denote_eq_of_agree agree bounded.1.1
-    have value := Value.map_congr lookup.value
+    have value := WireValue.map_congr lookup.value
       (fun p leaf => Scalar.Circuit.ArithExpr.denote_eq_of_agree agree (bounded.2 p leaf))
     change (lookup.address.denote after, lookup.value.map (ArithExpr.denote after)) ∈ rom.entries
     change lookup.address.denote after = lookup.address.denote before at address
@@ -126,7 +126,7 @@ theorem BuildState.Valid.of_agree [Field F] {state : BuildState F} {calls : Call
     exact valid.memory lookup member (enabled.symm.trans active)
 
 /-- A witness extends the allocation frontier and preserves every old variable. -/
-structure Extension [Field F] (rom : ROM F) (calls : CallRelation F) (before after : BuildState F)
+structure Extension [Field F] (rom : WireROM F) (calls : CallRelation F) (before after : BuildState F)
     (initial assignment : Var → F) : Prop where
   increase : before.nextVar ≤ after.nextVar
   agree : ∀ id < before.nextVar, assignment id = initial id
@@ -153,7 +153,7 @@ theorem Extension.value [Field F] {calls : CallRelation F} {before after : Build
     {a b : Var → F} (extension : Extension rom calls before after a b) {value : Symbolic F}
     (bounded : Bounded before.nextVar value) :
     value.map (ArithExpr.denote b) = value.map (ArithExpr.denote a) :=
-  Value.map_congr _ (fun p member => extension.polynomial (bounded p member))
+  WireValue.map_congr _ (fun p member => extension.polynomial (bounded p member))
 
 theorem Extension.locals [Field F] {calls : CallRelation F} {before after : BuildState F}
     {a b : Var → F} (extension : Extension rom calls before after a b) {locals : Locals F}
@@ -163,9 +163,9 @@ theorem Extension.locals [Field F] {calls : CallRelation F} {before after : Buil
   simp only [extension.value (bounded binding member)]
 
 theorem Extension.variables [Field F] {calls : CallRelation F} {before after : BuildState F}
-    {a b : Var → F} (extension : Extension rom calls before after a b) {value : Value Var}
+    {a b : Var → F} (extension : Extension rom calls before after a b) {value : WireValue Var}
     (bounded : Bounded (F := F) before.nextVar (value.map ArithExpr.var)) : value.map b = value.map a := by
-  simpa only [Value.map_map] using extension.value bounded
+  simpa only [WireValue.map_map] using extension.value bounded
 
 theorem fresh_complete [Field F] {calls : CallRelation F} {before after : BuildState F} {id : Var}
     (compiled : fresh before = .ok (id, after)) {initial : Var → F}
@@ -209,14 +209,14 @@ theorem Extension.bound [Field F] {calls : CallRelation F} {before after : Build
 theorem Extension.values [Field F] {calls : CallRelation F} {before after : BuildState F}
     {a b : Var → F} (extension : Extension rom calls before after a b) {values : List (Symbolic F)}
     (bounded : ∀ value ∈ values, Bounded before.nextVar value) :
-    values.map (Value.map (ArithExpr.denote b)) = values.map (Value.map (ArithExpr.denote a)) :=
+    values.map (WireValue.map (ArithExpr.denote b)) = values.map (WireValue.map (ArithExpr.denote a)) :=
   List.map_congr_left (fun value member => extension.value (bounded value member))
 
 theorem send_complete [Field F] {calls : CallRelation F} {before : BuildState F}
     {assignment : Var → F} (layout : before.WellFormed) (valid : before.Valid rom calls assignment)
     (send : Send F) (bounded : send.inBounds before.nextVar = true)
     (called : send.enable.denote assignment = 1 →
-      calls send.channel (send.args.map (Value.map (ArithExpr.denote assignment))) (send.result.map assignment)) :
+      calls send.channel (send.args.map (WireValue.map (ArithExpr.denote assignment))) (send.result.map assignment)) :
     Extension rom calls before { before with sends := before.sends.push send } assignment assignment := by
   refine ⟨le_rfl, by intros; rfl, ⟨layout.constraints, ?_, layout.memory⟩, ⟨valid.constraints, ?_, valid.memory⟩⟩
   · intro next member
@@ -230,7 +230,7 @@ theorem send_complete [Field F] {calls : CallRelation F} {before : BuildState F}
     · exact valid.calls next member active
     · exact called active
 
-theorem send_bounded {name : String} {args : List (Symbolic F)} {result : Value Var}
+theorem send_bounded {name : String} {args : List (Symbolic F)} {result : WireValue Var}
     {enable : ArithExpr F} {bound : Nat}
     (argsBound : ∀ value ∈ args, Bounded bound value)
     (resultBound : Bounded (F := F) bound (result.map ArithExpr.var))
@@ -239,8 +239,8 @@ theorem send_bounded {name : String} {args : List (Symbolic F)} {result : Value 
   simp only [Send.inBounds, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq]
   refine ⟨⟨?_, enableBound⟩, ?_⟩
   · intro id member
-    have := resultBound (.var id) (by simpa only [Value.flatten_map, List.mem_map] using
-      (show ∃ x ∈ result.flatten, ArithExpr.var x = .var id from ⟨id, member, rfl⟩))
+    have := resultBound (.var id) (by simpa only [WireValue.words_map, List.mem_map] using
+      (show ∃ x ∈ result.words, ArithExpr.var x = .var id from ⟨id, member, rfl⟩))
     simpa only [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds, decide_eq_true_eq] using this
   · intro p member
     obtain ⟨value, member, leaf⟩ := List.mem_flatMap.mp member

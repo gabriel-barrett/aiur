@@ -11,6 +11,9 @@ declare_syntax_cat aiur_pattern
 declare_syntax_cat aiur_arm
 declare_syntax_cat aiur_param
 declare_syntax_cat aiur_function
+declare_syntax_cat aiur_constructor
+declare_syntax_cat aiur_enum
+declare_syntax_cat aiur_decl
 declare_syntax_cat aiur_program
 
 syntax:75 (name := pointerType) "&" aiur_type:75 : aiur_type
@@ -24,6 +27,8 @@ syntax:80 (name := project) aiur_expr:80 "." num : aiur_expr
 syntax (name := letValue) "let" aiur_pattern "=" aiur_expr ";" aiur_expr : aiur_expr
 syntax (name := literal) num : aiur_expr
 syntax (name := variableExpr) ident : aiur_expr
+syntax (name := constructorExpr) ident "::" ident : aiur_expr
+syntax (name := constructorCall) ident "::" ident "(" sepBy(aiur_expr, ",", ",", allowTrailingSep) ")" : aiur_expr
 syntax (name := parens) "(" aiur_expr ")" : aiur_expr
 syntax (name := block) "{" aiur_expr "}" : aiur_expr
 syntax (name := call) ident "(" sepBy(aiur_expr, ",", ",", allowTrailingSep) ")" : aiur_expr
@@ -37,6 +42,8 @@ syntax:65 (name := sub) aiur_expr:65 "-" aiur_expr:66 : aiur_expr
 syntax (name := literalPattern) num : aiur_pattern
 syntax (name := wildcardPattern) "_" : aiur_pattern
 syntax (name := bindPattern) ident : aiur_pattern
+syntax (name := constructorPattern) ident "::" ident : aiur_pattern
+syntax (name := constructorPatternArgs) ident "::" ident "(" sepBy(aiur_pattern, ",", ",", allowTrailingSep) ")" : aiur_pattern
 syntax (name := unitPattern) "(" ")" : aiur_pattern
 syntax (name := patternParens) "(" aiur_pattern ")" : aiur_pattern
 syntax (name := tuplePattern) "(" aiur_pattern "," sepBy(aiur_pattern, ",", ",", allowTrailingSep) ")" : aiur_pattern
@@ -46,7 +53,12 @@ syntax (name := matchValue) "match" aiur_expr "{"
 syntax (name := param) aiur_pattern ":" aiur_type : aiur_param
 syntax (name := function) "fn" ident "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")"
   "->" aiur_type "{" aiur_expr "}" : aiur_function
-syntax (name := program) aiur_function* : aiur_program
+syntax (name := nullaryConstructor) ident : aiur_constructor
+syntax (name := payloadConstructor) ident "(" sepBy(aiur_type, ",", ",", allowTrailingSep) ")" : aiur_constructor
+syntax (name := enumDefinition) "enum" ident "{" sepBy(aiur_constructor, ",", ",", allowTrailingSep) "}" : aiur_enum
+syntax (name := functionDecl) aiur_function : aiur_decl
+syntax (name := enumDecl) aiur_enum : aiur_decl
+syntax (name := program) aiur_decl* : aiur_program
 
 private def readName (stx : Syntax) : Except String String :=
   match stx.getId with
@@ -57,12 +69,12 @@ private partial def lowerType (stx : Syntax) : Except String Ty := do
   if stx.getKind == ``pointerType then return .ptr (← lowerType stx[1])
   else if stx.getKind == ``namedType then
     if stx[0].getId == `Field then return .field
-    else throw "expected 'Field', a tuple type, or '&A'"
+    else return .enum (← readName stx[0])
   else if stx.getKind == ``unitType then return .tuple []
   else if stx.getKind == ``typeParens then lowerType stx[1]
   else if stx.getKind == ``tupleType then
     return .tuple ((← lowerType stx[1]) :: (← stx[3].getSepArgs.toList.mapM lowerType))
-  else throw "expected 'Field', a tuple type, or '&A'"
+  else throw "expected a field, tuple, pointer, or enum type"
 
 private partial def lowerPattern (stx : Syntax) : Except String (Pattern Nat) := do
   if stx.getKind == ``literalPattern then
@@ -70,6 +82,11 @@ private partial def lowerPattern (stx : Syntax) : Except String (Pattern Nat) :=
     return .literal value
   else if stx.getKind == ``wildcardPattern then return .wildcard
   else if stx.getKind == ``bindPattern then return .bind (← readName stx[0])
+  else if stx.getKind == ``constructorPattern then
+    return .construct (← readName stx[0]) (← readName stx[2]) []
+  else if stx.getKind == ``constructorPatternArgs then
+    return .construct (← readName stx[0]) (← readName stx[2])
+      (← stx[4].getSepArgs.toList.mapM lowerPattern)
   else if stx.getKind == ``unitPattern then return .tuple []
   else if stx.getKind == ``patternParens then lowerPattern stx[1]
   else if stx.getKind == ``tuplePattern then
@@ -82,6 +99,11 @@ private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := 
   if kind == ``literal then
     let some value := stx[0].isNatLit? | throw "expected a natural-number literal"
     return .literal value
+  else if kind == ``constructorExpr then
+    return .construct (← readName stx[0]) (← readName stx[2]) []
+  else if kind == ``constructorCall then
+    return .construct (← readName stx[0]) (← readName stx[2])
+      (← stx[4].getSepArgs.toList.mapM lowerExpr)
   else if kind == ``unitExpr then return .tuple []
   else if kind == ``tupleExpr then
     return .tuple ((← lowerExpr stx[1]) :: (← stx[3].getSepArgs.toList.mapM lowerExpr))
@@ -112,7 +134,16 @@ private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := 
   else
     throw s!"unsupported expression syntax: {kind}"
 
-private def lowerFunction (stx : Syntax) : Except String (Aiur.Function Nat) := do
+private def lowerEnum (stx : Syntax) : Except String EnumDecl := do
+  let name ← readName stx[1]
+  let constructors ← stx[3].getSepArgs.toList.mapM fun ctor => do
+    let fields ← if ctor.getKind == ``payloadConstructor then
+      ctor[2].getSepArgs.toList.mapM lowerType
+      else pure []
+    return { name := ← readName ctor[0], fields : ConstructorDecl }
+  return { name, constructors }
+
+private def lowerFunction (decls : Declarations) (stx : Syntax) : Except String (Aiur.Function Nat) := do
   let name ← readName stx[1]
   let mut params := []
   let mut destructuring := []
@@ -120,8 +151,8 @@ private def lowerFunction (stx : Syntax) : Except String (Aiur.Function Nat) := 
   for (param, index) in stx[3].getSepArgs.toList.zipIdx do
     let pattern ← lowerPattern param[0]
     let type ← lowerType param[2]
-    if !pattern.irrefutable then throw s!"parameter patterns must be irrefutable in function '{name}'"
-    let bindings ← (checkPattern name pattern type).mapError toString
+    if !pattern.irrefutable decls then throw s!"parameter patterns must be irrefutable in function '{name}'"
+    let bindings ← (checkPattern decls name pattern type).mapError toString
     names := names ++ bindings.map Prod.fst
     match pattern with
     | .bind key => params := params ++ [(key, type)]
@@ -169,7 +200,13 @@ private def normalizeWhitespace : List Char → List Char
 def ofString (env : Environment) (source : String) : Except String (Program Nat) := do
   let source := String.ofList (normalizeWhitespace (← maskComments source.toList 0 false))
   let stx ← Parser.runParserCategory env `aiur_program source "<aiur>"
-  let program := { functions := ← stx[0].getArgs.toList.mapM lowerFunction }
+  let declarations := stx[0].getArgs.toList
+  let enums ← (declarations.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])
+  (checkDeclarations enums).mapError toString
+  let program := {
+    functions := ← (declarations.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction enums d[0])
+    enums
+  }
   match typecheck program with
   | .error error => throw (toString error)
   | .ok () => pure program
@@ -190,6 +227,7 @@ private def quoteOp : BinOp → Lean.Expr
 
 private def quoteTy : Ty → Lean.Expr
   | .field => mkConst ``Ty.field
+  | .enum name => mkApp (mkConst ``Ty.enum) (toExpr name)
   | .ptr target => mkApp (mkConst ``Ty.ptr) (quoteTy target)
   | .tuple items => mkApp (mkConst ``Ty.tuple) (quoteList (mkConst ``Ty) (items.map quoteTy))
 
@@ -198,11 +236,15 @@ private def quotePattern : Pattern Nat → Lean.Expr
   | .wildcard => mkApp (mkConst ``Pattern.wildcard) natType
   | .bind name => mkApp2 (mkConst ``Pattern.bind) natType (toExpr name)
   | .tuple items => mkApp2 (mkConst ``Pattern.tuple) natType (quoteList patternType (items.map quotePattern))
+  | .construct name ctor args => mkApp4 (mkConst ``Pattern.construct) natType (toExpr name) (toExpr ctor)
+      (quoteList patternType (args.map quotePattern))
 
 private def quoteExpr : Aiur.Expr Nat → Lean.Expr
   | .literal value => mkApp2 (mkConst ``Aiur.Expr.literal) natType (toExpr value)
   | .var name => mkApp2 (mkConst ``Aiur.Expr.var) natType (toExpr name)
   | .tuple items => mkApp2 (mkConst ``Aiur.Expr.tuple) natType (quoteList exprType (items.map quoteExpr))
+  | .construct name ctor args => mkApp4 (mkConst ``Aiur.Expr.construct) natType (toExpr name) (toExpr ctor)
+      (quoteList exprType (args.map quoteExpr))
   | .project value index => mkApp3 (mkConst ``Aiur.Expr.project) natType (quoteExpr value) (toExpr index)
   | .letValue pattern value body =>
       mkApp4 (mkConst ``Aiur.Expr.letValue) natType (quotePattern pattern) (quoteExpr value) (quoteExpr body)
@@ -240,9 +282,17 @@ private def quoteFunction (defn : Aiur.Function Nat) : Lean.Expr :=
   mkApp5 (mkConst ``Aiur.Function.mk) natType (toExpr defn.name) (quoteList paramType params)
     (quoteTy defn.result) (quoteExpr defn.body)
 
+private def quoteEnum (decl : EnumDecl) : Lean.Expr :=
+  let constructors := decl.constructors.map fun ctor =>
+    mkApp2 (mkConst ``ConstructorDecl.mk) (toExpr ctor.name)
+      (quoteList (mkConst ``Ty) (ctor.fields.map quoteTy))
+  mkApp2 (mkConst ``EnumDecl.mk) (toExpr decl.name)
+    (quoteList (mkConst ``ConstructorDecl) constructors)
+
 private def quoteProgram (program : Program Nat) : Lean.Expr :=
-  mkApp2 (mkConst ``Program.mk) natType
+  mkApp3 (mkConst ``Program.mk) natType
     (quoteList (mkApp (mkConst ``Aiur.Function) natType) (program.functions.map quoteFunction))
+    (quoteList (mkConst ``EnumDecl) (program.enums.map quoteEnum))
 
 /-- Elaborate a Rust-like source string directly to a checked `Program Nat`. -/
 elab "aiur% " source:str : term => do

@@ -1,103 +1,99 @@
-import Aiur.Circuit.ValueWitness
+import Aiur.Circuit.PatternCorrectness
+import Aiur.Circuit.IndicatorWitness
 
 namespace Aiur.Circuit.Compiler
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
-theorem equalIndicator_complete [Field F] [DecidableEq F]
-    {difference test : ArithExpr F} {before after : BuildState F}
-    (compiled : equalIndicator difference before = .ok (test, after))
-    {calls : CallRelation F} {initial : Var → F}
-    (layout : before.WellFormed) (valid : before.Valid rom calls initial)
-    (bounded : difference.inBounds before.nextVar = true) :
-    ∃ assignment, Extension rom calls before after initial assignment ∧
-      test.inBounds after.nextVar = true := by
-  simp [equalIndicator, StateT.bind, bind, Except.bind, StateT.pure, pure, Except.pure] at compiled
-  obtain ⟨rfl, rfl⟩ := compiled
-  let equal : F := if difference.denote initial = 0 then 1 else 0
-  let assignment := Function.update (Function.update initial before.nextVar equal)
-    (before.nextVar + 1) (difference.denote initial)⁻¹
-  have agree : ∀ id < before.nextVar, assignment id = initial id := by
-    intro id bound
-    simp [assignment, Function.update_of_ne (by omega : id ≠ before.nextVar + 1),
-      Function.update_of_ne (by omega : id ≠ before.nextVar)]
-  have dEq : difference.denote assignment = difference.denote initial :=
-    Scalar.Circuit.ArithExpr.denote_eq_of_agree agree bounded
-  have eEq : assignment before.nextVar = equal := by simp [assignment]
-  have uEq : assignment (before.nextVar + 1) = (difference.denote initial)⁻¹ := by simp [assignment]
-  have equations := equality_indicator_complete (difference.denote initial)
-  have grown := layout.grow (by omega : before.nextVar ≤ before.nextVar + 1 + 1)
-  have db := Scalar.Circuit.ArithExpr.inBounds_mono
-    (by omega : before.nextVar ≤ before.nextVar + 1 + 1) bounded
-  have lo : before.nextVar < before.nextVar + 1 + 1 := by omega
-  have hi : before.nextVar + 1 < before.nextVar + 1 + 1 := by omega
-  have firstBound : (ArithExpr.mul (.var before.nextVar)
-      (.sub (.var before.nextVar) (.const (1 : F)))).inBounds (before.nextVar + 1 + 1) = true := by
-    simp [Scalar.Circuit.ArithExpr.inBounds, lo]
-  have secondBound : (ArithExpr.mul difference (.var before.nextVar)).inBounds
-      (before.nextVar + 1 + 1) = true := by
-    simp [Scalar.Circuit.ArithExpr.inBounds, lo, db]
-  have thirdBound : (ArithExpr.sub (.mul difference (.var (before.nextVar + 1)))
-      (.sub (.const 1) (.var before.nextVar))).inBounds (before.nextVar + 1 + 1) = true := by
-    simp [Scalar.Circuit.ArithExpr.inBounds, lo, hi, db]
-  have grownValid : ({ before with nextVar := before.nextVar + 1 + 1 } : BuildState F).Valid rom calls assignment :=
-    ⟨(valid.of_agree layout agree).constraints, (valid.of_agree layout agree).calls, (valid.of_agree layout agree).memory⟩
-  have firstZero : (ArithExpr.mul (.var before.nextVar)
-      (.sub (.var before.nextVar) (.const (1 : F)))).denote assignment = 0 := by
-    simpa only [ArithExpr.denote, Scalar.Circuit.ArithExpr.denote, eEq, equal] using equations.1
-  have secondZero : (ArithExpr.mul difference (.var before.nextVar)).denote assignment = 0 := by
-    change difference.denote assignment * assignment before.nextVar = 0
-    simpa only [dEq, eEq, equal] using equations.2.1
-  have thirdZero : (ArithExpr.sub (.mul difference (.var (before.nextVar + 1)))
-      (.sub (.const 1) (.var before.nextVar))).denote assignment = 0 := by
-    change difference.denote assignment * assignment (before.nextVar + 1) - (1 - assignment before.nextVar) = 0
-    simpa only [dEq, uEq, eEq, equal] using equations.2.2
-  exact ⟨assignment, ⟨by dsimp; omega, agree,
-    ((grown.constrain firstBound).constrain secondBound).constrain thirdBound,
-    ((grownValid.constrain firstZero).constrain secondZero).constrain thirdZero⟩,
-    by simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using lo⟩
+set_option maxHeartbeats 1600000
+set_option maxRecDepth 4096
 
 mutual
-  theorem lowerPattern_complete [Field F] [DecidableEq F]
-      {pattern : Pattern F} {value : Symbolic F} {test : ArithExpr F} {bindings : Locals F}
+  /-- Exact pattern tests have witnesses for every payload view, including inactive views. -/
+  theorem lowerPattern_complete [Field F] [DecidableEq F] {decls : Declarations}
+      {pattern : Pattern F} {wire : Symbolic F} {test : ArithExpr F} {bindings : Locals F}
       {before after : BuildState F}
-      (compiled : lowerPattern pattern value before = .ok ((test, bindings), after))
+      (compiled : lowerPattern decls pattern wire before = .ok ((test, bindings), after))
       {calls : CallRelation F} {initial : Var → F}
-      (layout : before.WellFormed) (valid : before.Valid rom calls initial)
-      (bounded : Bounded before.nextVar value) :
+      (stateLayout : before.WellFormed) (valid : before.Valid rom calls initial)
+      (bounded : Bounded before.nextVar wire) :
       ∃ assignment, Extension rom calls before after initial assignment ∧
         test.inBounds after.nextVar = true ∧ LocalsBounded after.nextVar bindings := by
     cases pattern with
     | wildcard =>
-        simp only [lowerPattern, pure_ok, Prod.mk.injEq] at compiled
-        rcases compiled with ⟨⟨rfl, rfl⟩, rfl⟩
-        exact ⟨initial, .refl layout valid, rfl, by simp [LocalsBounded]⟩
+        obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp (by simpa only [lowerPattern] using compiled)
+        exact ⟨initial, .refl stateLayout valid, rfl, by simp [LocalsBounded]⟩
     | bind name =>
-        simp only [lowerPattern, pure_ok, Prod.mk.injEq] at compiled
-        rcases compiled with ⟨⟨rfl, rfl⟩, rfl⟩
-        exact ⟨initial, .refl layout valid, rfl, by simpa [LocalsBounded] using bounded⟩
+        obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp (by simpa only [lowerPattern] using compiled)
+        exact ⟨initial, .refl stateLayout valid, rfl, by simpa [LocalsBounded] using bounded⟩
     | literal literal =>
-        cases value with
-        | tuple values | ptr => simp [lowerPattern] at compiled
-        | field value =>
-            simp only [lowerPattern] at compiled
-            obtain ⟨test, middle, tested, finished⟩ := bind_ok.mp compiled
-            obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp finished
-            obtain ⟨assignment, extension, bound⟩ := equalIndicator_complete tested layout valid
-              (by simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using bounded_field.mp bounded)
-            exact ⟨assignment, extension, bound, by simp [LocalsBounded]⟩
+        rcases wire with ⟨type, words⟩
+        cases type with
+        | tuple | ptr | enum => simp [lowerPattern] at compiled
+        | field =>
+            cases words with
+            | nil => simp [lowerPattern] at compiled
+            | cons word rest => cases rest with
+              | cons => simp [lowerPattern] at compiled
+              | nil =>
+                  simp only [lowerPattern] at compiled
+                  obtain ⟨indicator, middle, indicatorRun, finished⟩ := bind_ok.mp compiled
+                  obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp finished
+                  obtain ⟨a, ext, bound⟩ := equalIndicator_complete indicatorRun stateLayout valid
+                    (by simpa [Scalar.Circuit.ArithExpr.inBounds] using bounded word (by simp))
+                  exact ⟨a, ext, bound, by simp [LocalsBounded]⟩
     | tuple patterns =>
-        cases value with
-        | field value | ptr => simp [lowerPattern] at compiled
-        | tuple values =>
+        rcases wire with ⟨type, words⟩
+        cases type with
+        | field | ptr | enum => simp [lowerPattern] at compiled
+        | tuple types =>
             simp only [lowerPattern] at compiled
-            exact lowerPatterns_complete compiled layout valid (bounded_tuple.mp bounded)
+            obtain ⟨wires, middle, splitRun, patternRun⟩ := bind_ok.mp compiled
+            have unchanged := (splitValues_spec splitRun).1
+            subst middle
+            exact lowerPatterns_complete patternRun stateLayout valid (splitValues_bounded splitRun bounded)
+    | construct name ctor patterns =>
+        simp only [lowerPattern] at compiled
+        split at compiled
+        · simp [StateT.bind, bind, Except.bind] at compiled
+        · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp compiled
+          obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+          cases found : decls.findEnum? name with
+          | none => simp [found] at rest
+          | some definition =>
+              simp only [found] at rest
+              cases atIndex : definition.constructors[definition.constructors.findIdx (·.name == ctor)]? with
+              | none => simp [atIndex] at rest
+              | some constructor =>
+                  simp only [atIndex] at rest
+                  rcases wire with ⟨type, words⟩
+                  cases words with
+                  | nil => simp at rest
+                  | cons tag payload =>
+                      dsimp only at rest
+                      obtain ⟨layout, s₁, layoutRun, rest⟩ := bind_ok.mp rest
+                      obtain ⟨_, rfl⟩ := getLayout_eq layoutRun
+                      obtain ⟨values, s₂, splitRun, rest⟩ := bind_ok.mp rest
+                      have unchanged := (splitValues_spec splitRun).1
+                      subst s₂
+                      obtain ⟨tagTest, s₃, tagRun, rest⟩ := bind_ok.mp rest
+                      obtain ⟨⟨payloadTest, payloadBindings⟩, s₄, payloadRun, finished⟩ := bind_ok.mp rest
+                      obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp finished
+                      obtain ⟨a, tagExt, tagBound⟩ := equalIndicator_complete tagRun stateLayout valid
+                        (by simpa [Scalar.Circuit.ArithExpr.inBounds] using bounded tag (by simp))
+                      have valuesBound := splitValues_bounded splitRun (bound := before.nextVar)
+                        (fun p h => bounded p (List.mem_cons_of_mem tag (List.mem_of_mem_take h)))
+                      obtain ⟨b, payloadExt, payloadBound, localsBound⟩ := lowerPatterns_complete payloadRun
+                        tagExt.layout tagExt.valid (fun w h => (valuesBound w h).mono tagExt.increase)
+                      exact ⟨b, tagExt.trans payloadExt, by
+                        simpa [Scalar.Circuit.ArithExpr.inBounds] using
+                          And.intro (payloadExt.bound tagBound) payloadBound, localsBound⟩
   termination_by sizeOf pattern
 
-  theorem lowerPatterns_complete [Field F] [DecidableEq F]
+  theorem lowerPatterns_complete [Field F] [DecidableEq F] {decls : Declarations}
       {patterns : List (Pattern F)} {values : List (Symbolic F)}
       {test : ArithExpr F} {bindings : Locals F} {before after : BuildState F}
-      (compiled : lowerPatterns patterns values before = .ok ((test, bindings), after))
+      (compiled : lowerPatterns decls patterns values before = .ok ((test, bindings), after))
       {calls : CallRelation F} {initial : Var → F}
       (layout : before.WellFormed) (valid : before.Valid rom calls initial)
       (bounded : ∀ value ∈ values, Bounded before.nextVar value) :
@@ -107,8 +103,7 @@ mutual
     | nil =>
         cases values with
         | nil =>
-            simp only [lowerPatterns, pure_ok, Prod.mk.injEq] at compiled
-            rcases compiled with ⟨⟨rfl, rfl⟩, rfl⟩
+            obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp (by simpa only [lowerPatterns] using compiled)
             exact ⟨initial, .refl layout valid, rfl, by simp [LocalsBounded]⟩
         | cons => simp [lowerPatterns] at compiled
     | cons pattern patterns =>
@@ -126,55 +121,8 @@ mutual
               (fun value member => (bounded value (by simp [member])).mono headExt.increase)
             exact ⟨b, headExt.trans tailExt, by
               simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using
-                And.intro (Scalar.Circuit.ArithExpr.inBounds_mono tailExt.increase headBound) tailBound,
+                And.intro (tailExt.bound headBound) tailBound,
               localsBounded_append.mpr ⟨headLocals.mono tailExt.increase, tailLocals⟩⟩
-  termination_by sizeOf patterns
-end
-
-mutual
-  theorem lowerPattern_irrefutable [Field F] {pattern : Pattern F} {value : Symbolic F}
-      {test : ArithExpr F} {bindings : Locals F} {before after : BuildState F}
-      (compiled : lowerPattern pattern value before = .ok ((test, bindings), after))
-      (irrefutable : pattern.irrefutable = true) (assignment : Var → F) : test.denote assignment = 1 := by
-    cases pattern with
-    | wildcard | bind =>
-        simp only [lowerPattern, pure_ok, Prod.mk.injEq] at compiled
-        rcases compiled with ⟨⟨rfl, rfl⟩, rfl⟩
-        rfl
-    | literal => simp [Pattern.irrefutable] at irrefutable
-    | tuple patterns =>
-        cases value with
-        | field | ptr => simp [lowerPattern] at compiled
-        | tuple values =>
-            simp only [lowerPattern] at compiled
-            exact lowerPatterns_irrefutable compiled (by simpa [Pattern.irrefutable] using irrefutable) assignment
-  termination_by sizeOf pattern
-
-  theorem lowerPatterns_irrefutable [Field F] {patterns : List (Pattern F)} {values : List (Symbolic F)}
-      {test : ArithExpr F} {bindings : Locals F} {before after : BuildState F}
-      (compiled : lowerPatterns patterns values before = .ok ((test, bindings), after))
-      (irrefutable : ∀ pattern ∈ patterns, pattern.irrefutable = true) (assignment : Var → F) :
-      test.denote assignment = 1 := by
-    cases patterns with
-    | nil =>
-        cases values with
-        | nil =>
-            simp only [lowerPatterns, pure_ok, Prod.mk.injEq] at compiled
-            rcases compiled with ⟨⟨rfl, rfl⟩, rfl⟩
-            rfl
-        | cons => simp [lowerPatterns] at compiled
-    | cons pattern patterns =>
-        cases values with
-        | nil => simp [lowerPatterns] at compiled
-        | cons value values =>
-            simp only [lowerPatterns] at compiled
-            obtain ⟨⟨head, headBindings⟩, middle, headRun, rest⟩ := bind_ok.mp compiled
-            obtain ⟨⟨tail, tailBindings⟩, last, tailRun, finished⟩ := bind_ok.mp rest
-            obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp finished
-            have headOne := lowerPattern_irrefutable headRun (irrefutable pattern (by simp)) assignment
-            have tailOne := lowerPatterns_irrefutable tailRun (fun p h => irrefutable p (by simp [h])) assignment
-            change head.denote assignment * tail.denote assignment = 1
-            rw [headOne, tailOne, one_mul]
   termination_by sizeOf patterns
 end
 

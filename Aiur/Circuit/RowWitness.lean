@@ -3,7 +3,7 @@ import Mathlib.Data.List.OfFn
 
 namespace Aiur.Circuit
 
-variable {F : Type} {rom : ROM F}
+variable {F : Type} {rom : WireROM F}
 
 /-- Store the allocated prefix of a witness assignment as a finite row. -/
 def Row.ofAssignment (name : String) (bound : Nat) (assignment : Var → F) : Row F :=
@@ -19,9 +19,9 @@ theorem Row.ofAssignment_agree [Zero F] (name : String) (bound : Nat) (assignmen
 
 namespace Compiler
 
-@[simp] theorem bounded_vars {bound : Nat} {value : Value Var} :
-    Bounded (F := F) bound (value.map ArithExpr.var) ↔ ∀ id ∈ value.flatten, id < bound := by
-  simp [Bounded, Value.flatten_map, ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds]
+@[simp] theorem bounded_vars {bound : Nat} {value : WireValue Var} :
+    Bounded (F := F) bound (value.map ArithExpr.var) ↔ ∀ id ∈ value.words, id < bound := by
+  simp [Bounded, WireValue.words_map, ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds]
 
 theorem BuildState.finite_witness [Field F] {calls : CallRelation F} {state : BuildState F}
     {assignment : Var → F} (layout : state.WellFormed) (valid : state.Valid rom calls assignment)
@@ -30,7 +30,7 @@ theorem BuildState.finite_witness [Field F] {calls : CallRelation F} {state : Bu
   ⟨le_rfl, Row.ofAssignment_agree _ _ _, layout,
     valid.of_agree layout (Row.ofAssignment_agree _ _ _)⟩
 
-theorem chip_wellFormed {name : String} {inputs : List (Value Var)} {output : Value Var} {state : BuildState F}
+theorem chip_wellFormed {name : String} {inputs : List (WireValue Var)} {output : WireValue Var} {state : BuildState F}
     (layout : state.WellFormed)
     (inputsBound : ∀ input ∈ inputs, Bounded (F := F) state.nextVar (input.map ArithExpr.var))
     (outputBound : Bounded (F := F) state.nextVar (output.map ArithExpr.var)) :

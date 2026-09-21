@@ -11,6 +11,8 @@ inductive Represents (rom : ROM F) (heap : Heap F) : SourceValue F → Value F �
   | field : Represents rom heap (.field value) (.field value)
   | tuple (items : List.Forall₂ (Represents rom heap) sources targets) :
       Represents rom heap (.tuple sources) (.tuple targets)
+  | construct (items : List.Forall₂ (Represents rom heap) sources targets) :
+      Represents rom heap (.construct name ctor sources) (.construct name ctor targets)
   | ptr (source : heap[location]? = some stored)
       (cell : (address, encoded) ∈ rom.entries)
       (contents : Represents rom heap stored encoded) :
@@ -29,11 +31,25 @@ theorem Represents.type {source : SourceValue F} {target : Value F}
     (related : Represents rom heap source target) : source.type = target.type := by
   induction related using Represents.rec
     (motive_2 := fun sources targets _ => sources.map Value.type = targets.map Value.type) with
-  | field => simp [Value.type]
+  | field | construct => simp [Value.type]
   | tuple _ ih => simp only [Value.type, ih]
   | ptr _ _ _ ih => simp only [Value.type, ih]
   | nil => rfl
   | cons _ _ h t => simp only [List.map_cons, h, t]
+
+theorem Represents.wellFormed (decls : Declarations) {source : SourceValue F} {target : Value F}
+    (related : Represents rom heap source target) :
+    source.wellFormed decls = target.wellFormed decls := by
+  induction related using Represents.rec
+    (motive_2 := fun sources targets _ =>
+      sources.map Value.type = targets.map Value.type ∧
+        sources.map (Value.wellFormed decls) = targets.map (Value.wellFormed decls)) with
+  | field => simp [Value.wellFormed]
+  | tuple _ ih => simp [Value.wellFormed, ih.2]
+  | construct _ ih => simp [Value.wellFormed, ih.1, ih.2]
+  | ptr _ _ related ih => simp [Value.wellFormed, related.type]
+  | nil => exact ⟨rfl, rfl⟩
+  | cons head _ h t => exact ⟨by simp [head.type, t.1], by simp [h, t.2]⟩
 
 theorem Represents.mono {source : SourceValue F} {target : Value F}
     (related : Represents rom heap source target) (grows : heap <+: larger) :
@@ -42,6 +58,7 @@ theorem Represents.mono {source : SourceValue F} {target : Value F}
     (motive_2 := fun sources targets _ => List.Forall₂ (Represents rom larger) sources targets) with
   | field => exact .field
   | tuple _ ih => exact .tuple ih
+  | construct _ ih => exact .construct ih
   | ptr source cell _ ih => exact .ptr (heap_get_of_prefix grows source) cell ih
   | nil => exact .nil
   | cons _ _ h t => exact .cons h t
@@ -83,9 +100,9 @@ theorem Represents.of_pointerFree (source : SourceValue F) (free : source.pointe
   cases source with
   | field => simpa only [Value.mapAddress] using Represents.field
   | ptr => simp [Value.pointerFree, Value.type, Ty.pointerFree] at free
-  | tuple items =>
+  | tuple items | construct _ _ items =>
       simp only [Value.mapAddress]
-      apply Represents.tuple
+      first | apply Represents.tuple | apply Represents.construct
       have freeItems : ∀ item ∈ items, item.pointerFree = true := by
         simpa [Value.pointerFree, Value.type, Ty.pointerFree] using free
       apply List.forall₂_map_right_iff.mpr
@@ -102,9 +119,9 @@ theorem Represents.pointerFree_eq {source : SourceValue F} {target : Value F}
       (∀ value ∈ targets, value.pointerFree = true) →
         sources = targets.map (Value.mapAddress (fun _ => 0))) with
   | field => intro _; simp [Value.mapAddress]
-  | tuple _ ih =>
+  | tuple _ ih | construct _ ih =>
       intro free
-      simp only [Value.mapAddress, Value.tuple.injEq]
+      simp only [Value.mapAddress, Value.tuple.injEq, Value.construct.injEq, true_and]
       apply ih
       simpa [Value.pointerFree, Value.type, Ty.pointerFree] using free
   | ptr => simp [Value.pointerFree, Value.type, Ty.pointerFree]
