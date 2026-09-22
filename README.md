@@ -14,6 +14,7 @@ lake build
 lake test
 lake env lean Examples/Pointers.lean
 lake env lean Examples/Tables.lean
+lake env lean Examples/RefutableLets.lean
 ```
 
 ## Use from Lean
@@ -63,7 +64,10 @@ equality, arithmetic, cast, or null pointer. Entry arguments cannot contain
 pointers, including inside tuples. See [Examples/Pointers.lean](Examples/Pointers.lean).
 
 Patterns include literals, `_`, names, tuples, and qualified constructors. They
-work in `match`, `let`, and function parameters; lets and parameter patterns must be irrefutable.
+work in `match`, `let`, and function parameters. A `let` evaluates its value once
+and fails with `patternMismatch` if the pattern does not match; for example,
+`let (0, x) = pair; x` requires the first component to be zero. Parameter patterns
+must be irrefutable. See [Examples/RefutableLets.lean](Examples/RefutableLets.lean).
 Matches use the first matching arm, including overlapping tuple patterns.
 Bindings may shadow outer names, but cannot repeat within one pattern or across
 parameters. Trailing commas and Rust-style comments are supported.
@@ -107,7 +111,7 @@ bodies are not evaluated. Functions may call one another recursively. `eval`
 checks the program, entry argument shapes, and the pointer-free entry restriction.
 `run` additionally returns the final heap. Both start from empty memory.
 The fuel bound defaults to 1000;
-division by zero, uncovered matches, and exhausted fuel produce errors.
+division by zero, failed let patterns, uncovered matches, and exhausted fuel produce errors.
 
 `EvalCall` is the fuel-free evaluation predicate. `eval_spec`, `eval_complete`,
 and `exists_eval_iff` prove its correspondence with successful execution for the

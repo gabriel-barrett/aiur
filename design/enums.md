@@ -191,9 +191,11 @@ typechecked. Partial matches continue to fail when no arm matches.
 
 Irrefutability rule: a constructor pattern is irrefutable only if its
 enum has exactly one constructor and all its argument patterns are irrefutable.
-This supports such patterns in `let` and function parameters while preserving
-their existing irrefutability requirement. It makes the irrefutability check
-depend on declarations and the scrutinee type.
+Function parameter patterns must satisfy this rule, and the match compiler uses
+it to identify a final catch-all arm. `let` also accepts refutable constructor
+patterns, failing with `patternMismatch` when the constructor or a payload
+pattern does not match. The irrefutability check depends on declarations and the
+scrutinee type.
 
 Pointer-free entry arguments are checked by actual value: inspect only the
 selected constructor's arguments, recursively. `List::Nil` is allowed, while

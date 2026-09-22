@@ -102,15 +102,12 @@ theorem EvalExpr.wellTyped [Field F] [DecidableEq F] {program : Program F}
       simp only [inferType] at checked
       obtain ⟨valueType, valueRun, rest⟩ := except_bind_ok.mp checked
       obtain ⟨bindingTypes, patternRun, rest⟩ := except_bind_ok.mp rest
-      split at rest
-      · cases rest
-      · simp only [pure_bind] at rest
-        obtain ⟨shape, inputGood, heapGood⟩ := valueIH memory formed caller valueType valueRun
-        have bindings := patternTypes_bindings (caller := caller)
-          (by rw [shape]; exact checkPattern_types patternRun) inputGood.1 matched
-        exact bodyIH heapGood (Environment.good_append.mpr
-          ⟨Pattern.bindings_good inputGood matched, formed⟩) caller type
-          (by simpa only [environmentTypes_append, bindings] using rest)
+      obtain ⟨shape, inputGood, heapGood⟩ := valueIH memory formed caller valueType valueRun
+      have bindings := patternTypes_bindings (caller := caller)
+        (by rw [shape]; exact checkPattern_types patternRun) inputGood.1 matched
+      exact bodyIH heapGood (Environment.good_append.mpr
+        ⟨Pattern.bindings_good inputGood matched, formed⟩) caller type
+        (by simpa only [environmentTypes_append, bindings] using rest)
   | store _ ih =>
       intro memory formed caller type checked
       simp only [inferType] at checked
