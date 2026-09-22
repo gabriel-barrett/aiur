@@ -1,152 +1,144 @@
-# Static tables
+# Tables and maps
 
-Status: design under discussion; not implemented.
+Status: implemented, including evaluator correspondence, compiler completeness,
+tree soundness, and acyclic memoized soundness. No admitted proof steps or new
+axioms are used.
 
-## Agreed scope
+## Shared precommitted traces
 
-Aiur will support named tables whose contents are supplied statically as part of
-the program and precommitted in the eventual SNARK. Operations such as `u8_add`,
-`u8_mul`, and `u8_xor` will share one input table and have separate output tables.
-Tables will be generated programmatically, while retaining a frontend with
-explicit rows and ordinary call syntax. A generator may emit source text or
-construct an AST that undergoes the same checks.
+A table is a named, typed, finite trace of constant rows. Its contents belong to
+the program and will be precommitted in the eventual SNARK. This is distinct
+from the ROM, whose contents are chosen by the prover for an execution.
 
-For now, inputs and outputs are tuples of field elements. An input table has a
-fixed tuple width, and each output table has its own fixed tuple width. Table
-columns do not contain pointers or enums. This restriction is to field elements;
-a byte domain, when wanted, is established by a particular table's entries.
-
-## Shared inputs and separate outputs
-
-The proposed representation is a family of tables with a common row index:
-
-```text
-inputs : Fin N -> Field^m
-outputs[operation] : Fin N -> Field^(outputWidth[operation])
-```
-
-Each operation references the shared input table and supplies its own output
-table. All output tables have exactly the same number of rows as the input
-table. Row `i` of an output table is the result for row `i` of the input table.
-The input rows are stored once; each operation stores only its outputs and a
-reference to the input table. Output widths may differ between operations.
-
-For example, a fragment with singleton outputs could be displayed as follows.
-The columns after `inputs` are separate output tables; they are shown together
-to make their alignment visible:
-
-| Row | Shared inputs | `u8_add` outputs | `u8_mul` outputs | `u8_xor` outputs |
-| --- | --- | --- | --- | --- |
-| 0 | `(3, 5)` | `(8,)` | `(15,)` | `(6,)` |
-| 1 | `(4, 2)` | `(6,)` | `(8,)` | `(6,)` |
-
-These example rows do not settle overflow conventions. An operation could instead
-return a wider tuple, for example a result and a carry. Different output rows
-may contain the same value, as in the XOR column above.
-
-For a full binary byte domain, the shared input table contains all 65,536 input
-pairs. Every operation supplies one output tuple for each pair. Adding an
-operation adds an output table without duplicating the inputs.
-
-## Proposed signature and row syntax
-
-For one operation, keep the proposed function-like declaration syntax, with
-field parameters and an explicit tuple result. Each row supplies the argument
-tuple and result tuple. For example, this table contains all rows of XOR on two
-one-bit inputs:
+A map names an input table and an output table. Both must have the same number
+of rows. Row `i` of the output table supplies the result for row `i` of the input
+table. Several maps can share the same input table without storing it again:
 
 ```rust
-table bit_xor(a: Field, b: Field) -> (Field,) {
-    (0, 0) => (0,),
-    (0, 1) => (1,),
-    (1, 0) => (1,),
-    (1, 1) => (0,),
+table bits: (Field, Field) {
+    (0, 0), (0, 1), (1, 0), (1, 1),
 }
+table sums: Field { 0, 1, 1, 2, }
+table products: Field { 0, 0, 0, 1, }
+table xors: Field { 0, 1, 1, 0, }
 
-fn example() -> (Field,) {
-    bit_xor(1, 1)
-}
-```
+map bit_add(a: Field, b: Field) -> Field = bits => sums;
+map bit_mul(a: Field, b: Field) -> Field = bits => products;
+map bit_xor(a: Field, b: Field) -> Field = bits => xors;
 
-For several operations, a possible extension groups their signatures and rows:
-
-```rust
-table u8_ops(a: Field, b: Field) {
-    outputs {
-        u8_add: (Field,),
-        u8_mul: (Field,),
-        u8_xor: (Field,),
-    }
-    rows {
-        (3, 5) => {
-            u8_add: (8,),
-            u8_mul: (15,),
-            u8_xor: (6,),
-        },
-        // The generator supplies all remaining byte input pairs.
-    }
-}
-
-fn example() -> (Field,) {
-    u8_xor(3, 5)
+fn example() -> (Field, Field, Field) {
+    (bit_add(1, 1), bit_mul(1, 1), bit_xor(1, 1))
 }
 ```
 
-This is proposed syntax, not a final grammar. Each row specifies its input once
-and gives an output for every declared operation. The frontend separates these
-into one input table and the aligned output tables. The named braces organize
-table declarations; they do not introduce a record value type. A call names one
-operation and returns only that operation's output tuple. The single-operation
-syntax is shorthand for the same representation with one output table.
+This returns `(2, 1, 0)`. See [the runnable example](../Examples/Tables.lean).
+The operation name selects the output table; no opcode column is required in
+the shared input table.
 
-Rows contain explicit values. Generation loops and computations occur outside
-Aiur. The existing field-agnostic frontend convention applies: natural literals
-are converted to the selected field, then field-dependent validity is checked.
-The proposed initial representation uses flat tuples, one field per column.
+## Types, constants, and arguments
 
-## Proposed semantics and proof integration
+Rows can contain fields, arbitrary nested tuples, and nominal enum values.
+There are no pointer constants, including inside tuples or constructor payloads.
+The AST enforces this through `Constant α = Value α Empty`: no address can be
+constructed. A pointer-free variant of an enum that also has pointer-bearing
+variants is allowed, just as for public entry arguments.
 
-The initial recommendation is directed lookup: find the row of the shared input
-table matching the arguments, then return the same row of the selected output
-table. Absent inputs produce an evaluation error. Duplicate input keys would be
-rejected both before and after field specialization. Together with row-count and
-width checks, this gives one output tuple per input tuple for each operation and
-retains deterministic evaluation. Distinct inputs may have the same output.
+Every table has an explicit row type. Every map has explicit named parameter
+types and one explicit result type. Its input table has the outer tuple type
+of its parameter list; its output table has the result type itself:
 
-The phrase “tuple <-> tuple relationship” does not yet settle whether reverse
-lookup or several outputs for one input should be supported. Those would require
-an explicit choice of lookup direction and treatment of ambiguous results; they
-are not assumed by this proposal.
+| Signature | Input row type | Example call |
+| --- | --- | --- |
+| `m(a: A, b: B) -> C` | `(A, B)` | `m(a, b)` |
+| `m(p: (A, B)) -> C` | `((A, B),)` | `m((a, b))` |
+| `m(a: A) -> C` | `(A,)` | `m(a)` |
+| `m() -> C` | `()` | `m()` |
 
-A circuit lookup would allocate fresh columns for the selected operation's
-output and require the following relation, guarded by the current enable:
+These are argument packs, not an identification of singleton tuples with their
+elements. `(A,)` and `A` remain distinct types. An output of `(Field,)` remains a
+singleton tuple and is different from a `Field` output.
+
+Frontend rows are constant literals, tuples, and qualified constructors. Calls,
+arithmetic, allocation, and loading are rejected in rows. Generation runs
+outside Aiur: Lean code can construct `Table Nat` values programmatically and
+insert them into a `Program Nat`, using the same checks as elaborated source.
+The frontend remains field agnostic; `Program.toField F` specializes every
+field leaf in the rows as well as literals elsewhere in the program.
+
+## Checking and evaluation
+
+Tables have unique names. Maps and functions share a separate callable namespace;
+duplicate callable names are rejected. All declarations are collected before
+checking, so references can point forward.
+
+Checking verifies row types and constructor payloads, referenced table names,
+signature agreement, equal table lengths, and distinct whole input rows for
+each map. Duplicate keys are rejected even when their results agree. Outputs
+may repeat. Input uniqueness is checked again on the specialized field program,
+so natural literals that collide in that field cannot introduce ambiguity.
+Tables used only as outputs need not have distinct rows.
+
+The evaluator searches the input rows and returns the aligned output. A missing
+input yields `EvalError.missingMapInput`. Empty maps are allowed. This is a
+deterministic partial lookup; nondeterministic maps are deferred.
+
+Calls have the same expression syntax, signature lookup, argument checking, and
+entry interface as function calls. Internally, `prepareCall` performs the static
+lookup and returns an expression containing the selected constant. Evaluating
+that expression preserves the heap. This reuses the existing evaluator and
+fuel-free evaluation relations; successful execution and relational evaluation
+still coincide. A map can also be invoked directly through `eval` or `run`.
+
+## Circuit membership rules
+
+Compilation carries the tables and map declarations into `Circuit.System` and
+produces chips for functions. A map has no chip. A call to either kind of callee
+allocates fresh result columns and emits the same guarded `Send`.
+
+For a map `m`, a claim is justified exactly by membership in the aligned rows:
 
 ```text
-Lookup(family, operation, args, result) :=
-  exists i : Fin N,
-    inputs[i] = args and outputs[operation][i] = result
+MapClaim(m, args, result) :=
+  exists i, inputs[i] = tuple(args) and outputs[i] = result
 ```
 
-Both sides must use the same row index. Independent membership in the input
-table and the output table would permit incorrect input/output pairings. This
-abstract index need not be a single field element or appear in source values;
-its representation and how the backend enforces alignment remain separate
-design choices. The selected operation identifies the output table; no opcode
-column in the shared input table is required by this model. The lookup need not
-witness the outputs of other operations.
+The actual messages use canonical flat encodings, preserving nominal types and
+tuple shapes. Both sides must come from the same row index. Independent input
+and output membership would permit incorrect pairings.
 
-The input and output tables are fixed by the program, unlike the prover-chosen
-ROM. Each paired input/output row provides a reusable rule with no premises,
-independently of how many lookups use it. As with ROM lookup, this relation can
-be a side condition of a valid chip row, preserving the existing function
-derivation and memoized graph machinery. Defining a relation per operation does
-not require materializing a copy of the shared input table per operation.
+`System.mapClaims` derives this finite encoded relation from the shared table
+references. It does not add per-map copies of the tables to the system.
+The representation of commitments and enforcement of row alignment in a concrete
+SNARK remain backend questions.
 
-Compiler correctness would relate source lookup to lookup of the same encoded
-table. A separate theorem for each generated table can establish that its rows
-implement the intended operation, such as byte XOR. No implementation or proof
-extension is claimed yet.
+`Derivation.table` is a zero-premise rule with a proof of `System.MapClaim`.
+`RuleInstance.table` supplies the corresponding node for a memoized graph.
+A static row can justify any number of identical claims; it is not consumed.
+Such nodes have no dependency edges. Inactive sends require no membership proof.
 
-The abstract model preserves shared input identity and operation-specific output
-identity. It does not prescribe how their eventual commitments or lookup
-arguments are constructed.
+`System.check` checks chip rows and removes sent claims justified by static
+membership before checking exact multiset balance of the remaining dynamic
+calls. A valid map claim at the root needs no chip rows. The separate bridge
+from this executable balance check to derivation trees remains future work.
+
+## Proof integration
+
+`TableChecking.lean` proves that checked maps have typed aligned rows, unique
+keys, and unique callable identities. `Tables.lean` relates successful lookup
+to those rows and proves that constant results preserve the heap and are
+independent of address representation.
+
+`Circuit/MapFacts.lean` proves both directions between successful source lookup
+and encoded static membership. These lemmas discharge the new leaf cases of
+compiler soundness and completeness. The generic call proofs continue to handle
+function and map sends uniformly. Tree-to-graph embedding and acyclic unfolding
+also cover the new leaf rule.
+
+The existing end-to-end theorems therefore apply to programs using maps, enums,
+and pointers together, including the allocation-capacity condition for
+completeness. No allocation capacity is needed for static rows themselves.
+The table cardinality is a list length, not a field-valued counter or address.
+
+Compiler correctness means agreement with the declared rows. Proving that a
+generated table implements a particular operation, such as byte XOR or addition
+with a carry, remains a theorem about that generator and its rows.

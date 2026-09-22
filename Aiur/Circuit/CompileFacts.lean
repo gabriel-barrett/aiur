@@ -52,7 +52,7 @@ theorem compile_stages [Field F] [DecidableEq F] {program : Program F} {system :
     (compiled : compile program = .ok system) :
     typecheck program = .ok () ∧ program.enums.tagsValid F = true ∧
       program.functions.mapM (Compiler.lowerFunction program) = .ok system.chips ∧
-      system.enums = program.enums := by
+      system.enums = program.enums ∧ system.tables = program.tables ∧ system.maps = program.maps := by
   unfold compile at compiled
   obtain ⟨⟨⟩, checked, rest⟩ := except_bind_ok.mp compiled
   have checked : typecheck program = .ok () := by
@@ -63,7 +63,7 @@ theorem compile_stages [Field F] [DecidableEq F] {program : Program F} {system :
   obtain ⟨chips, mapped, finished⟩ := except_bind_ok.mp rest
   have same := except_pure_ok.mp finished
   subst system
-  refine ⟨checked, ?_, mapped, rfl⟩
+  refine ⟨checked, ?_, mapped, rfl, rfl, rfl⟩
   apply (Declarations.tagsValid_spec program.enums).mpr
   have each := forIn_ok (items := program.enums) (action := checkEnumTags F) (by
     have combined := congrArg (fun r : Except CompileError PUnit => r >>= fun _ =>

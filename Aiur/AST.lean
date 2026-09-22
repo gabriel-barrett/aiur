@@ -174,6 +174,48 @@ instance [OfNat α n] : OfNat (Value α Address) n := ⟨.field (OfNat.ofNat n)�
 /-- Runtime locations are distinct from field-valued circuit addresses. -/
 abbrev SourceValue (F : Type) := Value F Nat
 
+/-- Static values cannot contain an address, including in nested constructor payloads. -/
+abbrev Constant (α : Type) := Value α Empty
+
+def Constant.toValue (value : Constant α) : Value α Address :=
+  value.mapAddress Empty.elim
+
+def Constant.map (f : α → β) : Constant α → Constant β
+  | .field value => .field (f value)
+  | .tuple items => .tuple (items.map (Constant.map f))
+  | .construct name ctor args => .construct name ctor (args.map (Constant.map f))
+  | .ptr _ address => nomatch address
+termination_by value => sizeOf value
+
+/-- Forgetting opaque addresses succeeds exactly on pointer-free values. -/
+def Value.toConstant? : Value α Address → Option (Constant α)
+  | .field value => some (.field value)
+  | .tuple items => (.tuple ·) <$> items.mapM Value.toConstant?
+  | .construct name ctor args => (.construct name ctor ·) <$> args.mapM Value.toConstant?
+  | .ptr _ _ => none
+termination_by value => sizeOf value
+
+/-- A named, precommitted trace of typed constant rows. -/
+structure Table (α : Type) where
+  name : String
+  rowType : Ty
+  rows : List (Constant α)
+  deriving Repr, BEq
+
+/-- The input trace's outer tuple is the argument list; its elements retain their types. -/
+structure MapDecl where
+  name : String
+  params : List (String × Ty)
+  result : Ty
+  input : String
+  output : String
+  deriving Repr, BEq, DecidableEq
+
+structure Signature where
+  params : List (String × Ty)
+  result : Ty
+  deriving Repr, BEq, DecidableEq
+
 /-- Patterns can test leaves, discard subtrees, or bind entire subtrees. -/
 inductive Pattern (α : Type) where
   | literal (value : α)
@@ -249,6 +291,14 @@ inductive Expr (α : Type) where
   | matchValue (scrutinee : Expr α) (arms : List (Pattern α × Expr α))
   deriving Repr, BEq
 
+/-- A selected table result contains no executable user code or allocations. -/
+def Constant.toExpr : Constant α → Expr α
+  | .field value => .literal value
+  | .tuple items => .tuple (items.map Constant.toExpr)
+  | .construct name ctor args => .construct name ctor (args.map Constant.toExpr)
+  | .ptr _ address => nomatch address
+termination_by value => sizeOf value
+
 structure Function (α : Type) where
   name : String
   params : List (String × Ty)
@@ -259,10 +309,40 @@ structure Function (α : Type) where
 structure Program (α : Type) where
   functions : List (Function α)
   enums : Declarations := []
+  tables : List (Table α) := []
+  maps : List MapDecl := []
   deriving Repr, BEq
 
 def Program.findFunction? (program : Program α) (name : String) : Option (Function α) :=
   program.functions.find? (·.name == name)
+
+def Program.findTable? (program : Program α) (name : String) : Option (Table α) :=
+  program.tables.find? (·.name == name)
+
+def Program.findMap? (program : Program α) (name : String) : Option MapDecl :=
+  program.maps.find? (·.name == name)
+
+def Program.findSignature? (program : Program α) (name : String) : Option Signature :=
+  match program.findFunction? name with
+  | some fn => some ⟨fn.params, fn.result⟩
+  | none => (program.findMap? name).map fun map => ⟨map.params, map.result⟩
+
+/-- Row alignment, rather than independent membership, relates the two traces. -/
+def Program.mapRows (program : Program α) (map : MapDecl) : List (Constant α × Constant α) :=
+  match program.findTable? map.input, program.findTable? map.output with
+  | some inputs, some outputs => inputs.rows.zip outputs.rows
+  | _, _ => []
+
+structure MapEntry (α : Type) where
+  args : List (Constant α)
+  result : Constant α
+  deriving Repr, BEq, DecidableEq
+
+/-- A derived view of aligned traces; the program stores each table only once. -/
+def Program.mapEntries (program : Program α) (map : MapDecl) : List (MapEntry α) :=
+  (program.mapRows map).filterMap fun
+    | (.tuple args, result) => some ⟨args, result⟩
+    | _ => none
 
 def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .literal x => .literal (f x)
@@ -320,7 +400,9 @@ def Function.map (f : α → β) (function : Function α) : Function β :=
   { function with body := function.body.map f }
 
 def Program.map (f : α → β) (program : Program α) : Program β :=
-  { program with functions := program.functions.map (Function.map f) }
+  { program with
+    functions := program.functions.map (Function.map f)
+    tables := program.tables.map fun table => { table with rows := table.rows.map (Constant.map f) } }
 
 def Program.toField (F : Type) [NatCast F] (program : Program Nat) : Program F :=
   program.map (fun n => (Nat.cast n : F))

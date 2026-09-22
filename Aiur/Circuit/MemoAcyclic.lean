@@ -37,8 +37,10 @@ theorem node_derives_of_acyclic (graph : MemoDerivation system rom message)
         have child := ih (graph.target i ⟨j, bounded⟩) ⟨⟨j, bounded⟩, rfl⟩
         rwa [(graph.target_claim i ⟨j, bounded⟩).trans same] at child
       obtain ⟨children⟩ := derivations_nonempty_iff.mpr premises
-      exact ⟨.node (graph.node i).chip (graph.node i).row
-        (graph.node i).lookup (graph.node i).valid children⟩
+      cases rule : graph.node i with
+      | node chip row lookup valid =>
+          exact ⟨.node chip row lookup valid (by simpa [rule, RuleInstance.premises] using children)⟩
+      | table message member => exact ⟨.table member⟩
 
 /-- An acyclic memoized graph supplies an ordinary derivation of its root claim. -/
 theorem derives_of_acyclic (graph : MemoDerivation system rom message)

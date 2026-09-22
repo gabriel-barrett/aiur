@@ -23,14 +23,26 @@ theorem circuit_calls_typed [Field F] [DecidableEq F]
   | node chip row lookup valid children =>
       obtain ⟨source, sourceFound, lowered⟩ := Circuit.compile_find_chip compiled lookup
       have names : chip.name = row.chip := by simpa using List.find?_some lookup
-      change program.findFunction? chip.name = some fn at found
-      rw [names] at found
-      have same : fn = source := Option.some.inj (found.symm.trans sourceFound)
+      change program.findSignature? chip.name = some fn at found
+      have sourceSignature : program.findSignature? chip.name = some ⟨source.params, source.result⟩ := by
+        rw [names]
+        exact Program.signature_of_function sourceFound
+      have same := Option.some.inj (found.symm.trans sourceSignature)
       subst fn
       refine ⟨?_, (WireValue.decode_spec decoded).2.1⟩
       exact (WireValue.decode_spec decoded).1.trans (by
         simpa only [Circuit.Chip.receive, WireValue.type_map] using
           (Circuit.Compiler.lowerFunction_interface lowered).2.2)
+  | table member =>
+      obtain ⟨_, constant, _, resultDecoded, absent, looked⟩ := Circuit.compile_map_spec compiled member
+      have same := Option.some.inj (decoded.symm.trans resultDecoded)
+      subst result
+      obtain ⟨map, _, mapFound, _, _, _, _, typed⟩ := lookupMap_spec looked
+      have signature := Program.signature_of_map absent mapFound
+      have sameSignature := Option.some.inj (found.symm.trans signature)
+      subst fn
+      simp only [Value.hasType, Bool.and_eq_true, decide_eq_true_eq] at typed
+      exact ⟨by simpa using typed.1, by simpa using typed.2⟩
 
 theorem circuit_calls_complete [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F} (compiled : Circuit.compile program = .ok system) :
@@ -72,19 +84,24 @@ theorem evaluation_complete [Field F] [DecidableEq F]
   | nil => exact .nil
   | cons _ _ headIH tailIH => exact .cons headIH tailIH
   | intro prepared _ bodyIH =>
-      obtain ⟨fn, lookup, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
-      obtain ⟨chip, found, lowered⟩ := Circuit.compile_find_function compiled lookup
-      have checked := typecheck_function stages.1 (List.mem_of_find?_eq_some lookup)
-      obtain ⟨row, rowName, valid, arguments, decoded, premises⟩ := Circuit.Compiler.lowerFunction_complete
-        declarations stages.2.1 lowered (circuit_calls_typed compiled) (circuit_calls_complete compiled)
-        checked types formed bodyIH
-      have name := Circuit.findFunction_name lookup
-      have rowLookup : system.findChip? row.chip = some chip := by rw [rowName, name]; exact found
-      obtain ⟨children⟩ := Circuit.derivations_nonempty_iff.mpr premises
-      have tree := Circuit.Derivation.node chip row rowLookup valid children
-      refine ⟨(chip.receive row).args, (chip.receive row).result, arguments, decoded, ?_⟩
-      have chipName := (Circuit.Compiler.lowerFunction_interface lowered).1.trans name
-      simpa only [Circuit.Chip.receive, chipName] using Nonempty.intro tree
+      rcases prepareCall_spec prepared with function | table
+      · obtain ⟨fn, lookup, types, formed, rfl, rfl⟩ := function
+        obtain ⟨chip, found, lowered⟩ := Circuit.compile_find_function compiled lookup
+        have checked := typecheck_function stages.1 (List.mem_of_find?_eq_some lookup)
+        obtain ⟨row, rowName, valid, arguments, decoded, premises⟩ := Circuit.Compiler.lowerFunction_complete
+          declarations stages.2.1 lowered (circuit_calls_typed compiled) (circuit_calls_complete compiled)
+          checked types formed bodyIH
+        have name := Circuit.findFunction_name lookup
+        have rowLookup : system.findChip? row.chip = some chip := by rw [rowName, name]; exact found
+        obtain ⟨children⟩ := Circuit.derivations_nonempty_iff.mpr premises
+        have tree := Circuit.Derivation.node chip row rowLookup valid children
+        refine ⟨(chip.receive row).args, (chip.receive row).result, arguments, decoded, ?_⟩
+        have chipName := (Circuit.Compiler.lowerFunction_interface lowered).1.trans name
+        simpa only [Circuit.Chip.receive, chipName] using Nonempty.intro tree
+      · obtain ⟨constant, _, looked, rfl, rfl⟩ := table
+        obtain rfl := (ROMEvalExprWith.constant_iff constant).mp bodyIH
+        obtain ⟨wires, output, arguments, decoded, member⟩ := Circuit.compile_map_lookup compiled looked
+        exact ⟨wires, output, arguments, decoded, ⟨.table member⟩⟩
 
 /-- Completeness also holds for any supplied canonical encodings of the root values. -/
 theorem evaluation_complete_encoded [Field F] [DecidableEq F]

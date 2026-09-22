@@ -3,7 +3,7 @@
 Aiur is a first-order programming language for zero-knowledge circuits, formalized
 in Lean. Source programs use arithmetic, calls, and pattern matching rather than
 gates or wires. A Lean elaborator accepts a Rust-like source string containing all
-enum declarations and function definitions.
+enum declarations, function definitions, tables, and maps.
 
 ## Values and signatures
 
@@ -27,11 +27,13 @@ fn sum((x, (y, z)): (Field, (Field, Field))) -> Field {
 Functions take any number of arguments and return one value, which may be a
 tuple, enum, or pointer. All signatures are available while checking every body. Forward calls and
 mutual recursion work with tuple arguments and results. Functions are called by
-name and cannot themselves be passed or returned as values.
+name and cannot themselves be passed or returned as values. Maps use the same
+call syntax and callable namespace, with their signatures available alongside
+function signatures.
 
 The frontend remains field agnostic: `Program Nat` contains natural literals.
-`Program.toField F` casts literals in expressions and patterns into the chosen
-field. `Nat` is a representation choice, not a source-language type.
+`Program.toField F` casts literals in expressions, patterns, and table rows into
+the chosen field. `Nat` is a representation choice, not a source-language type.
 
 ## Expressions and binding
 
@@ -122,9 +124,29 @@ assigns declaration-order field tags and rejects collisions. Active encodings
 require valid tags, selected payloads, and zero padding. See [enums](enums.md)
 for layout, boundary conditions, and the complete proof model.
 
+## Tables and maps
+
+Tables contain typed constant rows; maps pair an input table with an output
+table by row index. Maps take ordinary separate arguments and return one value:
+
+```rust
+table inputs: (Field, Field) { (0, 1), (1, 0), }
+table outputs: Field { 1, 1, }
+map add(a: Field, b: Field) -> Field = inputs => outputs;
+```
+
+The input row type is the tuple of parameter types. A single tuple parameter
+therefore requires a singleton outer tuple; singleton tuples remain distinct
+from their elements. Rows may contain nested tuples and enums, but no pointers.
+Input rows must be distinct in the selected field, and both tables must have
+equal lengths. Missing inputs fail during evaluation. Tables can be generated
+in Lean or written as frontend constants. See [tables and maps](tables.md) for
+the syntax, checks, membership rules, and correctness proofs.
+
 ## Open questions
 
 - Concrete fields and circuit backends for applications.
 - Whether division by zero and partial matches remain runtime errors.
 - Additional data structures and binding forms beyond tuples and enums.
 - Constraints enforcing depth or other termination measures, deliberately deferred.
+- Nondeterministic operations, including any future extension of maps.

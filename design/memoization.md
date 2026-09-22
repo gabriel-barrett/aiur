@@ -2,13 +2,16 @@
 
 The memoized model lives alongside ordinary finite derivation trees. Its finite,
 explicit graphs permit shared dependencies and cycles. The current `Aiur.Circuit`
-model carries tuple and pointer values and shares one ROM; the preserved `Aiur.Scalar.Circuit` model
+model carries tuples, enums, and pointers, supports static map claims, and shares
+one ROM; the preserved `Aiur.Scalar.Circuit` model
 carries the original field-valued messages.
 
 ## Graphs and trees
 
-`RuleInstance system rom` contains a chip, a row, a successful chip lookup, and proof
-of local validity, including active lookups in that same table. `MemoDerivation system rom message` contains a finite node table,
+`RuleInstance system rom` has two cases: a chip instance with a row, successful
+chip lookup, and local validity proof; or a static map claim with a membership
+proof. Chip validity includes active lookups in the shared ROM. Static map nodes
+have no premises. `MemoDerivation system rom message` contains a finite node table,
 a root concluding `message`, and a target index for every enabled premise
 occurrence of every node. Targets must conclude exactly the required message,
 including all arguments, the result, and their tuple shapes.
@@ -42,7 +45,8 @@ This forbids nonempty directed cycles of every length while allowing sharing.
 Finiteness turns acyclicity into well-foundedness. Induction over dependencies
 constructs a closed ordinary derivation at each node, duplicating shared
 providers as needed. `graph.derives_of_acyclic` supplies the root tree.
-These results are proved for both scalar and tuple messages.
+These results are proved for both reference models and the current messages,
+including the static map leaf case.
 
 The hypothesis covers the entire supplied graph, including disconnected
 components. Restricting it to the root's reachable component would weaken the
@@ -54,7 +58,7 @@ depth parameter or depth constraint is introduced.
 `Derivation.toMemo` collects a tree's rule instances and chooses explicit matching
 providers for its premises. `Derives.memo` proves graph existence from tree
 existence. This construction does not claim its chosen references are acyclic.
-These results also hold for tuple messages.
+The construction covers chip instances and static map leaves.
 
 In the preserved scalar implementation, successful compilation connects these
 models to source evaluation:
@@ -87,6 +91,11 @@ one valid ROM for the complete graph. ROM cells provide reusable leaf claims;
 sharing cell addresses does not add call-dependency edges. Cyclic function-call
 justification remains allowed by the model and is deliberately excluded only by
 the soundness theorem's hypothesis.
+
+Precommitted map rows likewise provide reusable leaf claims, represented
+explicitly by `RuleInstance.table`. Both ordinary and memoized completeness
+include map calls, and acyclic soundness reuses the ordinary tree theorem.
+Table input uniqueness ensures source lookup agrees with any accepted map claim.
 
 The completed tuple-only graph theorems remain in `Aiur.Tuple`. See
 [correctness](correctness.md) and [pointers](pointers.md) for the current proof chain.

@@ -5,17 +5,20 @@ namespace Aiur.Circuit
 variable {F : Type} {rom : WireROM F}
 
 /-- One locally checked rule instance, without proofs of its call premises. -/
-structure RuleInstance [Field F] (system : System F) (rom : WireROM F) where
-  chip : Chip F
-  row : Row F
-  lookup : system.findChip? row.chip = some chip
-  valid : chip.ValidRow rom row
+inductive RuleInstance [Field F] (system : System F) (rom : WireROM F) where
+  | node (chip : Chip F) (row : Row F)
+      (lookup : system.findChip? row.chip = some chip) (valid : chip.ValidRow rom row)
+  | table (message : Message F) (member : system.MapClaim message)
 
 def RuleInstance.conclusion [Field F] {system : System F}
-    (rule : RuleInstance system rom) : Message F := rule.chip.receive rule.row
+    : RuleInstance system rom → Message F
+  | .node chip row _ _ => chip.receive row
+  | .table message _ => message
 
 def RuleInstance.premises [Field F] [DecidableEq F] {system : System F}
-    (rule : RuleInstance system rom) : List (Message F) := rule.chip.premises rule.row
+    : RuleInstance system rom → List (Message F)
+  | .node chip row _ _ => chip.premises row
+  | .table _ _ => []
 
 /--
 A finite graph of locally valid rules. Every enabled call has an explicit target
@@ -83,7 +86,8 @@ mutual
   /-- Keep each tree occurrence as a locally valid graph node. -/
   def Derivation.instances [Field F] [DecidableEq F] {system : System F} {message : Message F} :
       Derivation system rom message → List (RuleInstance system rom)
-    | .node chip row lookup valid children => ⟨chip, row, lookup, valid⟩ :: children.instances
+    | .node chip row lookup valid children => .node chip row lookup valid :: children.instances
+    | .table member => [.table _ member]
 
   def Derivations.instances [Field F] [DecidableEq F] {system : System F} {messages : List (Message F)} :
       Derivations system rom messages → List (RuleInstance system rom)
@@ -95,7 +99,8 @@ theorem Derivation.root_instance [Field F] [DecidableEq F]
     {system : System F} {message : Message F} (tree : Derivation system rom message) :
     ∃ rule ∈ tree.instances, rule.conclusion = message := by
   cases tree with
-  | node chip row lookup valid children => exact ⟨⟨chip, row, lookup, valid⟩, by simp [instances], rfl⟩
+  | node chip row lookup valid children => exact ⟨.node chip row lookup valid, by simp [instances], rfl⟩
+  | table member => exact ⟨.table _ member, by simp [instances], rfl⟩
 
 theorem Derivations.root_instances [Field F] [DecidableEq F]
     {system : System F} {messages : List (Message F)} (trees : Derivations system rom messages) :
@@ -127,6 +132,11 @@ theorem Derivation.instances_closed [Field F] [DecidableEq F]
         exact ⟨provider, by simp [instances, present], conclusion⟩
       · obtain ⟨provider, present, conclusion⟩ := ih rule member premise required
         exact ⟨provider, by simp [instances, present], conclusion⟩
+  | table member =>
+      intro rule present premise required
+      simp only [instances, List.mem_singleton] at present
+      subst rule
+      simp [RuleInstance.premises] at required
   | nil => rename_i rule member premise required; simp [Derivations.instances] at member
   | cons head tail headIH tailIH =>
       rename_i rule member premise required

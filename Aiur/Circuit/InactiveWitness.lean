@@ -205,7 +205,7 @@ mutual
               simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using
                 And.intro ((e₃.trans e₄).bound lb) (e₄.bound ib)⟩
     | call name args =>
-        cases found : program.findFunction? name with
+        cases found : program.findSignature? name with
         | none => simp [lowerExpr, found] at compiled
         | some callee =>
             simp only [lowerExpr, found] at compiled

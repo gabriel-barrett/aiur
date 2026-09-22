@@ -1,3 +1,4 @@
+import Aiur.Tables
 import Aiur.Memory.Representation
 
 namespace Aiur
@@ -161,22 +162,34 @@ theorem Represents.binary [Field F] [DecidableEq F]
                 cases operation
                 exact ⟨_, by simp [evalBinOp, nonzero], .field⟩
 
-theorem prepareCall_represents {program : Program F} {name : String}
+theorem prepareCall_represents [DecidableEq F] {program : Program F} {name : String}
     {sources : List (SourceValue F)} {targets : List (Value F)}
     (related : RepresentsArgs rom heap sources targets) {locals : Environment F} {body : Expr F}
     (prepared : prepareCall program name targets = .ok (locals, body)) :
     ∃ sourceLocals, prepareCall program name sources = .ok (sourceLocals, body) ∧
       RepresentsEnv rom heap sourceLocals locals := by
-  obtain ⟨fn, found, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
-  refine ⟨_, prepareCall_of_types found (types.trans related.types.symm) ?_, related.zip _⟩
-  clear types prepared found
-  induction related with
-  | nil => simp
-  | cons head tail ih =>
-      intro source member
-      rcases List.mem_cons.mp member with rfl | member
-      · rw [head.wellFormed program.enums]
-        exact formed _ (by simp)
-      · exact ih (fun v h => formed v (by simp [h])) source member
+  rcases prepareCall_spec prepared with function | table
+  · obtain ⟨fn, found, types, formed, rfl, rfl⟩ := function
+    refine ⟨_, prepareCall_of_types found (types.trans related.types.symm) ?_, related.zip _⟩
+    clear types prepared found
+    induction related with
+    | nil => simp
+    | cons head tail ih =>
+        intro source member
+        rcases List.mem_cons.mp member with rfl | member
+        · rw [head.wellFormed program.enums]
+          exact formed _ (by simp)
+        · exact ih (fun v h => formed v (by simp [h])) source member
+  · obtain ⟨constant, absent, looked, rfl, rfl⟩ := table
+    obtain ⟨_, key, _, _, _, extracted, _, _⟩ := lookupMap_spec looked
+    have free : (Value.tuple targets).pointerFree = true := by
+      rw [← Value.toConstant_spec extracted]
+      exact Constant.toValue_pointerFree key
+    have same := (Represents.tuple related).pointerFree_eq free
+    have same : sources = targets.map (Value.mapAddress (fun _ => 0)) := by
+      simpa only [Value.mapAddress, Value.tuple.injEq] using same
+    refine ⟨[], prepareCall_map absent ?_, .nil⟩
+    rw [same, lookupMap_mapAddress]
+    exact looked
 
 end Aiur

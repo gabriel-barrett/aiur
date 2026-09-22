@@ -171,7 +171,7 @@ example (accepted : Circuit.EncodedEntryDerives roundtripSystem "f" (entryValues
 /-- info: 'Aiur.memo_acyclic_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.memo_acyclic_heap_sound
-/-- info: 'Aiur.exists_eval_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.exists_eval_iff' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.exists_eval_iff
 

@@ -1,4 +1,5 @@
 import Aiur.Typecheck
+import Aiur.Constant
 import Aiur.Memory
 import Mathlib.Algebra.Field.Defs
 
@@ -24,6 +25,8 @@ inductive EvalError where
   | divisionByZero
   | noMatchingArm
   | outOfFuel
+  | missingMapInput (name : String)
+  | invalidMap (name : String)
   deriving Repr, BEq, DecidableEq
 
 mutual
@@ -74,10 +77,26 @@ def projectValue (value : Value F Address) (index : Nat) : Except EvalError (Val
   let some result := items[index]? | throw (.projectionBounds index items.length)
   return result
 
-/-- Resolve a call and check the complete shapes of its arguments. -/
-def prepareCall (program : Program F) (name : String) (args : List (Value F Address)) :
+/-- Table lookup returns a pointer-free constant; missing inputs are errors. -/
+def lookupMap [DecidableEq F] (program : Program F) (name : String)
+    (args : List (Value F Address)) : Except EvalError (Constant F) := do
+  let some map := program.findMap? name | throw (.unknownFunction name)
+  if map.params.length != args.length then
+    throw (.arityMismatch name map.params.length args.length)
+  for (param, arg) in map.params.zip args do
+    if param.2 ≠ arg.type then throw (.argumentTypeMismatch name param.2 arg.type)
+    if !arg.wellFormed program.enums then throw (.malformedValue arg.type)
+  let some key := (Value.tuple args).toConstant? | throw (.missingMapInput name)
+  let some (_, result) := (program.mapRows map).find? (fun row => decide (row.1 = key))
+    | throw (.missingMapInput name)
+  if !result.hasType program.enums map.result then throw (.invalidMap name)
+  return result
+
+/-- Resolve a function body or a statically selected map result through the same call interface. -/
+def prepareCall [DecidableEq F] (program : Program F) (name : String) (args : List (Value F Address)) :
     Except EvalError (Environment F Address × Expr F) := do
-  let some fn := program.findFunction? name | throw (.unknownFunction name)
+  let some fn := program.findFunction? name
+    | return ([], (← lookupMap program name args).toExpr)
   if fn.params.length != args.length then
     throw (.arityMismatch name fn.params.length args.length)
   for (param, arg) in fn.params.zip args do

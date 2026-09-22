@@ -97,10 +97,44 @@ def Chip.premises [Field F] [DecidableEq F] (chip : Chip F) (row : Row F) : List
 structure System (F : Type) where
   chips : List (Chip F)
   enums : Declarations := []
+  tables : List (Table F) := []
+  maps : List MapDecl := []
   deriving Repr, BEq
 
 def System.findChip? (system : System F) (name : String) : Option (Chip F) :=
   system.chips.find? (·.name == name)
+
+def encodeMapEntry [NatCast F] [Zero F] (decls : Declarations) (name : String)
+    (entry : MapEntry F) : Option (Message F) := do
+  let args ← entry.args.mapM (fun value => value.toValue.encode decls)
+  let result ← entry.result.toValue.encode decls
+  return ⟨name, args, result⟩
+
+/-- The finite membership relation supplied by the shared precommitted traces. -/
+def System.mapClaims [NatCast F] [Zero F] (system : System F) : List (Message F) :=
+  let data : Program F := {
+    functions := []
+    enums := system.enums
+    tables := system.tables
+    maps := system.maps
+  }
+  system.maps.flatMap fun map =>
+    (data.mapEntries map).filterMap (encodeMapEntry system.enums map.name)
+
+def System.MapClaim [NatCast F] [Zero F] (system : System F) (message : Message F) : Prop :=
+  message ∈ system.mapClaims
+
+instance [NatCast F] [Zero F] [DecidableEq F] (system : System F) (message : Message F) :
+    Decidable (system.MapClaim message) := by
+  unfold System.MapClaim
+  apply decidable_of_iff (system.mapClaims.any (fun claim => decide (claim = message)) = true)
+  constructor
+  · intro found
+    obtain ⟨claim, member, same⟩ := List.any_eq_true.mp found
+    have same : claim = message := of_decide_eq_true same
+    simpa only [same] using member
+  · intro member
+    exact List.any_eq_true.mpr ⟨message, member, by simp⟩
 
 inductive WitnessError where
   | duplicateChip (chip : String)
@@ -149,7 +183,8 @@ def System.check [Field F] [DecidableEq F] (system : System F)
     let (input, output) ← chip.checkRow rom row
     received := input :: received
     sent := output ++ sent
-  if sent.Perm received then pure () else throw .unbalancedMessages
+  let pending := sent.filter (fun message => !decide (system.MapClaim message))
+  if pending.Perm received then pure () else throw .unbalancedMessages
 
 def System.Accepts [Field F] [DecidableEq F] (system : System F)
     (rom : WireROM F) (entry : Message F) (rows : List (Row F)) : Prop := system.check rom entry rows = .ok ()

@@ -1,7 +1,7 @@
 # Evaluation and circuit correctness
 
 The main implementation supports fields, arbitrary nested tuples, nominal enums,
-and typed pointers. The completed field-only and tuple-only formalizations remain as
+typed pointers, and static tables and maps. The completed field-only and tuple-only formalizations remain as
 reference snapshots in `Aiur.Scalar` and `Aiur.Tuple`.
 
 ## Source evaluation
@@ -18,6 +18,11 @@ EvalFn   P function arguments before value after
 `EvalFn P f xs [] y heap`. Each store appends a cell. Loads use the heap after
 evaluating their pointer operand. Internal calls share the heap; selected
 branches, tuple items, constructor arguments, and operands retain left-to-right evaluation.
+
+The same relations cover map calls. `prepareCall` looks up the arguments in the
+static rows and supplies an expression containing the aligned constant result.
+That expression neither reads nor allocates memory. `Tables.lean` proves this
+constant evaluation property and the lookup facts used by the compiler proofs.
 
 `evalExpr_spec` and `EvalExpr.eventually_runs` establish both directions between
 the predicate and successful execution, including the exact final heap.
@@ -38,11 +43,13 @@ proved deterministic, as are function and public entry results.
 
 Each chip row gives a rule instance. Its conclusion is the function name,
 arguments, and result. Local polynomial equations must hold. Every active
-memory lookup must belong to the same ROM table. Enabled function sends are
+memory lookup must belong to the same ROM table. Enabled function or map sends are
 its premises; inactive sends and memory lookups impose no premise.
 
-`Derivation C ROM message` is a finite tree with a valid row at each node and
-one child per enabled call occurrence. It has no free-premise constructor.
+`Derivation C ROM message` is a finite tree. Chip nodes have a valid row and one
+child per enabled call occurrence. Map leaves instead prove membership of the
+claim in the program's aligned static tables. They need no chip row and can be
+reused arbitrarily. There is no free-premise constructor.
 `CircuitEvaluates C ROM f xs y` asserts that such a closed tree exists.
 
 `ROMEvalExpr`, `ROMEvalArgs`, and `ROMEvalCall` provide a pure evaluation
@@ -60,8 +67,9 @@ fixed-table equivalence. `EncodedEvaluates` existentially supplies raw argument
 and result words, their canonical decodings, and a `CircuitEvaluates` tree.
 `evaluation_complete_encoded` also accepts any supplied canonical encodings.
 `derivation_sound` recovers decodable arguments and a correct result from the
-compiled row constraints themselves. It holds even for a nonfunctional table; table
-functionality is required by the subsequent source-soundness bridge.
+compiled row constraints or static map membership. It holds even for a
+nonfunctional ROM; ROM functionality is required by the subsequent
+source-soundness bridge. Map input uniqueness is checked during compilation.
 `EntryDerives` requires a well-formed raw root, pointer-free decoded arguments,
 and existentially quantifies
 one valid ROM for the whole tree. The prover cannot choose a new table per call.
@@ -127,6 +135,13 @@ encoding validity and unrestricted inactive witnesses. Codec round trips supply
 uniqueness of flat encodings. Selected constructor payloads are validated under
 their tag indicators; alternative payload views can be noncanonical.
 
+`TableChecking` proves unique, typed map rows and disjoint function/map names.
+`Circuit/MapFacts` relates encoded map membership to successful source lookup in
+both directions. These facts supply the static leaf cases of soundness and
+completeness. Constant rows contain no addresses, so lookup is invariant under
+the address mappings used by the source/ROM bridge. The existing end-to-end
+theorems cover functions, maps, and allocations together.
+
 The proofs cover empty and singleton tuples, nominal enum payloads, recursive
 pointer enums, overlapping tuple and constructor patterns,
 field-specific duplicate pattern rejection, arbitrary recursive calls, and
@@ -141,7 +156,11 @@ memoized soundness. Pointer tests check field addresses distinct from source
 indices, shared circuit addresses, invalid tables, entry restrictions, nested
 cells, and mutual recursion carrying pointers. Enum tests cover nominal type errors, malformed root encodings, zero padding,
 small-field tag collisions, inactive payload views, and end-to-end recursive
-enum execution. Both reference suites remain checked.
+enum execution. Table tests cover shared inputs, programmatically generated
+rows, tuple argument packing, enum constants, field-conversion key collisions,
+inactive lookups, and incorrect input/output pairings. They also exercise
+tree and memoized proofs for maps and map results stored in ROM.
+Both reference suites remain checked.
 
 Automatic executable circuit-witness generation, a theorem connecting the exact
 multiset row checker to trees, concrete memory layouts, cryptographic lookup

@@ -15,6 +15,7 @@ mutual
         (valid : chip.ValidRow rom row)
         (children : Derivations system rom (chip.premises row)) :
         Derivation system rom (chip.receive row)
+    | table (member : system.MapClaim message) : Derivation system rom message
 
   /-- A finite list of proofs indexed by its list of premise occurrences. -/
   inductive Derivations [Field F] [DecidableEq F] (system : System F) (rom : WireROM F) : List (Message F) → Type where
@@ -60,6 +61,7 @@ mutual
   def Derivation.rows [Field F] [DecidableEq F] {system : System F} {message : Message F} :
       Derivation system rom message → List (Row F)
     | .node _ row _ _ children => row :: children.rows
+    | .table _ => []
 
   def Derivations.rows [Field F] [DecidableEq F] {system : System F} {messages : List (Message F)} :
       Derivations system rom messages → List (Row F)
@@ -68,12 +70,15 @@ mutual
 end
 
 theorem Derivation.rows_ne_nil [Field F] [DecidableEq F] {system : System F}
-    {message : Message F} (derivation : Derivation system rom message) : derivation.rows ≠ [] := by
-  cases derivation
-  simp [Derivation.rows]
+    {message : Message F} (derivation : Derivation system rom message)
+    (dynamic : ¬ system.MapClaim message) : derivation.rows ≠ [] := by
+  cases derivation with
+  | node => simp [Derivation.rows]
+  | table member => exact (dynamic member).elim
 
 /-- If every valid rule requires a call, no finite closed derivation can start. -/
 theorem not_derives_of_no_leaves [Field F] [DecidableEq F] {system : System F}
+    (noTables : system.mapClaims = [])
     (requiresCall : ∀ chip row, system.findChip? row.chip = some chip →
       chip.ValidRow rom row → chip.premises row ≠ []) (message : Message F) :
     ¬ Derives system rom message := by
@@ -82,6 +87,7 @@ theorem not_derives_of_no_leaves [Field F] [DecidableEq F] {system : System F}
     (motive_2 := fun messages _ => messages ≠ [] → False) with
   | node chip row lookup valid _ childrenIH =>
       exact childrenIH (requiresCall chip row lookup valid)
+  | table member => simp [System.MapClaim, noTables] at member
   | nil => exact absurd rfl ‹([] : List (Message F)) ≠ []›
   | cons _ _ headIH _ => exact headIH
 

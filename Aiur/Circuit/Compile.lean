@@ -254,7 +254,7 @@ mutual
             guarded enable (.sub (.mul right (.var inverse)) (.const 1))
             return .field (.mul left (.var inverse))
     | .call name args =>
-        let some callee := program.findFunction? name
+        let some callee := program.findSignature? name
           | throw (.invalidProgram (.unknownFunction function name))
         let args ← lowerArgs program function locals enable args
         if args.map WireValue.type ≠ callee.params.map Prod.snd then throw .invalidShape
@@ -333,6 +333,7 @@ def checkEnumTags (F : Type) [NatCast F] [DecidableEq F] (declaration : EnumDecl
 def compile [Field F] [DecidableEq F] (program : Program F) : Except CompileError (System F) := do
   let _ ← (typecheck program).mapError CompileError.invalidProgram
   for declaration in program.enums do checkEnumTags F declaration
-  return ⟨← program.functions.mapM (Compiler.lowerFunction program), program.enums⟩
+  return ⟨← program.functions.mapM (Compiler.lowerFunction program), program.enums,
+    program.tables, program.maps⟩
 
 end Aiur.Circuit

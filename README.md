@@ -2,7 +2,8 @@
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
 field arithmetic, nested tuples, nominal enums, typed ROM pointers, mutually
-recursive functions, pattern matching, and compilation to chips with polynomial equations and abstract call messages.
+recursive functions, pattern matching, static tables and maps, and compilation
+to chips with polynomial equations and abstract call messages.
 
 ## Build and test
 
@@ -12,6 +13,7 @@ Lean and Mathlib are pinned to 4.29.0.
 lake build
 lake test
 lake env lean Examples/Pointers.lean
+lake env lean Examples/Tables.lean
 ```
 
 ## Use from Lean
@@ -41,8 +43,8 @@ fn nested(p: (Field, (Field, Field))) -> (Field, (Field, Field), ()) {
 ```
 
 `aiur%` elaborates a source string into a checked `Program Nat`, without reading
-files. `Nat` stores literals; `toField F` specializes literals and patterns to a
-chosen field. Source arguments and results use `SourceValue F = Value F Nat`;
+files. `Nat` stores literals; `toField F` specializes expressions, patterns, and
+table rows to a chosen field. Source arguments and results use `SourceValue F = Value F Nat`;
 field leaves, tuples, nominal constructors, and typed opaque pointers are distinct.
 Natural numerals denote field leaves. The intermediate ROM semantics uses
 `Value F` with field addresses. Circuit values use `WireValue F`: a nominal type and a flat list of field elements.
@@ -81,6 +83,25 @@ Every type cycle must pass through a pointer. Construction does not allocate.
 Public inputs may contain a pointer-free variant such as `List::Nil`; the entry
 check examines the selected payload. See [Examples/Enums.lean](Examples/Enums.lean).
 
+Tables hold typed constants; maps pair input and output rows from shared tables:
+
+```rust
+table inputs: (Field, Field) { (0, 1), (1, 0), (1, 1), }
+table sums: Field { 1, 1, 2, }
+table products: Field { 0, 0, 1, }
+map add(a: Field, b: Field) -> Field = inputs => sums;
+map mul(a: Field, b: Field) -> Field = inputs => products;
+fn example() -> Field { add(1, 1) + mul(1, 1) }
+```
+
+Rows can contain fields, tuples, and enums, with no pointers anywhere in the
+value. Input rows must be unique after field specialization; paired tables must
+have equal lengths. Missing inputs cause an evaluation error. The outer input
+tuple packs separate arguments; a tuple parameter needs an extra outer singleton
+tuple. Maps use ordinary call syntax and may also be invoked directly with
+`eval`. See [Examples/Tables.lean](Examples/Tables.lean) and the
+[table design](design/tables.md) for programmatic generation and proof details.
+
 Evaluation is eager in tuple components, constructor arguments, and call arguments; unselected match
 bodies are not evaluated. Functions may call one another recursively. `eval`
 checks the program, entry argument shapes, and the pointer-free entry restriction.
@@ -94,7 +115,8 @@ language including allocation and loading. Results and final heaps are determini
 
 ## Circuits and proof status
 
-Compilation produces one chip per function. Assignments contain field elements;
+Compilation produces one chip per function and retains shared static tables and
+map references. Assignments contain field elements;
 chip interfaces and messages retain static type metadata and flat value words.
 Each result column of a call gets a fresh variable, including enum tags and
 padding. Unit-valued calls still produce messages. All constraints are polynomial equations equal to zero. Division uses inverse witnesses, and
@@ -108,17 +130,19 @@ in positive characteristic `p`, each enum can have at most `p` constructors. Thi
 separate from the allocation-capacity bound.
 
 `System.check` checks root encoding validity and supplied rows against one valid
-prover-chosen ROM and exact message balance. Both store and load compile to guarded claims that an address
+prover-chosen ROM, discharges static map claims by membership, and checks exact
+balance of the remaining messages. Both store and load compile to guarded claims that an address
 contains a value. A pointer occupies one field column; addresses may differ
 from source locations and may be shared between allocations.
 
-`Derivation C ROM message` describes finite closed trees. `MemoDerivation`
+`Derivation C ROM message` describes finite closed trees with chip instances and
+static map membership leaves. `MemoDerivation`
 permits sharing and cycles; acyclic graphs unfold into trees. Public
 `EntryDerives` requires a well-formed root and existentially quantifies one valid
 ROM for the whole proof. Root well-formedness does not assume the claimed result
 is true; soundness proves that.
 
-**Correctness, including enums and pointers, is proved without admitted steps or
+**Correctness, including enums, pointers, and maps, is proved without admitted steps or
 added axioms.** The main theorems in [MemoryCorrectness.lean](Aiur/MemoryCorrectness.lean) are:
 
 - `compiler_run_complete`: successful execution yields a circuit derivation when

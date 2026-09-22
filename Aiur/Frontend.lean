@@ -13,8 +13,11 @@ declare_syntax_cat aiur_param
 declare_syntax_cat aiur_function
 declare_syntax_cat aiur_constructor
 declare_syntax_cat aiur_enum
-declare_syntax_cat aiur_decl
-declare_syntax_cat aiur_program
+-- Declaration keywords need not reserve ordinary identifiers in surrounding Lean code.
+declare_syntax_cat aiur_table (behavior := symbol)
+declare_syntax_cat aiur_map (behavior := symbol)
+declare_syntax_cat aiur_decl (behavior := symbol)
+declare_syntax_cat aiur_program (behavior := symbol)
 
 syntax:75 (name := pointerType) "&" aiur_type:75 : aiur_type
 syntax (name := namedType) ident : aiur_type
@@ -56,6 +59,12 @@ syntax (name := function) "fn" ident "(" sepBy(aiur_param, ",", ",", allowTraili
 syntax (name := nullaryConstructor) ident : aiur_constructor
 syntax (name := payloadConstructor) ident "(" sepBy(aiur_type, ",", ",", allowTrailingSep) ")" : aiur_constructor
 syntax (name := enumDefinition) "enum" ident "{" sepBy(aiur_constructor, ",", ",", allowTrailingSep) "}" : aiur_enum
+syntax (name := tableDefinition) &"table" ident ":" aiur_type "{"
+  sepBy(aiur_expr, ",", ",", allowTrailingSep) "}" : aiur_table
+syntax (name := mapDefinition) &"map" ident "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")"
+  "->" aiur_type "=" ident "=>" ident ";" : aiur_map
+syntax (name := tableDecl) aiur_table : aiur_decl
+syntax (name := mapDecl) aiur_map : aiur_decl
 syntax (name := functionDecl) aiur_function : aiur_decl
 syntax (name := enumDecl) aiur_enum : aiur_decl
 syntax (name := program) aiur_decl* : aiur_program
@@ -169,6 +178,32 @@ private def lowerFunction (decls : Declarations) (stx : Syntax) : Except String 
     body := destructuring.foldr (fun (pattern, key) body => .letValue pattern (.var key) body) body
   }
 
+private def constantOfExpr : Aiur.Expr Nat → Except String (Constant Nat)
+  | .literal value => pure (.field value)
+  | .tuple items => (.tuple ·) <$> items.mapM constantOfExpr
+  | .construct name ctor args => (.construct name ctor ·) <$> args.mapM constantOfExpr
+  | _ => throw "table rows must be constant literals, tuples, or enum constructors; pointers are forbidden"
+termination_by expr => sizeOf expr
+
+private def lowerTable (stx : Syntax) : Except String (Table Nat) := do
+  return {
+    name := ← readName stx[1]
+    rowType := ← lowerType stx[3]
+    rows := ← stx[5].getSepArgs.toList.mapM fun row => do constantOfExpr (← lowerExpr row)
+  }
+
+private def lowerMap (stx : Syntax) : Except String MapDecl := do
+  let params ← stx[3].getSepArgs.toList.mapM fun param => do
+    let .bind name ← lowerPattern param[0] | throw "map parameters must be named bindings"
+    return (name, ← lowerType param[2])
+  return {
+    name := ← readName stx[1]
+    params
+    result := ← lowerType stx[6]
+    input := ← readName stx[8]
+    output := ← readName stx[10]
+  }
+
 /-- Mask Rust comments before invoking Lean's parser, preserving lines and token boundaries. -/
 private def maskComments : List Char → Nat → Bool → Except String (List Char)
   | [], depth, _ =>
@@ -206,6 +241,8 @@ def ofString (env : Environment) (source : String) : Except String (Program Nat)
   let program := {
     functions := ← (declarations.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction enums d[0])
     enums
+    tables := ← (declarations.filter (·.getKind == ``tableDecl)).mapM (fun d => lowerTable d[0])
+    maps := ← (declarations.filter (·.getKind == ``mapDecl)).mapM (fun d => lowerMap d[0])
   }
   match typecheck program with
   | .error error => throw (toString error)
@@ -289,10 +326,33 @@ private def quoteEnum (decl : EnumDecl) : Lean.Expr :=
   mkApp2 (mkConst ``EnumDecl.mk) (toExpr decl.name)
     (quoteList (mkConst ``ConstructorDecl) constructors)
 
+private def quoteConstant : Constant Nat → Lean.Expr
+  | .field value => mkApp3 (mkConst ``Value.field) natType (mkConst ``Empty) (toExpr value)
+  | .tuple items => mkApp3 (mkConst ``Value.tuple) natType (mkConst ``Empty)
+      (quoteList (mkApp2 (mkConst ``Value) natType (mkConst ``Empty)) (items.map quoteConstant))
+  | .construct name ctor args => mkApp5 (mkConst ``Value.construct) natType (mkConst ``Empty)
+      (toExpr name) (toExpr ctor)
+      (quoteList (mkApp2 (mkConst ``Value) natType (mkConst ``Empty)) (args.map quoteConstant))
+  | .ptr _ address => nomatch address
+termination_by value => sizeOf value
+
+private def quoteTable (trace : Table Nat) : Lean.Expr :=
+  mkApp4 (mkConst ``Table.mk) natType (toExpr trace.name) (quoteTy trace.rowType)
+    (quoteList (mkApp (mkConst ``Constant) natType) (trace.rows.map quoteConstant))
+
+private def quoteMap (definition : MapDecl) : Lean.Expr :=
+  let paramType := mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``String) (mkConst ``Ty)
+  let params := definition.params.map fun (name, type) =>
+    mkApp4 (mkConst ``Prod.mk [0, 0]) (mkConst ``String) (mkConst ``Ty) (toExpr name) (quoteTy type)
+  mkApp5 (mkConst ``MapDecl.mk) (toExpr definition.name) (quoteList paramType params)
+    (quoteTy definition.result) (toExpr definition.input) (toExpr definition.output)
+
 private def quoteProgram (program : Program Nat) : Lean.Expr :=
-  mkApp3 (mkConst ``Program.mk) natType
+  mkApp5 (mkConst ``Program.mk) natType
     (quoteList (mkApp (mkConst ``Aiur.Function) natType) (program.functions.map quoteFunction))
     (quoteList (mkConst ``EnumDecl) (program.enums.map quoteEnum))
+    (quoteList (mkApp (mkConst ``Table) natType) (program.tables.map quoteTable))
+    (quoteList (mkConst ``MapDecl) (program.maps.map quoteMap))
 
 /-- Elaborate a Rust-like source string directly to a checked `Program Nat`. -/
 elab "aiur% " source:str : term => do
