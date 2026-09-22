@@ -19,6 +19,12 @@ EvalFn   P function arguments before value after
 evaluating their pointer operand. Internal calls share the heap; selected
 branches, tuple items, constructor arguments, and operands retain left-to-right evaluation.
 
+The `EvalExpr.letValue` rule requires a successful evaluation of the right-hand
+side, successful `Pattern.bindings`, and an evaluation of the continuation under
+the extended environment. It supports refutable patterns directly: a mismatch
+has no successful derivation and the executor returns `patternMismatch`.
+The ROM evaluation relations use the same matching condition.
+
 The same relations cover map calls. `prepareCall` looks up the arguments in the
 static rows and supplies an expression containing the aligned constant result.
 That expression neither reads nor allocates memory. `Tables.lean` proves this
@@ -77,6 +83,13 @@ Root validity is not truth of the claimed result. Tags must be in range and
 payload padding canonical, but evaluation correctness is a theorem conclusion.
 Successful compilation checks injective constructor tags independently of ROM
 capacity. See [enums](enums.md#root-claims-and-representable-tags).
+
+Refutable lets use the existing pattern soundness and witness lemmas. The
+active let equation forces its indicator to one; the inactive witness proof
+allows a mismatching pattern. The compiler theorems require no additional
+irrefutability hypothesis or translation proof. `AiurTests/RefutableLets.lean`
+derives successful active and inactive examples, and rules out every claimed
+result of an active mismatching let for trees and acyclic memoized graphs.
 
 ## Source/ROM bridge
 

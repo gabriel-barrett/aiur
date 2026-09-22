@@ -91,8 +91,10 @@ Parser columns refer to the normalized string.
 
 The checker examines every body and arm. It rejects duplicate definitions and
 bindings, unknown names, wrong call arity, type mismatches, wrong tuple pattern
-shapes, invalid projections, refutable lets, and inconsistent arm result types.
-It does not establish termination, exhaustiveness, or nonzero denominators.
+shapes, invalid projections, and inconsistent arm result types. Lets accept
+refutable patterns; the frontend still requires irrefutable parameter patterns.
+The checker does not establish termination, exhaustiveness, successful let
+matching, or nonzero denominators.
 Field-specific pattern duplicates and constructor-tag collisions are checked by compilation.
 Table rows contain only constants, never pointers. Maps require matching input
 and output row counts, the declared argument-pack and result types, and unique
@@ -104,7 +106,9 @@ collisions in map keys. See [tables and maps](tables.md) for the full syntax.
 Evaluation runs left to right and calls use fresh parameter environments while
 sharing the allocation heap. Stores append; loads read after their operands run.
 Bindings precede outer bindings to implement shadowing. A match evaluates its
-scrutinee once. Discarded values are still fully evaluated.
+scrutinee once. A let evaluates its right-hand side once, then binds the pattern
+or fails with `patternMismatch` before entering its continuation. Discarded
+values are still fully evaluated.
 
 Each expression gives one less fuel to its children; siblings share the remaining
 bound. The bound measures nesting and recursive call depth rather than total
@@ -143,3 +147,10 @@ keys after field specialization, frontend errors, and forged membership claims.
 Proof regressions apply completeness to repeated map calls and map results
 stored in ROM, and apply tree and acyclic memoized soundness to false claims.
 `Examples/Tables.lean` provides a runnable frontend example.
+
+`AiurTests/RefutableLets.lean` checks literal, nested tuple, and enum lets,
+shadowing, error order, single allocation, map outputs, field specialization,
+and inactive mismatches. Proof regressions cover active and inactive
+completeness, ROM allocation, memoized completeness, and rejection of an active
+mismatch by tree and acyclic memoized soundness. `Examples/RefutableLets.lean`
+shows the syntax and success/failure behavior.

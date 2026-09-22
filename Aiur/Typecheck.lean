@@ -17,7 +17,6 @@ inductive CheckError where
   | expectedTuple (function : String)
   | tupleArity (function : String) (expected actual : Nat)
   | projectionBounds (function : String) (index size : Nat)
-  | refutableBinding (function : String)
   | emptyMatch (function : String)
   | duplicateTable (name : String)
   | unknownTable (map table : String)
@@ -48,7 +47,6 @@ instance : ToString CheckError where
         s!"tuple pattern in function '{fn}' has {actual} components; expected {expected}"
     | .projectionBounds fn index size =>
         s!"tuple projection .{index} is out of bounds for size {size} in function '{fn}'"
-    | .refutableBinding fn => s!"let and parameter patterns must be irrefutable in function '{fn}'"
     | .emptyMatch fn => s!"empty match in function '{fn}'"
     | .duplicateTable name => s!"duplicate table '{name}'"
     | .unknownTable map table => s!"map '{map}' refers to unknown table '{table}'"
@@ -130,7 +128,6 @@ mutual
     | .letValue pattern value body =>
         let type ← inferType program caller locals value
         let bindings ← checkPattern program.enums caller pattern type
-        if !pattern.irrefutable program.enums then throw (.refutableBinding caller)
         inferType program caller (bindings ++ locals) body
     | .store value => return .ptr (← inferType program caller locals value)
     | .load pointer =>

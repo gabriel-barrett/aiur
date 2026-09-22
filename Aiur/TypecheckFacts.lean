@@ -146,15 +146,12 @@ theorem ROMEvalExprWith.wellTyped [Field F] [DecidableEq F] {program : Program F
       simp only [inferType] at checked
       obtain ⟨valueType, valueRun, rest⟩ := except_bind_ok.mp checked
       obtain ⟨bindingTypes, patternRun, rest⟩ := except_bind_ok.mp rest
-      split at rest
-      · cases rest
-      · simp only [pure_bind] at rest
-        obtain ⟨shape, inputFormed⟩ := valueIH formed caller valueType valueRun
-        have bindings := patternTypes_bindings (caller := caller)
-          (by rw [shape]; exact checkPattern_types patternRun) inputFormed matched
-        exact bodyIH (Environment.wellFormed_append.mpr
-          ⟨Pattern.bindings_wellFormed inputFormed matched, formed⟩) caller type
-          (by simpa only [environmentTypes_append, bindings] using rest)
+      obtain ⟨shape, inputFormed⟩ := valueIH formed caller valueType valueRun
+      have bindings := patternTypes_bindings (caller := caller)
+        (by rw [shape]; exact checkPattern_types patternRun) inputFormed matched
+      exact bodyIH (Environment.wellFormed_append.mpr
+        ⟨Pattern.bindings_wellFormed inputFormed matched, formed⟩) caller type
+        (by simpa only [environmentTypes_append, bindings] using rest)
   | store _ _ ih =>
       intro formed caller type checked
       simp only [inferType] at checked

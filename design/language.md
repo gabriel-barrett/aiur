@@ -49,11 +49,30 @@ fn combine(p: (Field, (Field, Field))) -> (Field, Field) {
 }
 ```
 
-`let` and parameter patterns must be irrefutable: bindings, wildcards, or tuples
-of irrefutable patterns, or a sole enum constructor with irrefutable payload
-patterns. A name may occur only once within a pattern or the
-complete parameter list. `let` bindings may shadow outer variables and are
-visible in their continuation. Match bindings are visible only in their arm.
+`let` accepts every well-typed pattern, including literals and constructors of
+enums with several variants. It evaluates its right-hand side exactly once,
+then matches the value. Success binds names and evaluates the continuation;
+failure returns `patternMismatch` without evaluating the continuation. Errors
+from the right-hand side take precedence over matching. For example:
+
+```rust
+enum Reply { Missing, Found((Field, Field)) }
+fn read(reply: Reply) -> Field {
+  let Reply::Found((0, value)) = reply;
+  value
+}
+```
+
+This succeeds only for `Reply::Found((0, value))`. An impossible binding such as
+`let 0 = 1; 42` is well typed; whether its pattern matches is an execution and
+circuit constraint. Literal tests use the chosen field after specialization.
+The checker still checks the continuation, even when the binding cannot match.
+
+Parameter patterns must be irrefutable: bindings, wildcards, tuples of
+irrefutable patterns, or a sole enum constructor with irrefutable payload
+patterns. A name may occur only once within a pattern or the complete parameter
+list. `let` bindings may shadow outer variables and are visible in their
+continuation. Match bindings are visible only in their arm.
 
 ## Matching
 

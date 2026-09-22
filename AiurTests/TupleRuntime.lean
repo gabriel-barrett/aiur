@@ -98,7 +98,6 @@ run_cmd do
     "fn f(x: Field) -> Field { x.0 }",
     "fn f() -> Field { let (x, y) = (1,); x }",
     "fn f() -> Field { let (x, x) = (1, 2); x }",
-    "fn f() -> Field { let (0, x) = (1, 2); x }",
     "fn f() -> Field { match (1, 2) { (x, x) => x } }",
     "fn f() -> Field { match (1, 2) { (x,) => x } }",
     "fn f() -> Field { match (1, 2) { 0 => 1, _ => 2 } }",

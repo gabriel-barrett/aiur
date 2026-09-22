@@ -1,9 +1,11 @@
 # Design TODO
 
 This backlog records the comparison with the sibling `../ix/Ix/Aiur` project
-and the remaining work in our existing design. Items below are unimplemented
+and the remaining work in our existing design. Unchecked items below are
 proposals or deferred work, not changes to the current language specification.
-The comparison does not prescribe an implementation order.
+The comparison is an inventory of capabilities. Choose designs that fit our
+current language, compiler, and proofs; the ix implementations linked below do
+not prescribe an implementation approach or order.
 
 [Tables and maps](tables.md) are implemented, including evaluator correspondence,
 compiler completeness, tree soundness, and acyclic memoized soundness. They are
@@ -43,11 +45,12 @@ not an outstanding TODO.
   lowers these patterns to loads in its
   [match compiler](../../ix/Ix/Aiur/Compiler/Match.lean).
 
-- [ ] **Refutable let patterns.** Specify failure when a binding pattern does not
-  match, then lower it to a partial match. Our current checker requires
-  irrefutable lets and parameter patterns. Changing lets does not automatically
-  change parameter patterns. See ix's
-  [let simplification](../../ix/Ix/Aiur/Compiler/Simple.lean).
+- [x] **Refutable let patterns.** Lets accept all well-typed patterns and fail
+  with `patternMismatch` on a mismatch. The existing AST, evaluation rules, and
+  pattern indicator suffice: compilation directly requires the indicator to
+  equal one when the let is active. No simplification pass is needed. Parameter
+  patterns remain irrefutable. See [binding](language.md#expressions-and-binding)
+  and [let constraints](circuits.md#let-patterns).
 
 - [ ] **Early return.** Add explicit `return`, including propagation out of match
   branches and skipping later calls or allocations in the function. Specify its

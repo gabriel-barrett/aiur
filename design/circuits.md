@@ -45,6 +45,21 @@ The default excludes complete earlier patterns, including overlapping tuple
 patterns. Duplicate retained conditions are rejected after field conversion;
 arms after the first irrefutable pattern are discarded.
 
+## Let patterns
+
+`let pattern = value; body` compiles directly from the existing `Expr.letValue`
+node. The compiler lowers `value` once and uses `lowerPattern` to obtain an exact
+matching indicator `m` and symbolic bindings. With enclosing enable `e`, it adds
+the equation `e * (m - 1) = 0`, then lowers `body` with those bindings and the
+same enable. No let-to-match simplification pass or branch selector is needed.
+
+An active let requires the entire pattern to match, including nested literal
+and constructor tests. A mismatching active let therefore admits no valid row.
+In inactive code the indicator equations still have witnesses, but `m` need not
+be one. Calls and ROM lookups in the value and continuation stay guarded by `e`.
+These are unordered equations; the source evaluation order is captured by the
+compiler's treatment of expressions and its correctness proofs.
+
 ## Acceptance and proofs
 
 `System.check` takes a shared ROM, checks address uniqueness, pointer-free entry
