@@ -1,23 +1,8 @@
 import Aiur.Semantics
-import Aiur.Semantics.CallTypes
+import Aiur.Tables
 import Mathlib.Data.List.FinRange
 
 namespace Aiur
-
-@[simp] theorem Value.type_mapAddress (encode : A → B) (value : Value F A) :
-    (value.mapAddress encode).type = value.type := by
-  cases value with
-  | field | ptr | construct => simp [Value.mapAddress, Value.type]
-  | tuple values =>
-      simp only [Value.mapAddress, Value.type, List.map_map, Ty.tuple.injEq]
-      apply List.map_congr_left
-      intro value member
-      exact Value.type_mapAddress encode value
-termination_by sizeOf value
-decreasing_by
-  simp_wf
-  have := List.sizeOf_lt_of_mem ‹_ ∈ _›
-  omega
 
 theorem Value.mapAddress_free (value : Value F A) (free : value.pointerFree = true)
     (left right : A → B) : value.mapAddress left = value.mapAddress right := by
@@ -112,44 +97,26 @@ theorem evalBinOp_mapAddress [Field F] [DecidableEq F]
   cases op <;> simp [Value.mapAddress]
   split <;> simp [Value.mapAddress]
 
-@[simp] theorem Value.wellFormed_mapAddress (decls : Declarations) (encode : A → B)
-    (value : Value F A) : (value.mapAddress encode).wellFormed decls = value.wellFormed decls := by
-  cases value with
-  | field | ptr => simp [Value.mapAddress, Value.wellFormed]
-  | tuple values =>
-      simp only [Value.mapAddress, Value.wellFormed, List.map_map]
-      congr 1
-      apply List.map_congr_left
-      intro value member
-      exact Value.wellFormed_mapAddress decls encode value
-  | construct name ctor values =>
-      simp only [Value.mapAddress, Value.wellFormed]
-      cases decls.findConstructor? name ctor with
-      | none => rfl
-      | some definition =>
-          simp only [List.map_map, Function.comp_def, Value.type_mapAddress]
-          congr 2
-          apply List.map_congr_left
-          intro value member
-          exact Value.wellFormed_mapAddress decls encode value
-termination_by sizeOf value
-
-theorem prepareCall_mapAddress {program : Program F} {name : String} {args : List (Value F A)}
+theorem prepareCall_mapAddress [DecidableEq F] {program : Program F} {name : String} {args : List (Value F A)}
     {locals : Environment F A} {body : Expr F}
     (prepared : prepareCall program name args = .ok (locals, body)) (encode : A → B) :
     prepareCall program name (args.map (Value.mapAddress encode)) = .ok (encodeEnv encode locals, body) := by
-  obtain ⟨fn, found, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
-  have shape : fn.params.map Prod.snd = (args.map (Value.mapAddress encode)).map Value.type := by
-    simpa only [List.map_map, Function.comp_def, Value.type_mapAddress] using types
-  have prepared := prepareCall_of_types found shape (by
-    intro value member
-    obtain ⟨source, sourceMember, rfl⟩ := List.mem_map.mp member
-    simpa using formed source sourceMember)
-  have localsMap : encodeEnv encode ((fn.params.map Prod.fst).zip args) =
-      (fn.params.map Prod.fst).zip (args.map (Value.mapAddress encode)) := by
-    simp only [encodeEnv, List.zip_map_right]
-    exact List.map_congr_left (fun pair _ => by cases pair; rfl)
-  simpa only [localsMap] using prepared
+  rcases prepareCall_spec prepared with function | table
+  · obtain ⟨fn, found, types, formed, rfl, rfl⟩ := function
+    have shape : fn.params.map Prod.snd = (args.map (Value.mapAddress encode)).map Value.type := by
+      simpa only [List.map_map, Function.comp_def, Value.type_mapAddress] using types
+    have prepared := prepareCall_of_types found shape (by
+      intro value member
+      obtain ⟨source, sourceMember, rfl⟩ := List.mem_map.mp member
+      simpa using formed source sourceMember)
+    have localsMap : encodeEnv encode ((fn.params.map Prod.fst).zip args) =
+        (fn.params.map Prod.fst).zip (args.map (Value.mapAddress encode)) := by
+      simp only [encodeEnv, List.zip_map_right]
+      exact List.map_congr_left (fun pair _ => by cases pair; rfl)
+    simpa only [localsMap] using prepared
+  · obtain ⟨value, absent, looked, rfl, rfl⟩ := table
+    simpa only [encodeEnv, List.map_nil] using
+      prepareCall_map absent ((lookupMap_mapAddress program name args encode).trans looked)
 
 theorem EvalExpr.grows [Field F] [DecidableEq F] {program : Program F}
     {locals : Environment F Nat} {expr : Expr F} {before after : Heap F} {value : SourceValue F}

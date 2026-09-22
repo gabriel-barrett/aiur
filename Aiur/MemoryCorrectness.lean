@@ -87,13 +87,13 @@ theorem compiler_heap_complete [Field F] [DecidableEq F]
     simpa using (checkEntry_ok args).mp entry source sourceMember
   have tableValid := ROM.encode_valid declarations good (ROM.ofHeap_valid heap encode distinct)
   refine ⟨wires, output, ?_, ?_, ?_⟩
-  · simpa only [stages.2.2.2] using arguments
-  · simpa only [stages.2.2.2] using decoded
+  · simpa only [stages.2.2.2.1] using arguments
+  · simpa only [stages.2.2.2.1] using decoded
   · refine ⟨?_, ?_, table.encode program.enums, tableValid, derives⟩
-    · exact ⟨by simpa only [stages.2.2.2] using arguments.each,
-        by simpa only [stages.2.2.2] using
+    · exact ⟨by simpa only [stages.2.2.2.1] using arguments.each,
+        by simpa only [stages.2.2.2.1] using
           (show ∃ value, output.decode program.enums = some value from ⟨_, decoded⟩)⟩
-    · simpa only [stages.2.2.2] using public_arguments arguments argsFree
+    · simpa only [stages.2.2.2.1] using public_arguments arguments argsFree
 
 /-- Allocation capacity and tag injectivity are separate: compilation already checks the latter. -/
 theorem compiler_heap_complete_finite [Field F] [DecidableEq F] [Fintype F]
@@ -157,7 +157,7 @@ theorem compiler_entry_sound [Field F] [DecidableEq F]
     (free : result.pointerFree = true) :
     EvalCall program name args (result.mapAddress (fun _ => 0)) := by
   obtain ⟨wires, output, arguments, decoded, _, argumentsFree, rom, valid, derived⟩ := accepted
-  have enums := (Circuit.compile_stages compiled).2.2.2
+  have enums := (Circuit.compile_stages compiled).2.2.2.1
   rw [enums] at arguments decoded argumentsFree
   have sourceFree := decoded_public_arguments arguments argumentsFree
   have entry : checkEntry args = .ok () := (checkEntry_ok args).mpr (by

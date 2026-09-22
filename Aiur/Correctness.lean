@@ -1,5 +1,6 @@
 import Aiur.Circuit.LocalCorrectness
 import Aiur.Circuit.Derivation
+import Aiur.Circuit.MapFacts
 import Aiur.Semantics.CallFacts
 
 namespace Aiur
@@ -42,6 +43,11 @@ theorem derivation_sound [Field F] [DecidableEq F]
       change program.findFunction? chip.name = some fn
       rw [interface.1, Circuit.findFunction_name found]
       exact found
+  | table member =>
+      obtain ⟨args, constant, arguments, output, absent, looked⟩ := Circuit.compile_map_spec compiled member
+      refine ⟨args, constant.toValue, arguments, output, .intro (prepareCall_map absent looked) ?_⟩
+      exact ((ROMEvalExprWith.constant_iff (rom := rom.decode program.enums)
+        (calls := ROMEvalCall (rom.decode program.enums) program) constant).mpr rfl).toEvalExpr
   | nil => simp_all
   | cons _ _ headIH tailIH =>
       rename_i message member

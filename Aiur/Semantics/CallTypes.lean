@@ -5,7 +5,7 @@ namespace Aiur
 
 variable {F : Type} {rom : ROM F}
 
-private theorem checked_arguments_types (decls : Declarations) (name : String) (params : List (String × Ty))
+theorem checked_arguments_types (decls : Declarations) (name : String) (params : List (String × Ty))
     (args : List (Value F A)) (arity : params.length = args.length)
     (checked : (forIn (params.zip args) PUnit.unit (fun pair _ =>
       if pair.1.2 ≠ pair.2.type then Except.error (.argumentTypeMismatch name pair.1.2 pair.2.type)
@@ -30,16 +30,24 @@ private theorem checked_arguments_types (decls : Declarations) (name : String) (
                 exact ⟨by simp [same, types], by simpa [formed] using forms⟩
           · simp [List.zip_cons_cons, List.forIn_cons, same, bind, Except.bind] at checked
 
-/-- Successful entry preparation supplies the declared argument shapes and exact body environment. -/
-theorem prepareCall_spec {program : Program F} {name : String} {args : List (Value F A)}
+/-- A prepared call selects a typed function body or a successfully looked-up constant. -/
+theorem prepareCall_spec [DecidableEq F] {program : Program F} {name : String} {args : List (Value F A)}
     {locals : Environment F A} {body : Expr F}
     (prepared : prepareCall program name args = .ok (locals, body)) :
-    ∃ fn, program.findFunction? name = some fn ∧ fn.params.map Prod.snd = args.map Value.type ∧
+    (∃ fn, program.findFunction? name = some fn ∧ fn.params.map Prod.snd = args.map Value.type ∧
       (∀ arg ∈ args, arg.wellFormed program.enums = true) ∧
-      locals = (fn.params.map Prod.fst).zip args ∧ body = fn.body := by
+      locals = (fn.params.map Prod.fst).zip args ∧ body = fn.body) ∨
+    (∃ value, program.findFunction? name = none ∧ lookupMap program name args = .ok value ∧
+      locals = [] ∧ body = value.toExpr) := by
   cases found : program.findFunction? name with
-  | none => simp [prepareCall, found] at prepared
+  | none =>
+      right
+      simp only [prepareCall, found] at prepared
+      obtain ⟨value, lookup, finished⟩ := except_bind_ok.mp prepared
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (except_pure_ok.mp finished)
+      exact ⟨value, rfl, lookup, rfl, rfl⟩
   | some fn =>
+      left
       by_cases arity : fn.params.length = args.length
       · simp only [prepareCall, found, arity, bne_self_eq_false, Bool.false_eq_true, ↓reduceIte,
           pure_bind] at prepared

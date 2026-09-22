@@ -31,7 +31,7 @@ theorem EvalExpr.wellTyped [Field F] [DecidableEq F] {program : Program F}
       inferTypes program caller (environmentTypes locals) exprs = .ok types →
         values.map Value.type = types ∧ (∀ value ∈ values, value.Good program.enums) ∧ after.Good program.enums)
     (motive_3 := fun name args before value after _ => before.Good program.enums →
-      (∀ arg ∈ args, arg.PointerNames program.enums) → ∀ fn, program.findFunction? name = some fn →
+      (∀ arg ∈ args, arg.PointerNames program.enums) → ∀ fn, program.findSignature? name = some fn →
         value.type = fn.result ∧ value.Good program.enums ∧ after.Good program.enums) with
   | literal =>
       intro memory formed caller type checked
@@ -171,7 +171,7 @@ theorem EvalExpr.wellTyped [Field F] [DecidableEq F] {program : Program F}
                 | (cases operation; exact ⟨by simp [Value.type], by simp, heapGood⟩)
   | @call locals args before values middle name result after _ _ argsIH callIH =>
       intro memory formed caller type checked
-      cases found : program.findFunction? name with
+      cases found : program.findSignature? name with
       | none => simp [inferType, found] at checked
       | some fn =>
           simp only [inferType, found] at checked
@@ -218,17 +218,27 @@ theorem EvalExpr.wellTyped [Field F] [DecidableEq F] {program : Program F}
       obtain ⟨headType, headGood, middleGood⟩ := headIH memory formed caller headType headRun
       obtain ⟨tailTypes, tailGood, heapGood⟩ := tailIH middleGood formed caller tailTypes tailRun
       exact ⟨by simp [headType, tailTypes], by simpa [headGood] using tailGood, heapGood⟩
-  | intro prepared _ bodyIH =>
-      rename_i memory names fn found
-      obtain ⟨source, sourceFound, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
-      have same := Option.some.inj (found.symm.trans sourceFound)
-      subst source
-      refine bodyIH memory ?_ fn.name fn.result ?_
-      · intro binding member
-        have argMember := (List.of_mem_zip member).2
-        exact ⟨formed _ argMember, names _ argMember⟩
-      · rw [parameterTypes _ _ types]
-        exact typecheck_function checkedProgram (List.mem_of_find?_eq_some found)
+  | intro prepared evaluated bodyIH =>
+      rename_i memory names signature found
+      rcases prepareCall_spec prepared with function | table
+      · obtain ⟨fn, sourceFound, types, formed, rfl, rfl⟩ := function
+        have same := Option.some.inj (found.symm.trans (Program.signature_of_function sourceFound))
+        subst signature
+        refine bodyIH memory ?_ fn.name fn.result ?_
+        · intro binding member
+          have argMember := (List.of_mem_zip member).2
+          exact ⟨formed _ argMember, names _ argMember⟩
+        · rw [parameterTypes _ _ types]
+          exact typecheck_function checkedProgram (List.mem_of_find?_eq_some sourceFound)
+      · obtain ⟨constant, absent, looked, rfl, rfl⟩ := table
+        obtain ⟨map, key, mapFound, _, _, _, _, typed⟩ := lookupMap_spec looked
+        have same := Option.some.inj (found.symm.trans (Program.signature_of_map absent mapFound))
+        subst signature
+        obtain ⟨rfl, rfl⟩ := evaluated.deterministic constant.evaluates
+        have typed : constant.type = map.result ∧ constant.wellFormed program.enums = true := by
+          simpa [Value.hasType] using typed
+        exact ⟨by simpa using typed.1, ⟨by simpa using typed.2,
+          Value.pointerNames_of_free (Constant.toValue_pointerFree constant)⟩, memory⟩
 
 theorem EvalFn.heap_good [Field F] [DecidableEq F] {program : Program F}
     (checked : typecheck program = .ok ()) {name : String} {args : List (SourceValue F)}
@@ -238,13 +248,22 @@ theorem EvalFn.heap_good [Field F] [DecidableEq F] {program : Program F}
     result.Good program.enums ∧ after.Good program.enums := by
   cases evaluated with
   | intro prepared body =>
-      obtain ⟨fn, found, types, formed, rfl, rfl⟩ := prepareCall_spec prepared
-      have localsGood : Environment.Good program.enums ((fn.params.map Prod.fst).zip args) := by
-        intro binding member
-        have argMember := (List.of_mem_zip member).2
-        exact ⟨formed _ argMember, names _ argMember⟩
-      exact (body.wellTyped checked memory localsGood fn.name fn.result (by
-        rw [parameterTypes _ _ types]
-        exact typecheck_function checked (List.mem_of_find?_eq_some found))).2
+      rcases prepareCall_spec prepared with function | table
+      · obtain ⟨fn, found, types, formed, rfl, rfl⟩ := function
+        have localsGood : Environment.Good program.enums ((fn.params.map Prod.fst).zip args) := by
+          intro binding member
+          have argMember := (List.of_mem_zip member).2
+          exact ⟨formed _ argMember, names _ argMember⟩
+        exact (body.wellTyped checked memory localsGood fn.name fn.result (by
+          rw [parameterTypes _ _ types]
+          exact typecheck_function checked (List.mem_of_find?_eq_some found))).2
+      · obtain ⟨constant, _, looked, rfl, rfl⟩ := table
+        obtain ⟨rfl, rfl⟩ := body.deterministic constant.evaluates
+        obtain ⟨_, _, _, _, _, _, _, typed⟩ := lookupMap_spec looked
+        have formed : constant.wellFormed program.enums = true := by
+          simp only [Value.hasType, Bool.and_eq_true] at typed
+          exact typed.2
+        exact ⟨⟨by simpa using formed,
+          Value.pointerNames_of_free (Constant.toValue_pointerFree constant)⟩, memory⟩
 
 end Aiur

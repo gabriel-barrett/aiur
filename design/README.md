@@ -17,8 +17,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   heterogeneous table, allocation bounds, and source/circuit correspondence.
 - [Enums](enums.md): payloads, recursion through pointers, semantic values,
   canonical circuit layouts, root validity, and proved correspondence.
-- [Static tables](tables.md): generated tables, shared inputs with separate
-  operation outputs, field tuple interfaces, and proposed lookup semantics.
+- [Tables and maps](tables.md): shared precommitted traces, typed constants,
+  function-style calls, static membership rules, and proved correspondence.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,

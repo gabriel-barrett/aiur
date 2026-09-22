@@ -8,6 +8,7 @@ import AiurTests.EnumEncoding
 import AiurTests.EnumProofs
 import AiurTests.Pointers
 import AiurTests.Tuples
+import AiurTests.Tables
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -166,3 +167,4 @@ def main : IO Unit := do
   AiurTupleRuntimeTests.run
   AiurEnumTests.run
   AiurEnumEncodingTests.run
+  AiurTableTests.run

@@ -239,7 +239,7 @@ mutual
               simp [evalBinOp, Scalar.Circuit.ArithExpr.denote, Scalar.Circuit.inverse_nonzero equation, Scalar.Circuit.inverse_eq equation,
                 div_eq_mul_inv])⟩
     | call name args =>
-        cases found : program.findFunction? name with
+        cases found : program.findSignature? name with
         | none => simp [lowerExpr, found] at compiled
         | some callee =>
             simp only [lowerExpr, found] at compiled

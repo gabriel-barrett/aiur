@@ -6,7 +6,7 @@ namespace Aiur
 
 variable {F : Type} {rom : ROM F}
 
-private theorem checked_arguments (decls : Declarations) (name : String) (params : List (String × Ty))
+theorem checked_arguments (decls : Declarations) (name : String) (params : List (String × Ty))
     (args : List (Value F A)) (types : params.map Prod.snd = args.map Value.type)
     (formed : ∀ arg ∈ args, arg.wellFormed decls = true) :
     (do
@@ -26,7 +26,7 @@ private theorem checked_arguments (decls : Declarations) (name : String) (params
           exact ih args types.2 (fun v h => formed v (by simp [h]))
 
 /-- Structural argument types are exactly the shape check performed at a source call. -/
-theorem prepareCall_of_types {program : Program F} {name : String} {fn : Function F}
+theorem prepareCall_of_types [DecidableEq F] {program : Program F} {name : String} {fn : Function F}
     {args : List (Value F A)} (found : program.findFunction? name = some fn)
     (types : fn.params.map Prod.snd = args.map Value.type)
     (formed : ∀ arg ∈ args, arg.wellFormed program.enums = true) :

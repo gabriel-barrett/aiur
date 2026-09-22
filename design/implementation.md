@@ -3,16 +3,22 @@
 ## Current modules
 
 - `Aiur/AST.lean`: recursive field, tuple, enum, and pointer types, values, patterns, expressions, explicitly typed
-  signatures, and field specialization.
+  signatures, constant tables, map references, and field specialization.
+- `Aiur/Constant.lean`: address-free constants, extraction, and invariance under
+  address mappings.
 - `Aiur/Declarations.lean` and `DeclarationTotal.lean`: name checks, rejection
   of inline type cycles, finite layouts, and layout existence for valid types.
 - `Aiur/Wire.lean` and the `Wire*`/`EncodingTypes` lemmas: flat typed values,
   canonical enum codecs, tag conditions, round trips, and decoded ROM tables.
 - `Aiur/Typecheck.lean`: expression inference against declared signatures; tuple
-  shapes, nominal constructor payloads, projections, scoped bindings, and result agreement.
+  shapes, nominal constructor payloads, projections, scoped bindings, result
+  agreement, and typed aligned table rows with unique map inputs.
+- `Aiur/Tables.lean` and `TableChecking.lean`: map lookup, constant evaluation,
+  table checking facts, unique keys, and function/map namespace separation.
 - `Aiur/TypecheckFacts.lean` and `Semantics/CallTypes.lean`: preservation of
   inferred shapes and constructor validity, function-body checks, and entry argument-shape facts.
 - `Aiur/Frontend.lean`: `aiur%` elaborates a string into a checked `Program Nat`.
+  Includes explicit table rows and function-style map declarations.
   Parameter destructuring lowers to lets with generated parameter names that
   cannot collide with source identifiers.
 - `Aiur/Eval.lean`: matching, bindings, argument-shape checks, and fuel-bounded
@@ -22,7 +28,8 @@
 - `Aiur/EvalCorrectness.lean`: both directions of evaluator correspondence and
   expression and call determinism.
 - `Aiur/Circuit/Basic.lean`: typed flat interfaces and messages, flat rows, and
-  ROM lookup requirements and exact channel balance. Polynomial syntax and rows reuse the scalar reference.
+  ROM lookups, static map membership, and exact balance of dynamic calls.
+  Polynomial syntax and rows reuse the scalar reference.
 - `Aiur/Circuit/Compile.lean`: one chip per function, fresh result columns, constructor and tuple
   pattern indicators, and first-match branch selectors.
 - `Aiur/Circuit/Indicator.lean` and `IndicatorWitness.lean`: the literal equality-test equations are sound
@@ -34,6 +41,8 @@
 - `Aiur/Circuit/ExpressionCorrectness.lean`, `CompileFacts.lean`, and
   `LocalCorrectness.lean`: expression, ordered arm, interface, and function
   soundness against the actual compiler.
+- `Aiur/Circuit/MapFacts.lean`: equivalence of successful map lookup and encoded
+  membership in the compiled system's static tables.
 - `Aiur/Circuit/WitnessBasic.lean`, `ValueWitness.lean`, and `PatternWitness.lean`:
   fresh assignments, preservation of existing constraints and calls, and exact
   recursive tuple and pattern witnesses.
@@ -69,7 +78,7 @@ preserved under `Aiur/Tuple/`, namespace `Aiur.Tuple`, frontend `tuple_aiur%`.
 
 Enums use qualified constructors and explicit payload types. All declarations
 are collected before checking bodies, allowing forward and mutual references.
-Only pointer-mediated type recursion is accepted. All function parameter and
+Only pointer-mediated type recursion is accepted. All function and map parameter and
 return annotations are mandatory. Expression types
 are inferred from signatures and lexical bindings; signatures are not inferred.
 Projections bind tighter than unary negation, store, and load, which bind tighter than
@@ -85,6 +94,10 @@ bindings, unknown names, wrong call arity, type mismatches, wrong tuple pattern
 shapes, invalid projections, refutable lets, and inconsistent arm result types.
 It does not establish termination, exhaustiveness, or nonzero denominators.
 Field-specific pattern duplicates and constructor-tag collisions are checked by compilation.
+Table rows contain only constants, never pointers. Maps require matching input
+and output row counts, the declared argument-pack and result types, and unique
+input rows. Program checking after field specialization catches literal
+collisions in map keys. See [tables and maps](tables.md) for the full syntax.
 
 ## Evaluation and validation
 
@@ -96,6 +109,9 @@ scrutinee once. Discarded values are still fully evaluated.
 Each expression gives one less fuel to its children; siblings share the remaining
 bound. The bound measures nesting and recursive call depth rather than total
 steps. The entry point starts at the function body and defaults to 1000 fuel.
+For a map, call preparation selects its static result and evaluates a constant
+expression for that value, with the same heap and fuel rules. Map entries are
+invoked through the same `eval` and `run` interfaces.
 
 The semantic definitions and compiler are total Lean definitions. Only frontend
 traversal uses metaprogramming. Constraints have no execution order. Automatic
@@ -120,3 +136,10 @@ matching, strict evaluation, and tag/pattern collisions. `EnumEncoding.lean`
 checks canonical decoding, root validity, and generated polynomial gadgets.
 `EnumProofs.lean` applies the source and memoized completeness theorems to recursive
 enum programs and rejects a well-formed but false claimed result using soundness.
+
+`AiurTests/Tables.lean` checks shared tables, generated rows, direct map calls,
+tuple argument packs, enum constants, missing inputs, inactive calls, duplicate
+keys after field specialization, frontend errors, and forged membership claims.
+Proof regressions apply completeness to repeated map calls and map results
+stored in ROM, and apply tree and acyclic memoized soundness to false claims.
+`Examples/Tables.lean` provides a runnable frontend example.

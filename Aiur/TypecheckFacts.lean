@@ -8,12 +8,12 @@ namespace Aiur
 
 variable {F : Type} {rom : ROM F}
 
-/-- A call premise has the result shape of the function it names. -/
+/-- A call premise has the result shape of the function or map it names. -/
 def CallsTyped (program : Program F) (calls : CallRelation F) : Prop :=
   ∀ name args result, calls name args result →
-    ∀ fn, program.findFunction? name = some fn → result.type = fn.result ∧ result.wellFormed program.enums = true
+    ∀ fn, program.findSignature? name = some fn → result.type = fn.result ∧ result.wellFormed program.enums = true
 
-theorem typecheck_declarations {program : Program F} (checked : typecheck program = .ok ()) :
+theorem typecheck_declarations [DecidableEq F] {program : Program F} (checked : typecheck program = .ok ()) :
     checkDeclarations program.enums = .ok () := by
   unfold typecheck at checked
   obtain ⟨done, declarations, _⟩ := except_bind_ok.mp checked
@@ -21,7 +21,7 @@ theorem typecheck_declarations {program : Program F} (checked : typecheck progra
   | error error => simp [run, Except.mapError] at declarations
   | ok unit => cases unit; rfl
 
-theorem typecheck_function {program : Program F} (checked : typecheck program = .ok ())
+theorem typecheck_function [DecidableEq F] {program : Program F} (checked : typecheck program = .ok ())
     {fn : Function F} (member : fn ∈ program.functions) :
     inferType program fn.name fn.params fn.body = .ok fn.result := by
   unfold typecheck at checked
@@ -29,6 +29,7 @@ theorem typecheck_function {program : Program F} (checked : typecheck program = 
   split at rest
   · cases rest
   · simp only [pure_bind] at rest
+    obtain ⟨_, _, rest⟩ := except_bind_ok.mp rest
     have body := forIn_ok rest fn member
     unfold checkFunction at body
     obtain ⟨_, _, body⟩ := except_bind_ok.mp body
@@ -198,7 +199,7 @@ theorem ROMEvalExprWith.wellTyped [Field F] [DecidableEq F] {program : Program F
                 | (cases operation; simp [Value.type])
   | @call locals args values name result _ callee ih =>
       intro formed caller type checked
-      cases found : program.findFunction? name with
+      cases found : program.findSignature? name with
       | none => simp [inferType, found] at checked
       | some fn =>
           simp only [inferType, found] at checked

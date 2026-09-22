@@ -319,7 +319,7 @@ mutual
     | call name args =>
         cases evaluated with
         | call argsEval calleeEval =>
-            cases found : program.findFunction? name with
+            cases found : program.findSignature? name with
             | none => simp [lowerExpr, found] at compiled
             | some callee =>
                 simp only [lowerExpr, found] at compiled

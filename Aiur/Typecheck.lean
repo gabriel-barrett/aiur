@@ -19,6 +19,12 @@ inductive CheckError where
   | projectionBounds (function : String) (index size : Nat)
   | refutableBinding (function : String)
   | emptyMatch (function : String)
+  | duplicateTable (name : String)
+  | unknownTable (map table : String)
+  | malformedTableRow (table : String) (index : Nat)
+  | tableRowType (table : String) (index : Nat) (expected actual : Ty)
+  | tableLength (map : String) (inputs outputs : Nat)
+  | duplicateInput (map table : String)
   deriving Repr, BEq, DecidableEq
 
 instance : ToString CheckError where
@@ -44,6 +50,14 @@ instance : ToString CheckError where
         s!"tuple projection .{index} is out of bounds for size {size} in function '{fn}'"
     | .refutableBinding fn => s!"let and parameter patterns must be irrefutable in function '{fn}'"
     | .emptyMatch fn => s!"empty match in function '{fn}'"
+    | .duplicateTable name => s!"duplicate table '{name}'"
+    | .unknownTable map table => s!"map '{map}' refers to unknown table '{table}'"
+    | .malformedTableRow table index => s!"malformed value in table '{table}', row {index}"
+    | .tableRowType table index expected actual =>
+        s!"table '{table}', row {index}: expected {repr expected}, got {repr actual}"
+    | .tableLength map inputs outputs =>
+        s!"map '{map}' has {inputs} input rows and {outputs} output rows"
+    | .duplicateInput map table => s!"map '{map}' uses repeated input rows in table '{table}'"
 
 def findDuplicate : List String → List String → Option String
   | [], _ => none
@@ -130,7 +144,7 @@ mutual
         requireType caller .field (← inferType program caller locals right)
         return .field
     | .call name args =>
-        let some fn := program.findFunction? name | throw (.unknownFunction caller name)
+        let some fn := program.findSignature? name | throw (.unknownFunction caller name)
         if fn.params.length != args.length then
           throw (.arityMismatch caller name fn.params.length args.length)
         let types ← inferTypes program caller locals args
@@ -175,10 +189,42 @@ def checkFunction (program : Program α) (fn : Function α) : Except CheckError 
     throw (.duplicateParameter fn.name name)
   requireType fn.name fn.result (← inferType program fn.name fn.params fn.body)
 
-def typecheck (program : Program α) : Except CheckError Unit := do
+def checkTableRow (program : Program α) (table : Table α)
+    (entry : Constant α × Nat) : Except CheckError Unit := do
+  let (row, index) := entry
+  if row.type ≠ table.rowType then
+    throw (.tableRowType table.name index table.rowType row.type)
+  if !row.wellFormed program.enums then throw (.malformedTableRow table.name index)
+
+def checkTable (program : Program α) (table : Table α) : Except CheckError Unit := do
+  (table.rowType.checkNames program.enums).mapError CheckError.invalidDeclarations
+  for entry in table.rows.zipIdx do checkTableRow program table entry
+
+def checkMap [DecidableEq α] (program : Program α) (map : MapDecl) : Except CheckError Unit := do
+  for (_, type) in map.params do
+    (type.checkNames program.enums).mapError CheckError.invalidDeclarations
+  (map.result.checkNames program.enums).mapError CheckError.invalidDeclarations
+  if let some name := findDuplicate (map.params.map Prod.fst) [] then
+    throw (.duplicateParameter map.name name)
+  let some inputs := program.findTable? map.input | throw (.unknownTable map.name map.input)
+  let some outputs := program.findTable? map.output | throw (.unknownTable map.name map.output)
+  requireType map.name (.tuple (map.params.map Prod.snd)) inputs.rowType
+  requireType map.name map.result outputs.rowType
+  if inputs.rows.length != outputs.rows.length then
+    throw (.tableLength map.name inputs.rows.length outputs.rows.length)
+  if !decide inputs.rows.Nodup then throw (.duplicateInput map.name map.input)
+
+def checkTables [DecidableEq α] (program : Program α) : Except CheckError Unit := do
+  if let some name := findDuplicate (program.tables.map (·.name)) [] then
+    throw (.duplicateTable name)
+  for table in program.tables do checkTable program table
+  for map in program.maps do checkMap program map
+
+def typecheck [DecidableEq α] (program : Program α) : Except CheckError Unit := do
   (checkDeclarations program.enums).mapError CheckError.invalidDeclarations
-  if let some name := findDuplicate (program.functions.map (·.name)) [] then
+  if let some name := findDuplicate (program.functions.map (·.name) ++ program.maps.map (·.name)) [] then
     throw (.duplicateFunction name)
+  checkTables program
   for fn in program.functions do checkFunction program fn
 
 end Aiur
