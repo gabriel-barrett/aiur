@@ -145,6 +145,9 @@ the syntax, checks, membership rules, and correctness proofs.
 
 ## Open questions
 
+The [design TODO](todo.md) records proposed language and frontend extensions
+identified by the ix comparison, separately from the current specification.
+
 - Concrete fields and circuit backends for applications.
 - Whether division by zero and partial matches remain runtime errors.
 - Additional data structures and binding forms beyond tuples and enums.

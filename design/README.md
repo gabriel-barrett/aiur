@@ -21,6 +21,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   function-style calls, static membership rules, and proved correspondence.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
+- [TODO](todo.md): proposed extensions from the ix comparison, remaining proof
+  and backend work, deliberate differences, and deferred decisions.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
   fresh call results, and abstract channel balance.
 - [Correctness](correctness.md): relational evaluation, closed circuit
