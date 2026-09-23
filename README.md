@@ -84,8 +84,10 @@ fn main(x: Field) -> Field { sum(List::Cons(x, &List::Nil)) }
 
 Enums are nominal and their payloads may nest tuples, other enums, and pointers.
 Every type cycle must pass through a pointer. Construction does not allocate.
-Public inputs may contain a pointer-free variant such as `List::Nil`; the entry
-check examines the selected payload. See [Examples/Enums.lean](Examples/Enums.lean).
+Public input types must contain no pointers in any constructor, so `List` is
+excluded even for `List::Nil`. Enums whose entire types are pointer-free remain
+valid inputs. Internal calls may use `List` as above. See
+[Examples/Enums.lean](Examples/Enums.lean) and the [input type design](design/input-types.md).
 
 Tables hold typed constants; maps pair input and output rows from shared tables:
 
@@ -98,8 +100,9 @@ map mul(a: Field, b: Field) -> Field = inputs => products;
 fn example() -> Field { add(1, 1) + mul(1, 1) }
 ```
 
-Rows can contain fields, tuples, and enums, with no pointers anywhere in the
-value. Input rows must be unique after field specialization; paired tables must
+Rows can contain fields, tuples, and enums, with no pointers anywhere in their
+declared types, including unselected variants. Empty tables obey the same rule.
+Input rows must be unique after field specialization; paired tables must
 have equal lengths. Missing inputs cause an evaluation error. The outer input
 tuple packs separate arguments; a tuple parameter needs an extra outer singleton
 tuple. Maps use ordinary call syntax and may also be invoked directly with
@@ -108,7 +111,8 @@ tuple. Maps use ordinary call syntax and may also be invoked directly with
 
 Evaluation is eager in tuple components, constructor arguments, and call arguments; unselected match
 bodies are not evaluated. Functions may call one another recursively. `eval`
-checks the program, entry argument shapes, and the pointer-free entry restriction.
+checks the program, statically checks the selected entry's parameter types for
+pointers, and validates supplied argument shapes and constructor payloads.
 `run` additionally returns the final heap. Both start from empty memory.
 The fuel bound defaults to 1000;
 division by zero, failed let patterns, uncovered matches, and exhausted fuel produce errors.

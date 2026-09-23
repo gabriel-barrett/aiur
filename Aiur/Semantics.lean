@@ -55,9 +55,9 @@ mutual
         EvalFn program name args before result after
 end
 
-/-- Public entry calls start with an empty heap and pointer-free arguments. -/
+/-- Public entry calls start with an empty heap and well-formed arguments of pointer-free types. -/
 def EvalCall [Field F] [DecidableEq F] (program : Program F)
     (name : String) (args : List (SourceValue F)) (result : SourceValue F) : Prop :=
-  checkEntry args = .ok () ∧ ∃ heap, EvalFn program name args [] result heap
+  checkEntry program name = .ok () ∧ ∃ heap, EvalFn program name args [] result heap
 
 end Aiur

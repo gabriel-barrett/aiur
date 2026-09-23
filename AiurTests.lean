@@ -10,6 +10,7 @@ import AiurTests.Pointers
 import AiurTests.Tuples
 import AiurTests.Tables
 import AiurTests.RefutableLets
+import AiurTests.InputTypes
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -170,3 +171,4 @@ def main : IO Unit := do
   AiurEnumEncodingTests.run
   AiurTableTests.run
   AiurRefutableLetTests.run
+  AiurInputTypeTests.run

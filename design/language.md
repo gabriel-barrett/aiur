@@ -103,8 +103,10 @@ still typechecked. Partial matches are allowed and fail if no arm matches.
 Evaluation is eager in operands, tuple components, constructor arguments, call arguments, and `let`
 values. Only the selected match body runs. Discarding or projecting a tuple does
 not skip its components. Division by zero and exhausted fuel are explicit errors.
-Entry arguments are checked against their declared shapes and must contain no
-pointers, including inside tuples or the selected enum payload. Internal calls may receive pointers. The inductive
+Every entry parameter's complete type must contain no pointers, including in
+any enum constructor or nested tuple. Entry selection checks this static property
+before reading argument values; ordinary argument validation still checks shape
+and constructor validity. Internal calls may receive pointers. The inductive
 evaluation predicate describes finite successful evaluation without fuel.
 
 Each function compiles to one chip. Interfaces retain type metadata and flat
@@ -156,20 +158,17 @@ map add(a: Field, b: Field) -> Field = inputs => outputs;
 
 The input row type is the tuple of parameter types. A single tuple parameter
 therefore requires a singleton outer tuple; singleton tuples remain distinct
-from their elements. Rows may contain nested tuples and enums, but no pointers.
+from their elements. Row types may contain nested tuples and enums, but no
+pointers anywhere, including in unselected enum variants. Empty tables must
+satisfy the same type restriction. Map parameter and result types obey this rule.
 Input rows must be distinct in the selected field, and both tables must have
 equal lengths. Missing inputs fail during evaluation. Tables can be generated
 in Lean or written as frontend constants. See [tables and maps](tables.md) for
 the syntax, checks, membership rules, and correctness proofs.
 
-## Agreed input restriction awaiting implementation
-
-The [pointer-free input type decision](input-types.md) strengthens the current
-value-level restriction for public entry arguments and tables/maps, and sets
-the rule for future nondeterministic inputs. No pointer may occur anywhere in
-an admitted declared type, including in an unselected enum constructor. The
-implementation described above still checks selected values; the boundary and
-proof updates are pending.
+The [input type design](input-types.md) explains this shared static restriction
+and its proof model. The same rule is agreed for future nondeterministic inputs;
+nondeterminism and hint execution remain unimplemented.
 
 ## Open questions
 

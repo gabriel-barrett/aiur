@@ -246,14 +246,14 @@ theorem run_eq_ok_iff [Field F] [DecidableEq F] {program : Program F}
     {name : String} {args : List (SourceValue F)} {fuel : Nat}
     {result : SourceValue F} {heap : Heap F} :
     run program name args fuel = .ok (result, heap) ↔
-      typecheck program = .ok () ∧ checkEntry args = .ok () ∧ ∃ locals expr,
+      typecheck program = .ok () ∧ checkEntry program name = .ok () ∧ ∃ locals expr,
         prepareCall program name args = .ok (locals, expr) ∧
         evalExpr program locals fuel expr [] = .ok (result, heap) := by
   cases checked : typecheck program with
   | error error => simp [run, checked, bind, Except.bind]
   | ok finished =>
       cases finished
-      cases entry : checkEntry args with
+      cases entry : checkEntry program name with
       | error error => simp [run, checked, entry, bind, Except.bind, pure, Except.pure]
       | ok finished =>
           cases finished

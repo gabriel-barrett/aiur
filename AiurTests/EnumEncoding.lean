@@ -83,6 +83,8 @@ private def rootChecks : List (String × Bool) := [
     ⟨"identity", [⟨.enum "Maybe", [0, 0]⟩], ⟨.enum "Maybe", [2, 0]⟩⟩ [] = .error .malformedEntry)),
   ("well-formed root still requires proof", decide (system.check ⟨[]⟩
     ⟨"identity", [⟨.enum "Maybe", [0, 0]⟩], ⟨.enum "Maybe", [1, 7]⟩⟩ [] = .error .unbalancedMessages)),
+  ("pointer in an unselected root variant", decide (system.check ⟨[]⟩
+    ⟨"identity", [⟨.enum "Box", [0, 0]⟩], ⟨.enum "Maybe", [0, 0]⟩⟩ [] = .error .pointerEntryArgument)),
   ("pointer-bearing root variant rejected", decide (system.check ⟨[]⟩
     ⟨"identity", [⟨.enum "Box", [1, 99]⟩], ⟨.enum "Maybe", [0, 0]⟩⟩ [] = .error .pointerEntryArgument))
 ]

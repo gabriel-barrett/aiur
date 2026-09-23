@@ -39,14 +39,11 @@ the shared input table.
 
 Rows can contain fields, arbitrary nested tuples, and nominal enum values.
 There are no pointer constants, including inside tuples or constructor payloads.
-The AST enforces this through `Constant α = Value α Empty`: no address can be
-constructed. A pointer-free variant of an enum that also has pointer-bearing
-variants is allowed, just as for public entry arguments.
-
-An [agreed tightening](input-types.md), pending implementation, will instead
-require the complete declared row type to contain no pointers in any variant.
-This applies even to empty tables and implies the same restriction on all map
-parameter and result types.
+The AST represents rows as `Constant α = Value α Empty`: no address can be
+constructed. The checker additionally requires the complete declared row type
+to contain no pointers in any constructor, even when the table is empty or only
+contains empty variants. All map parameter and result types obey the same
+[static input restriction](input-types.md).
 
 Every table has an explicit row type. Every map has explicit named parameter
 types and one explicit result type. Its input table has the outer tuple type

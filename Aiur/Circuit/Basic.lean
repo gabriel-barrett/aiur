@@ -167,8 +167,8 @@ def Chip.checkRow [Field F] [DecidableEq F] (chip : Chip F) (rom : WireROM F) (r
 def System.check [Field F] [DecidableEq F] (system : System F)
     (rom : WireROM F) (entry : Message F) (rows : List (Row F)) : Except WitnessError Unit := do
   for argument in entry.args do
-    let some value := argument.decode system.enums | throw .malformedEntry
-    if !value.pointerFree then throw .pointerEntryArgument
+    if (argument.decode system.enums).isNone then throw .malformedEntry
+    if !argument.type.pointerFree system.enums then throw .pointerEntryArgument
   if (entry.result.decode system.enums).isNone then throw .malformedEntry
   if ¬rom.Valid then throw .invalidROM
   let mut seen := []

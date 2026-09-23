@@ -14,7 +14,6 @@ example (map table : Nat) : map + table = table + map := Nat.add_comm _ _
 
 def source : Program Nat := aiur% "
 enum Choice { Empty, Pair((Field, Field)) }
-enum PointerOption { None, Some(&Field) }
 table pairs: (Field, Field) { (0, 0), (0, 1), (1, 0), (1, 1), }
 table sums: Field { 0, 1, 1, 2, }
 table products: Field { 0, 0, 0, 1, }
@@ -35,9 +34,6 @@ table unit_inputs: () { (), }
 table unit_outputs: () { (), }
 map unit() -> () = unit_inputs => unit_outputs;
 
-table no_pointers: PointerOption { PointerOption::None, }
-map none() -> PointerOption = unit_inputs => no_pointers;
-
 table empty_inputs: (Field,) { }
 table empty_outputs: Field { }
 map missing(x: Field) -> Field = empty_inputs => empty_outputs;
@@ -49,7 +45,6 @@ fn nested() -> (Field, ()) { inspect(choose((2, 3))) }
 fn lazy(x: Field) -> Field { match x { 0 => 9, _ => missing(4), } }
 fn repeated() -> Field { bit_add(1, 1) + bit_add(1, 1) }
 fn through_rom() -> Choice { let p = &choose((2, 3)); *p }
-fn pointer_variant() -> PointerOption { none() }
 "
 
 def program := source.toField Rat
@@ -68,7 +63,6 @@ def runtimeTests : List (String × Except EvalError (SourceValue Rat) × Except 
     .ok (.tuple [1, .tuple []])),
   ("nested map calls", eval program "nested" [], .ok (.tuple [1, .tuple []])),
   ("zero arguments and unit result", eval program "unit" [], .ok (.tuple [])),
-  ("pointer-free variant", eval program "pointer_variant" [], .ok (.construct "PointerOption" "None" [])),
   ("empty map", eval program "missing" [0], .error (.missingMapInput "missing")),
   ("absent input", eval program "bit_add" [2, 0], .error (.missingMapInput "bit_add")),
   ("wrong arity", eval program "bit_add" [.tuple [1, 1]], .error (.arityMismatch "bit_add" 2 1)),

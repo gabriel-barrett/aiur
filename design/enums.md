@@ -197,11 +197,12 @@ patterns, failing with `patternMismatch` when the constructor or a payload
 pattern does not match. The irrefutability check depends on declarations and the
 scrutinee type.
 
-Pointer-free entry arguments are checked by actual value: inspect only the
-selected constructor's arguments, recursively. `List::Nil` is allowed, while
-`List::Cons` containing a pointer is rejected. This does not supply an input ROM.
-`Value.pointerFree` follows selected payloads; `Ty.pointerFree` conservatively
-returns false for nominal enums.
+Entry parameter types must be entirely pointer-free: inspect every constructor's
+payload types recursively. A `List` type with a pointer-bearing constructor is
+excluded even when the supplied value is `List::Nil`. `Ty.pointerFree` uses
+declarations and finite layouts to enforce this static rule; pointer-free enums
+remain admissible. `Value.pointerFree` is retained for memory representation
+lemmas. See [input types](input-types.md) for the shared entry and table/map rule.
 
 ## Circuit values and layouts
 
@@ -434,7 +435,8 @@ The regression coverage includes:
   fields. The characteristic/cardinality distinction is an explicit condition
   of the model.
 - Typed ROM lookups for enum cells, loads followed by constructor matching,
-  pointer-free variants accepted at entry and pointer-containing variants rejected.
+  pointer-free enum types accepted at entry and any pointer-bearing type rejected,
+  including when the supplied variant contains no pointer.
 - All evaluator, tree, and memoized correctness results checked without `sorry`
   or added axioms, with the same explicit conditional-soundness boundary.
 
@@ -445,7 +447,8 @@ assignments, equality operations, and empty enums. These are outside this change
 
 A public root claim must be well-formed: its argument and result words decode to
 values of their stated nominal types, including valid constructor tags, payload
-shapes, and canonical zero padding. Its actual arguments must be pointer-free.
+shapes, and canonical zero padding. Its argument types must be entirely
+pointer-free across all constructors.
 This is an admissibility assumption, not an assumption that the claimed function
 result is true. Soundness must prove the latter from the derivation, and in the
 memoized model additionally from the graph's acyclicity. Compiled chips also

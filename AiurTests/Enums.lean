@@ -73,7 +73,8 @@ def runtimeTests : List (String × Except EvalError (SourceValue Rat) × Except 
   ("pointer recursion", eval (sample.toField Rat) "list" [7, 8], .ok 15),
   ("irrefutable parameter", eval (sample.toField Rat) "parameter" [ctor "Token" "Wrap" [5]], .ok 5),
   ("irrefutable let", eval (sample.toField Rat) "binding" [5], .ok 6),
-  ("pointer-free selected variant", eval (sample.toField Rat) "empty_box" [ctor "Box" "Empty"], .ok 0),
+  ("pointer in an unselected variant", eval (sample.toField Rat) "empty_box" [ctor "Box" "Empty"],
+    .error (.pointerEntryArgument 0)),
   ("pointer payload", eval (sample.toField Rat) "boxed" [5], .ok 5),
   ("unit payload", eval (sample.toField Rat) "nested" [ctor "Mixed" "Unit" [.tuple []]], .ok 3),
   ("nested constructor and tuple patterns", eval (sample.toField Rat) "nested"

@@ -46,6 +46,19 @@ decreasing_by
     have h := List.sizeOf_lt_of_mem ‹_ ∈ _›
     first | omega | cases ‹String × Layout›; simp_all only [Prod.mk.sizeOf_spec]; omega
 
+/-- Every constructor payload must be free of pointers, including unselected variants. -/
+def Layout.pointerFree : Layout → Bool
+  | .field => true
+  | .ptr _ => false
+  | .tuple items => (items.map Layout.pointerFree).all id
+  | .enum _ constructors => (constructors.map (fun ctor => ctor.2.pointerFree)).all id
+termination_by layout => sizeOf layout
+decreasing_by
+  all_goals simp_wf
+  all_goals
+    have h := List.sizeOf_lt_of_mem ‹_ ∈ _›
+    first | omega | cases ‹String × Layout›; simp_all only [Prod.mk.sizeOf_spec]; omega
+
 def Ty.checkNames (decls : Declarations) : Ty → Except DeclError Unit
   | .field => .ok ()
   | .ptr target => target.checkNames decls
@@ -76,6 +89,12 @@ def Declarations.expand (decls : Declarations) : Nat → Ty → Except DeclError
 def Declarations.layout (decls : Declarations) (type : Ty) : Except DeclError Layout := do
   type.checkNames decls
   decls.expand (decls.length + 1) type
+
+/-- Public input and table types cannot contain pointers in any reachable constructor. -/
+def Ty.pointerFree (decls : Declarations) (type : Ty) : Bool :=
+  match decls.layout type with
+  | .ok layout => layout.pointerFree
+  | .error _ => false
 
 def duplicateName : List String → List String → Option String
   | [], _ => none

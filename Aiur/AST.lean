@@ -155,12 +155,6 @@ def Value.addresses : Value α Address → List Address
   | .construct _ _ args => args.flatMap Value.addresses
 termination_by value => sizeOf value
 
-def Ty.pointerFree : Ty → Bool
-  | .field => true
-  | .tuple items => (items.map Ty.pointerFree).all id
-  | .ptr _ | .enum _ => false
-termination_by type => sizeOf type
-
 /-- Only the selected constructor payload is part of an enum value. -/
 def Value.pointerFree : Value α Address → Bool
   | .field _ => true

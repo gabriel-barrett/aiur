@@ -8,11 +8,10 @@ def Message.WellFormed [Field F] [DecidableEq F] (decls : Declarations)
   (∀ argument ∈ message.args, ∃ value, argument.decode decls = some value) ∧
     ∃ value, message.result.decode decls = some value
 
-/-- Pointer freedom depends on the selected constructor, not every alternative. -/
-def Message.PublicArguments [Field F] [DecidableEq F] (decls : Declarations)
+/-- The entire type of every public argument is pointer-free, across all constructors. -/
+def Message.PublicArguments (decls : Declarations)
     (message : Message F) : Prop :=
-  ∀ argument ∈ message.args, ∃ value,
-    argument.decode decls = some value ∧ value.pointerFree = true
+  ∀ argument ∈ message.args, argument.type.pointerFree decls = true
 
 /-- Public acceptance uses a well-formed root and one prover-chosen functional table. -/
 def EntryDerives [Field F] [DecidableEq F] (system : System F) (message : Message F) : Prop :=

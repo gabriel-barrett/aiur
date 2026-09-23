@@ -4,6 +4,7 @@ namespace Aiur
 
 inductive CheckError where
   | invalidDeclarations (error : DeclError)
+  | pointerType (context : String) (type : Ty)
   | unknownConstructor (enumName constructor : String)
   | constructorArity (enumName constructor : String) (expected actual : Nat)
   | duplicateFunction (name : String)
@@ -29,6 +30,7 @@ inductive CheckError where
 instance : ToString CheckError where
   toString
     | .invalidDeclarations error => toString error
+    | .pointerType context type => s!"{context} requires a pointer-free type; got {repr type}"
     | .unknownConstructor name ctor => s!"unknown constructor '{name}::{ctor}'"
     | .constructorArity name ctor expected actual =>
         s!"constructor '{name}::{ctor}' has {actual} arguments; expected {expected}"
@@ -193,14 +195,21 @@ def checkTableRow (program : Program α) (table : Table α)
     throw (.tableRowType table.name index table.rowType row.type)
   if !row.wellFormed program.enums then throw (.malformedTableRow table.name index)
 
+/-- Check the declared type even when no value or table row is supplied. -/
+def requirePointerFree (decls : Declarations) (context : String) (type : Ty) : Except CheckError Unit :=
+  if type.pointerFree decls then .ok () else .error (.pointerType context type)
+
 def checkTable (program : Program α) (table : Table α) : Except CheckError Unit := do
   (table.rowType.checkNames program.enums).mapError CheckError.invalidDeclarations
+  requirePointerFree program.enums s!"table '{table.name}'" table.rowType
   for entry in table.rows.zipIdx do checkTableRow program table entry
 
 def checkMap [DecidableEq α] (program : Program α) (map : MapDecl) : Except CheckError Unit := do
   for (_, type) in map.params do
     (type.checkNames program.enums).mapError CheckError.invalidDeclarations
   (map.result.checkNames program.enums).mapError CheckError.invalidDeclarations
+  requirePointerFree program.enums s!"map '{map.name}' inputs" (.tuple (map.params.map Prod.snd))
+  requirePointerFree program.enums s!"map '{map.name}' result" map.result
   if let some name := findDuplicate (map.params.map Prod.fst) [] then
     throw (.duplicateParameter map.name name)
   let some inputs := program.findTable? map.input | throw (.unknownTable map.name map.input)

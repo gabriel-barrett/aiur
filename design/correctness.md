@@ -14,8 +14,11 @@ EvalArgs P locals expressions before values after
 EvalFn   P function arguments before value after
 ```
 
-`EvalCall P f xs y` means that `xs` contains no pointers and there is a finite
-`EvalFn P f xs [] y heap`. Each store appends a cell. Loads use the heap after
+`EvalCall P f xs y` requires `checkEntry P f = .ok ()`: all of the selected
+callable's declared parameter types contain no pointers, including in every
+enum constructor. It also requires a finite `EvalFn P f xs [] y heap`, which
+checks that the actual arguments have those types and are well-formed.
+Each store appends a cell. Loads use the heap after
 evaluating their pointer operand. Internal calls share the heap; selected
 branches, tuple items, constructor arguments, and operands retain left-to-right evaluation.
 
@@ -76,13 +79,19 @@ and result words, their canonical decodings, and a `CircuitEvaluates` tree.
 compiled row constraints or static map membership. It holds even for a
 nonfunctional ROM; ROM functionality is required by the subsequent
 source-soundness bridge. Map input uniqueness is checked during compilation.
-`EntryDerives` requires a well-formed raw root, pointer-free decoded arguments,
+`EntryDerives` requires a well-formed raw root, entirely pointer-free argument types,
 and existentially quantifies
 one valid ROM for the whole tree. The prover cannot choose a new table per call.
 Root validity is not truth of the claimed result. Tags must be in range and
 payload padding canonical, but evaluation correctness is a theorem conclusion.
 Successful compilation checks injective constructor tags independently of ROM
 capacity. See [enums](enums.md#root-claims-and-representable-tags).
+
+`InputTypes.lean` proves that well-typed values of pointer-free types contain no
+pointers and relates public entry selection to prepared-call signatures. These
+facts connect the static source and circuit restrictions to the existing
+contents-based memory proofs. Tables and maps enforce the same type predicate
+during program checking, even with empty traces. See [input types](input-types.md).
 
 Refutable lets use the existing pattern soundness and witness lemmas. The
 active let equation forces its indicator to one; the inactive witness proof
