@@ -1,15 +1,17 @@
 # Pointer-free input types
 
-Status: agreed design decision; enforcement in the existing implementation is
-pending. Nondeterminism and executor hints remain under discussion and are not
-implemented.
+Status: enforced for public entry inputs, tables, and maps. Nondeterminism and
+executor hints remain under discussion and are not implemented.
 
 ## Shared restriction
 
 Public entry inputs, static tables/maps, and future nondeterministic inputs must
 have types containing no pointers anywhere. The check examines the complete
 declared type, including every constructor of every reachable enum, regardless
-of the value supplied or the variants represented in a table.
+of the value supplied or the variants represented in a table. The extra
+expressiveness of accepting just the pointer-free variants is not worth the
+value-dependent enforcement. This restriction is a static property of the type;
+it adds no dynamic pointer-exclusion constraints to the circuit.
 
 A declaration-aware predicate determines whether a type is pointer-free:
 
@@ -22,8 +24,9 @@ A declaration-aware predicate determines whether a type is pointer-free:
 
 Normal declaration validation still rejects unknown types and inline recursive
 cycles. Legal recursive enums use pointers, so their types fail this restriction.
-The existing finite layouts contain all constructor payloads and provide a
-possible basis for a shared implementation of the check.
+The existing finite layouts contain all constructor payloads. `Layout.pointerFree`
+checks every component, and `Ty.pointerFree decls type` resolves nominal types
+through those layouts. Unknown or invalid layouts fail the check.
 
 For example:
 
@@ -41,9 +44,11 @@ supplying `List::Nil` does not make an input of type `List` admissible.
 Apply the same type predicate at each boundary:
 
 - **Public entry calls:** every declared parameter type of the selected entry
-  function or map must be pointer-free. Since any function can currently be
-  selected as an entry, enforce this at the public invocation boundary. A
-  function accepting pointers may still be called internally.
+  function or map must be pointer-free. `checkEntry program name` checks its
+  signature without taking argument values. Since any function can currently
+  be selected as an entry, `run` applies this check when selecting the entry;
+  the same condition is part of `EvalCall`. A function accepting pointers may
+  still be called internally.
 - **Tables:** the declared row type must be pointer-free, including when there
   are no rows or only pointer-free variants appear in the rows.
 - **Maps:** every parameter type and the result type must be pointer-free.
@@ -63,37 +68,36 @@ separate design question.
 
 Pointer freedom of the type accompanies ordinary value typing and
 well-formedness. Enum tags, selected payloads, tuple shapes, and canonical circuit
-padding must still be valid. The shared supporting fact should establish that a
-well-typed value of an admissible type contains no pointers. Existing
-contents-based memory proofs can then reuse their value-level pointer-freedom
-lemmas.
+padding must still be valid. `Value.pointerFree_of_type` in `InputTypes.lean`
+proves that a well-typed value of an admissible type contains no pointers.
+Existing contents-based memory proofs reuse their value-level pointer-freedom
+lemmas. The executor retains the ordinary argument validation in `prepareCall`;
+the entry-type check performs no additional traversal of argument values.
 
-The public executable check, public evaluation predicate, circuit root
-admissibility, and tree/memoized correctness boundaries must agree on this
-stronger condition. Internal call and derivation rules continue to support
-pointers. Table checking must enforce the condition on the declaration, rather
-than relying on the rows that happen to be present.
+`Message.PublicArguments` requires every raw argument's static type to be
+pointer-free. `System.check` enforces the same type condition alongside canonical
+decoding. Both public tree and memoized acceptance include this condition;
+internal call and derivation rules continue to support pointers. The end-to-end
+compiler proofs relate these circuit types to the selected source signature.
+Table and map checking enforce the condition on their declarations even when
+their traces are empty.
 
 For future nondeterministic inputs, an accepted type has no pointer-bearing
 constructor. Circuit well-formedness checks therefore need no additional
 runtime choice of which pointer-bearing variants to exclude.
 
-## Current implementation and migration
+## Representation and validation
 
-The current entry check uses `Value.pointerFree`, inspecting the actual selected
-constructor payload. Tables use `Constant F = Value F Empty`, which prevents
-addresses in stored values. Both currently permit a pointer-free value such as
-`List::Nil` even though its nominal type has another constructor with a pointer.
-That behavior is superseded by this design decision but remains implemented
-until the boundary checks and proofs are updated together.
+`Constant F = Value F Empty` continues to represent table rows without addresses.
+This representation alone does not establish the type restriction, so
+`checkTable` also checks the declared row type. `checkMap` independently checks
+the argument-pack and result types. `Value.pointerFree` remains useful in the
+memory proofs and in the exact-equality theorem for pointer-free results;
+ordinary function result types are not subject to the input restriction.
 
-`Constant F` remains useful for representing table rows and supplied witnesses,
-but does not by itself establish the new type restriction. The existing
-`Ty.pointerFree` conservatively rejects all nominal enums; it is not the desired
-declaration-aware check, since enums such as `Choice` above must be accepted.
-
-Implementation should replace the current acceptance regressions for
-pointer-free variants of pointer-bearing enums with rejection checks, add empty
-table and nested-enum cases, retain acceptance of enums whose entire types are
-pointer-free, and recheck evaluator correspondence, completeness, tree soundness,
-and acyclic memoized soundness without admitted steps.
+`AiurTests/InputTypes.lean` checks all variants, nested and mutually recursive
+enums, empty tables, map signatures, static entry rejection, and continued
+support for internal pointers. It rejects the forbidden types in public source,
+tree, and memoized predicates and instantiates completeness for pointer-free enum
+inputs. Evaluator correspondence and all compiler correctness proofs remain
+checked without admitted steps.

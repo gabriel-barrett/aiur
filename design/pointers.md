@@ -25,17 +25,18 @@ functions, and returned. Every signature remains explicitly typed. `&&Field`
 and `**p` work. Projection binds tighter than unary `&`, `*`, and `-`, which
 bind tighter than binary multiplication and division: `*p.0` means `*(p.0)`.
 
-Public entry arguments must contain no pointers, recursively through tuples.
+Public entry parameter types must contain no pointers, recursively through
+tuples and every constructor of every reachable enum.
 Internal calls share the heap and may receive pointers. The source has no
 pointer equality, arithmetic, casts, numeric pointer patterns, null pointer,
 mutation, or deallocation. Bindings and wildcards may accept an entire pointer;
 a tuple or literal pattern requires loading its contents first. Unsafe pointer
 operations and recursion-depth constraints remain deferred.
 
-The [agreed input type restriction](input-types.md), pending implementation,
-will require each public entry parameter's complete type to contain no pointers,
-including in unselected enum variants. Internal pointer arguments and ordinary
-function results remain supported.
+The [input type restriction](input-types.md) is checked from the selected entry's
+signature before inspecting argument values. It adds no dynamic pointer-exclusion
+constraints. Internal pointer arguments and ordinary function results remain
+supported.
 
 ## Executable and relational memory
 
@@ -50,7 +51,7 @@ including tuple components and call arguments. A load reads the heap after its
 operand has run, so `*&x` works. Inactive match arms do not allocate.
 
 `EvalExpr`, `EvalArgs`, and internal `EvalFn` thread before/after heaps without
-fuel. Public `EvalCall` requires pointer-free arguments and starts `EvalFn` at
+fuel. Public `EvalCall` requires pointer-free parameter types and starts `EvalFn` at
 an empty heap. The executable evaluator and these predicates are proved to
 agree; successful evaluations and their final heaps are deterministic.
 

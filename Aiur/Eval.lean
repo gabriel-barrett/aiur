@@ -42,13 +42,13 @@ def evalExpr [Field F] [DecidableEq F] (program : Program F)
           let some (bindings, body) := selectArm value arms | throw .noMatchingArm
           evalExpr program (bindings ++ locals) fuel body
 
-/-- Entry calls start with an empty heap and reject pointers even inside tuple arguments. -/
+/-- Entry calls start with an empty heap and require entirely pointer-free argument types. -/
 def run [Field F] [DecidableEq F] (program : Program F) (name : String)
     (args : List (SourceValue F)) (fuel : Nat := 1000) : Except EvalError (SourceValue F × Heap F) := do
   match typecheck program with
   | .error error => throw (.invalidProgram error)
   | .ok () => pure ()
-  checkEntry args
+  checkEntry program name
   let (bindings, body) ← prepareCall program name args
   evalExpr program bindings fuel body []
 

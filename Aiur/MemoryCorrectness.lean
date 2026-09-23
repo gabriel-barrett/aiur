@@ -5,6 +5,7 @@ import Aiur.Completeness
 import Aiur.MemoSoundness
 import Aiur.Circuit.Entry
 import Aiur.EvalCorrectness
+import Aiur.InputTypes
 
 namespace Aiur
 
@@ -13,9 +14,9 @@ def entryValues [Zero F] (args : List (SourceValue F)) : List (Value F) :=
   args.map (Value.mapAddress (fun _ => 0))
 
 theorem entryValues_eq [Zero F] {args : List (SourceValue F)}
-    (entry : checkEntry args = .ok ()) (encode : Nat → F) :
+    (free : ∀ value ∈ args, value.pointerFree = true) (encode : Nat → F) :
     args.map (Value.mapAddress encode) = entryValues args :=
-  List.map_congr_left (fun value member => value.mapAddress_free ((checkEntry_ok args).mp entry value member) _ _)
+  List.map_congr_left (fun value member => value.mapAddress_free (free value member) _ _)
 
 /-- Public acceptance of the canonical flat encodings of semantic entry values. -/
 def Circuit.EncodedEntryDerives [Field F] [DecidableEq F] (system : Circuit.System F)
@@ -38,40 +39,44 @@ theorem Circuit.EncodedEntryDerives.memo [Field F] [DecidableEq F]
 
 private theorem public_arguments [Field F] [DecidableEq F] {decls : Declarations}
     {wires : List (WireValue F)} {values : List (Value F)}
-    (arguments : DecodesValues decls wires values) (free : ∀ value ∈ values, value.pointerFree = true) :
-    ∀ wire ∈ wires, ∃ value, wire.decode decls = some value ∧ value.pointerFree = true := by
+    (arguments : DecodesValues decls wires values)
+    (free : ∀ value ∈ values, value.type.pointerFree decls = true) :
+    ∀ wire ∈ wires, wire.type.pointerFree decls = true := by
   induction arguments with
   | nil => simp
-  | cons head tail ih =>
-      simpa using And.intro ⟨_, head, free _ (by simp)⟩ (ih (fun v h => free v (by simp [h])))
+  | @cons wire value wires values head tail ih =>
+      have headFree := free value (by simp)
+      rw [(WireValue.decode_spec head).1] at headFree
+      simpa using And.intro headFree (ih (fun v h => free v (by simp [h])))
 
 private theorem decoded_public_arguments [Field F] [DecidableEq F] {decls : Declarations}
     {wires : List (WireValue F)} {values : List (Value F)}
     (arguments : DecodesValues decls wires values)
-    (free : ∀ wire ∈ wires, ∃ value, wire.decode decls = some value ∧ value.pointerFree = true) :
-    ∀ value ∈ values, value.pointerFree = true := by
+    (free : ∀ wire ∈ wires, wire.type.pointerFree decls = true) :
+    ∀ value ∈ values, value.type.pointerFree decls = true := by
   induction arguments with
   | nil => simp
   | @cons wire value wires values head tail ih =>
-      obtain ⟨other, decoded, otherFree⟩ := free wire (by simp)
-      have same := Option.some.inj (head.symm.trans decoded)
-      have valueFree : value.pointerFree = true := by simpa only [same] using otherFree
+      have spec := WireValue.decode_spec head
+      have valid : value.type.pointerFree decls = true := by
+        rw [spec.1]; exact free wire (by simp)
       simpa only [List.mem_cons, forall_eq_or_imp] using
-        And.intro valueFree (ih (fun w h => free w (by simp [h])))
+        And.intro valid (ih (fun w h => free w (by simp [h])))
 
 /-- Completeness uses an injection only on allocated locations; enums need no extra execution premise. -/
 theorem compiler_heap_complete [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
     {name : String} {args : List (SourceValue F)} {value : SourceValue F} {heap : Heap F}
-    (entry : checkEntry args = .ok ()) (evaluated : EvalFn program name args [] value heap)
+    (entry : checkEntry program name = .ok ()) (evaluated : EvalFn program name args [] value heap)
     (encode : Nat → F)
     (distinct : ∀ i j, i < heap.length → j < heap.length → encode i = encode j → i = j) :
     Circuit.EncodedEntryDerives system name (entryValues args) (value.mapAddress encode) := by
   have stages := Circuit.compile_stages compiled
   have declarations := typecheck_declarations stages.1
+  have free := evaluated.public_pointerFree entry
   have heapGood := (evaluated.heap_good stages.1 (by simp [Heap.Good])
-    (fun arg member => Value.pointerNames_of_free ((checkEntry_ok args).mp entry arg member))).2
+    (fun arg member => Value.pointerNames_of_free (free arg member))).2
   let table := ROM.ofHeap heap encode
   have good := ROM.ofHeap_good heapGood encode
   have decodeTable := ROM.decode_encode declarations stages.2.1 good
@@ -80,11 +85,11 @@ theorem compiler_heap_complete [Field F] [DecidableEq F]
       (args.map (Value.mapAddress encode)) (value.mapAddress encode) := by
     rw [decodeTable]; exact body
   obtain ⟨wires, output, arguments, decoded, derives⟩ := evaluation_complete compiled encodedBody
-  rw [entryValues_eq entry encode] at arguments
-  have argsFree : ∀ arg ∈ entryValues args, arg.pointerFree = true := by
+  rw [entryValues_eq free encode] at arguments
+  have argsFree : ∀ arg ∈ entryValues args, arg.type.pointerFree program.enums = true := by
     intro arg member
     obtain ⟨source, sourceMember, rfl⟩ := List.mem_map.mp member
-    simpa using (checkEntry_ok args).mp entry source sourceMember
+    simpa using (evaluated.publicArguments entry source sourceMember).1
   have tableValid := ROM.encode_valid declarations good (ROM.ofHeap_valid heap encode distinct)
   refine ⟨wires, output, ?_, ?_, ?_⟩
   · simpa only [stages.2.2.2.1] using arguments
@@ -100,7 +105,7 @@ theorem compiler_heap_complete_finite [Field F] [DecidableEq F] [Fintype F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
     {name : String} {args : List (SourceValue F)} {value : SourceValue F} {heap : Heap F}
-    (entry : checkEntry args = .ok ()) (evaluated : EvalFn program name args [] value heap)
+    (entry : checkEntry program name = .ok ()) (evaluated : EvalFn program name args [] value heap)
     (capacity : heap.length ≤ Fintype.card F) :
     ∃ encode : Nat → F, Circuit.EncodedEntryDerives system name (entryValues args) (value.mapAddress encode) := by
   obtain ⟨encode, distinct⟩ := heap_address_embedding heap capacity
@@ -133,7 +138,7 @@ theorem compiler_heap_sound [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system) {rom : WireROM F} (valid : rom.Valid)
     {name : String} {args : List (SourceValue F)} {result : Value F}
-    (entry : checkEntry args = .ok ())
+    (entry : checkEntry program name = .ok ())
     {wires : List (WireValue F)} {output : WireValue F}
     (derived : Circuit.CircuitEvaluates system rom name wires output)
     (arguments : DecodesValues program.enums wires (entryValues args))
@@ -141,10 +146,15 @@ theorem compiler_heap_sound [Field F] [DecidableEq F]
     ∃ source heap, EvalFn program name args [] source heap ∧
       Represents (rom.decode program.enums) heap source result := by
   have evaluated := compiler_sound compiled derived arguments decoded
+  have free : ∀ value ∈ args, value.pointerFree = true := by
+    intro value member
+    have valid := evaluated.publicArguments entry (value.mapAddress (fun _ => 0))
+      (List.mem_map.mpr ⟨value, member, rfl⟩)
+    exact Value.pointerFree_of_type (by simpa using valid.1) (by simpa using valid.2)
   have relatedArgs : RepresentsArgs (rom.decode program.enums) [] args (entryValues args) := by
     apply List.forall₂_map_right_iff.mpr
     exact List.forall₂_same.mpr (fun value member =>
-      Represents.of_pointerFree value ((checkEntry_ok args).mp entry value member) _)
+      Represents.of_pointerFree value (free value member) _)
   obtain ⟨source, heap, evaluated, _, related⟩ := evaluated.realize (WireROM.decode_valid valid) relatedArgs
   exact ⟨source, heap, evaluated, related⟩
 
@@ -160,10 +170,8 @@ theorem compiler_entry_sound [Field F] [DecidableEq F]
   have enums := (Circuit.compile_stages compiled).2.2.2.1
   rw [enums] at arguments decoded argumentsFree
   have sourceFree := decoded_public_arguments arguments argumentsFree
-  have entry : checkEntry args = .ok () := (checkEntry_ok args).mpr (by
-    intro value member
-    have h := sourceFree (value.mapAddress (fun _ => 0)) (List.mem_map.mpr ⟨value, member, rfl⟩)
-    simpa using h)
+  have entry : checkEntry program name = .ok () :=
+    (compiler_sound compiled derived arguments decoded).entry_of_publicArguments sourceFree
   obtain ⟨source, heap, evaluated, related⟩ := compiler_heap_sound compiled valid entry derived arguments decoded
   rw [related.pointerFree_eq free] at evaluated
   exact ⟨entry, heap, evaluated⟩
@@ -173,7 +181,7 @@ theorem memo_acyclic_heap_sound [Field F] [DecidableEq F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system) {rom : WireROM F} (valid : rom.Valid)
     {name : String} {args : List (SourceValue F)} {result : Value F}
-    (entry : checkEntry args = .ok ())
+    (entry : checkEntry program name = .ok ())
     {wires : List (WireValue F)} {output : WireValue F}
     (graph : Circuit.MemoDerivation system rom ⟨name, wires, output⟩) (acyclic : graph.Acyclic)
     (arguments : DecodesValues program.enums wires (entryValues args))

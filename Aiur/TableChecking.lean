@@ -65,11 +65,37 @@ theorem typecheck_map [DecidableEq F] {program : Program F}
     cases done
     exact forIn_ok rest map member
 
+theorem requirePointerFree_ok {decls : Declarations} {context : String} {type : Ty}
+    (checked : requirePointerFree decls context type = .ok ()) : type.pointerFree decls = true := by
+  cases free : type.pointerFree decls <;> simp_all [requirePointerFree]
+
+theorem table_pointerFree {program : Program F} {table : Table F}
+    (checked : checkTable program table = .ok ()) : table.rowType.pointerFree program.enums = true := by
+  unfold checkTable at checked
+  obtain ⟨_, _, rest⟩ := except_bind_ok.mp checked
+  obtain ⟨done, free, _⟩ := except_bind_ok.mp rest
+  cases done
+  exact requirePointerFree_ok free
+
+theorem map_pointerFree [DecidableEq F] {program : Program F} {map : MapDecl}
+    (checked : checkMap program map = .ok ()) :
+    (Ty.tuple (map.params.map Prod.snd)).pointerFree program.enums = true ∧
+      map.result.pointerFree program.enums = true := by
+  unfold checkMap at checked
+  obtain ⟨_, _, rest⟩ := except_bind_ok.mp checked
+  obtain ⟨_, _, rest⟩ := except_bind_ok.mp rest
+  obtain ⟨done, input, rest⟩ := except_bind_ok.mp rest
+  cases done
+  obtain ⟨done, output, _⟩ := except_bind_ok.mp rest
+  cases done
+  exact ⟨requirePointerFree_ok input, requirePointerFree_ok output⟩
+
 theorem table_row_typed {program : Program F} {table : Table F}
     (checked : checkTable program table = .ok ()) {value : Constant F} (member : value ∈ table.rows) :
     value.type = table.rowType ∧ value.wellFormed program.enums = true := by
   unfold checkTable at checked
-  obtain ⟨_, _, rows⟩ := except_bind_ok.mp checked
+  obtain ⟨_, _, rest⟩ := except_bind_ok.mp checked
+  obtain ⟨_, _, rows⟩ := except_bind_ok.mp rest
   obtain ⟨index, bounded, same⟩ := List.mem_iff_getElem.mp member
   have accepted := forIn_ok rows (value, index) (by
     have mem := List.getElem_mem (l := table.rows.zipIdx) (n := index) (by simpa using bounded)
@@ -88,6 +114,8 @@ theorem checkMap_spec [DecidableEq F] {program : Program F} {map : MapDecl}
       inputs.rows.length = outputs.rows.length ∧ inputs.rows.Nodup := by
   unfold checkMap at checked
   obtain ⟨_, _, rest⟩ := except_bind_ok.mp checked
+  obtain ⟨_, _, rest⟩ := except_bind_ok.mp rest
+  obtain ⟨_, _, rest⟩ := except_bind_ok.mp rest
   obtain ⟨_, _, rest⟩ := except_bind_ok.mp rest
   cases duplicate : findDuplicate (map.params.map Prod.fst) [] with
   | some name => simp [duplicate, bind, Except.bind] at rest

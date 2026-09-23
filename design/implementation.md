@@ -8,6 +8,10 @@
   address mappings.
 - `Aiur/Declarations.lean` and `DeclarationTotal.lean`: name checks, rejection
   of inline type cycles, finite layouts, and layout existence for valid types.
+  `Ty.pointerFree` checks those layouts across all enum constructors.
+- `Aiur/InputTypes.lean`: type-level pointer freedom implies value-level pointer
+  freedom; prepared-call signatures connect static entry checks to source and
+  ROM arguments.
 - `Aiur/Wire.lean` and the `Wire*`/`EncodingTypes` lemmas: flat typed values,
   canonical enum codecs, tag conditions, round trips, and decoded ROM tables.
 - `Aiur/Typecheck.lean`: expression inference against declared signatures; tuple
@@ -64,7 +68,7 @@
   and both directions of the source/ROM bridge.
 - `Aiur/MemoryCorrectness.lean`: end-to-end enum and pointer soundness, capacity-bounded
   completeness, and acyclic memoized soundness.
-- `Aiur/Circuit/Entry.lean`: public acceptance with a canonical root, pointer-free decoded arguments, and
+- `Aiur/Circuit/Entry.lean`: public acceptance with a canonical root, pointer-free argument types, and
   an existentially chosen valid table.
 
 The previously proved field-only implementation remains under `Aiur/Scalar/`,
@@ -96,7 +100,9 @@ refutable patterns; the frontend still requires irrefutable parameter patterns.
 The checker does not establish termination, exhaustiveness, successful let
 matching, or nonzero denominators.
 Field-specific pattern duplicates and constructor-tag collisions are checked by compilation.
-Table rows contain only constants, never pointers. Maps require matching input
+Table row types and all map parameter/result types must contain no pointers,
+including in unused enum variants and empty tables. Rows contain only constants.
+Maps require matching input
 and output row counts, the declared argument-pack and result types, and unique
 input rows. Program checking after field specialization catches literal
 collisions in map keys. See [tables and maps](tables.md) for the full syntax.
@@ -109,6 +115,13 @@ Bindings precede outer bindings to implement shadowing. A match evaluates its
 scrutinee once. A let evaluates its right-hand side once, then binds the pattern
 or fails with `patternMismatch` before entering its continuation. Discarded
 values are still fully evaluated.
+
+`checkEntry program name` selects a public entry by inspecting its declared
+parameter types, without accepting argument values. `run` checks entry
+admissibility before ordinary argument validation in `prepareCall`. Internal
+calls can still receive pointers, and ordinary function results may contain
+pointers. The public source predicate and circuit root acceptance enforce the
+same [static input restriction](input-types.md).
 
 Each expression gives one less fuel to its children; siblings share the remaining
 bound. The bound measures nesting and recursive call depth rather than total
@@ -154,3 +167,10 @@ and inactive mismatches. Proof regressions cover active and inactive
 completeness, ROM allocation, memoized completeness, and rejection of an active
 mismatch by tree and acyclic memoized soundness. `Examples/RefutableLets.lean`
 shows the syntax and success/failure behavior.
+
+`AiurTests/InputTypes.lean` covers nested and mutually recursive enum types,
+unused pointer-bearing variants, empty tables, independent map signature checks,
+static entry selection, ordinary value validation, and internal pointer use.
+Proof regressions reject forbidden source/tree/memoized entries and establish
+completeness for pointer-free enum inputs. The type-to-value pointer-freedom
+lemma has an axiom guard alongside the existing end-to-end guards.

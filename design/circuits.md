@@ -62,8 +62,8 @@ compiler's treatment of expressions and its correctness proofs.
 
 ## Acceptance and proofs
 
-`System.check` takes a shared ROM, checks address uniqueness, pointer-free entry
-arguments, canonical root encodings, active memory lookups, bounds, row lengths,
+`System.check` takes a shared ROM, checks address uniqueness, entirely pointer-free
+entry argument types, canonical root encodings, active memory lookups, bounds, row lengths,
 polynomial equations, and static map membership. Map claims found in the static
 tables are discharged; the remaining messages must have exact multiset balance
 for supplied rows and one entry request. It does not

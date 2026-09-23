@@ -112,23 +112,28 @@ def loadValue (heap : Heap F) : SourceValue F → Except EvalError (SourceValue 
       return value
   | _ => throw .expectedPointer
 
-/-- Check public arguments recursively, retaining the offending argument index. -/
-def checkEntryFrom (index : Nat) : List (SourceValue F) → Except EvalError Unit
+/-- This check depends only on the declared input types, not on supplied values. -/
+def checkEntryTypes (decls : Declarations) (index : Nat) : List Ty → Except EvalError Unit
   | [] => .ok ()
-  | value :: rest =>
-      if value.pointerFree then checkEntryFrom (index + 1) rest
+  | type :: rest =>
+      if type.pointerFree decls then checkEntryTypes decls (index + 1) rest
       else .error (.pointerEntryArgument index)
 
-def checkEntry (args : List (SourceValue F)) : Except EvalError Unit := checkEntryFrom 0 args
+/-- Select a callable as a public entry without inspecting any argument values. -/
+def checkEntry (program : Program F) (name : String) : Except EvalError Unit := do
+  let some signature := program.findSignature? name | throw (.unknownFunction name)
+  checkEntryTypes program.enums 0 (signature.params.map Prod.snd)
 
-theorem checkEntryFrom_ok (args : List (SourceValue F)) (index : Nat) :
-    checkEntryFrom index args = .ok () ↔ ∀ value ∈ args, value.pointerFree = true := by
-  induction args generalizing index with
-  | nil => simp [checkEntryFrom]
-  | cons value rest ih =>
-      cases free : value.pointerFree <;> simp [checkEntryFrom, free, ih]
+theorem checkEntryTypes_ok (decls : Declarations) (types : List Ty) (index : Nat) :
+    checkEntryTypes decls index types = .ok () ↔ ∀ type ∈ types, type.pointerFree decls = true := by
+  induction types generalizing index with
+  | nil => simp [checkEntryTypes]
+  | cons type rest ih =>
+      cases free : type.pointerFree decls <;> simp [checkEntryTypes, free, ih]
 
-theorem checkEntry_ok (args : List (SourceValue F)) :
-    checkEntry args = .ok () ↔ ∀ value ∈ args, value.pointerFree = true := checkEntryFrom_ok args 0
+theorem checkEntry_ok (program : Program F) (name : String) :
+    checkEntry program name = .ok () ↔ ∃ signature, program.findSignature? name = some signature ∧
+      ∀ type ∈ signature.params.map Prod.snd, type.pointerFree program.enums = true := by
+  cases found : program.findSignature? name <;> simp [checkEntry, found, checkEntryTypes_ok]
 
 end Aiur
