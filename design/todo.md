@@ -11,6 +11,16 @@ not prescribe an implementation approach or order.
 compiler completeness, tree soundness, and acyclic memoized soundness. They are
 not an outstanding TODO.
 
+## Agreed input restriction
+
+- [ ] Enforce [pointer-free input types](input-types.md) at public entry calls,
+  table declarations, and map signatures. Inspect all enum constructors and
+  nested component types, including for empty tables. Apply the same rule to
+  future nondeterministic inputs. Update evaluation and circuit acceptance
+  predicates, proofs, and regressions together; internal functions may continue
+  to receive and return pointers. This is an agreed change, not an ix parity
+  requirement. Nondeterminism and hint execution remain discussion-only.
+
 ## Language extensions from the ix comparison
 
 - [ ] **Fixed-size arrays.** Add homogeneous `[A; n]` types, array literals and

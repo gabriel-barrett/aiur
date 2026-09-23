@@ -32,6 +32,11 @@ mutation, or deallocation. Bindings and wildcards may accept an entire pointer;
 a tuple or literal pattern requires loading its contents first. Unsafe pointer
 operations and recursion-depth constraints remain deferred.
 
+The [agreed input type restriction](input-types.md), pending implementation,
+will require each public entry parameter's complete type to contain no pointers,
+including in unselected enum variants. Internal pointer arguments and ordinary
+function results remain supported.
+
 ## Executable and relational memory
 
 `Value F Address` separates field data from addresses. `SourceValue F` uses
