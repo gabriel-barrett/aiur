@@ -19,6 +19,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   canonical circuit layouts, root validity, and proved correspondence.
 - [Tables and maps](tables.md): shared precommitted traces, typed constants,
   function-style calls, static membership rules, and proved correspondence.
+- [Pointer-free input types](input-types.md): agreed stricter rule for public
+  inputs, tables/maps, and future nondeterministic inputs; implementation pending.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [TODO](todo.md): proposed extensions from the ix comparison, remaining proof

@@ -162,6 +162,15 @@ equal lengths. Missing inputs fail during evaluation. Tables can be generated
 in Lean or written as frontend constants. See [tables and maps](tables.md) for
 the syntax, checks, membership rules, and correctness proofs.
 
+## Agreed input restriction awaiting implementation
+
+The [pointer-free input type decision](input-types.md) strengthens the current
+value-level restriction for public entry arguments and tables/maps, and sets
+the rule for future nondeterministic inputs. No pointer may occur anywhere in
+an admitted declared type, including in an unselected enum constructor. The
+implementation described above still checks selected values; the boundary and
+proof updates are pending.
+
 ## Open questions
 
 The [design TODO](todo.md) records proposed language and frontend extensions

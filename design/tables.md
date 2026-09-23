@@ -43,6 +43,11 @@ The AST enforces this through `Constant α = Value α Empty`: no address can be
 constructed. A pointer-free variant of an enum that also has pointer-bearing
 variants is allowed, just as for public entry arguments.
 
+An [agreed tightening](input-types.md), pending implementation, will instead
+require the complete declared row type to contain no pointers in any variant.
+This applies even to empty tables and implies the same restriction on all map
+parameter and result types.
+
 Every table has an explicit row type. Every map has explicit named parameter
 types and one explicit result type. Its input table has the outer tuple type
 of its parameter list; its output table has the result type itself:
