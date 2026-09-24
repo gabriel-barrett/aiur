@@ -10,3 +10,4 @@ import Aiur.MemoCompleteness
 import Aiur.MemoSoundness
 import Aiur.Frontend
 import Aiur.MemoryCorrectness
+import Aiur.CheckerCorrectness

@@ -37,6 +37,12 @@
 - `Aiur/Circuit/Basic.lean`: typed flat interfaces and messages, flat rows, and
   ROM lookups, static map membership, and exact balance of dynamic calls.
   Polynomial syntax and rows reuse the scalar reference.
+- `Aiur/Circuit/Accumulator.lean`, `Balance.lean`, and `ForestBalance.lean`:
+  signed integer ledgers, unit-balance induction, weighted support, and witness
+  weights. `CheckerFacts.lean`, `CheckerSoundness.lean`,
+  `CheckerCompleteness.lean`, and `CheckerContext.lean` connect both executable
+  checkers to derivations and public acceptance. `Aiur/CheckerCorrectness.lean`
+  composes these results with the existing source correctness proofs.
 - `Aiur/Circuit/Compile.lean`: one chip per function, fresh result columns, constructor and tuple
   pattern indicators, and first-match branch selectors.
 - `Aiur/Circuit/Indicator.lean` and `IndicatorWitness.lean`: the literal equality-test equations are sound
@@ -140,6 +146,11 @@ The default provider reports an error if an active request is reached.
 The semantic definitions and compiler are total Lean definitions. Only frontend
 traversal uses metaprogramming. Constraints have no execution order. Automatic
 circuit witness generation remains separate work.
+
+`AiurTests/Accumulators.lean` checks integer balance, repeated calls, weighted
+sharing and cycles, unscaled requirements, zero/negative provides, static leaves,
+ROM validation, and no wraparound over `ZMod 2`. It applies all four
+checker/derivation directions and guards their axioms.
 
 `lake build` checks the enum and pointer implementation and both preserved reference models.
 `AiurTests/Tuples.lean` exercises nested, wide, empty, and singleton tuples,

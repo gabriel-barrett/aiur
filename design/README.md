@@ -29,6 +29,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   and backend work, deliberate differences, and deferred decisions.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
   fresh call results, and abstract channel balance.
+- [Integer accumulators](accumulators.md): unit and weighted trace checkers,
+  their proved equivalence to trees and memoized graphs, and source-proof reuse.
 - [Correctness](correctness.md): relational evaluation, closed circuit
   derivations, and the heap/ROM correspondence and current proof status.
 - [Scalar correctness](scalar-correctness.md): the preserved field-only compiler

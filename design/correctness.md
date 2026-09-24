@@ -197,6 +197,18 @@ answers, independent logical choices, nested enum constraints, inactive requests
 and the tree/memoized proof interfaces.
 Both reference suites remain checked.
 
-Automatic executable circuit-witness generation, a theorem connecting the exact
-multiset row checker to trees, concrete memory layouts, cryptographic lookup
-security, unsafe pointer operations, and depth constraints remain separate work.
+The [integer accumulator proofs](accumulators.md) now establish both directions
+between `System.check` and finite trees, and between `System.checkMemo` and
+possibly cyclic memoized graphs. Requires always have weight one; the second
+checker permits integer provide weights. These generic bridges include static
+map leaves and identify the necessary global/public context conditions.
+`CheckerCorrectness.lean` composes them with existing compiler soundness and
+execution completeness. Its run-to-trace corollaries explicitly assume the
+system's namespace/layout well-formedness, alongside allocation capacity.
+The new accumulator regressions guard all four proof directions against
+admissions and check cyclic acceptance and exact counts over a small field.
+
+Automatic executable circuit-witness generation, concrete memory layouts,
+cryptographic lookup security, unsafe pointer operations, and depth constraints
+remain separate work. Field-valued multiplicities are deferred; the integer
+model needs no characteristic or no-wraparound hypothesis.

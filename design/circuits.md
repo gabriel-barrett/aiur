@@ -65,9 +65,12 @@ compiler's treatment of expressions and its correctness proofs.
 `System.check` takes a shared ROM, checks address uniqueness, entirely pointer-free
 entry argument types, canonical root encodings, active memory lookups, bounds, row lengths,
 polynomial equations, and static map membership. Map claims found in the static
-tables are discharged; the remaining messages must have exact multiset balance
-for supplied rows and one entry request. It does not
-generate assignments. Its bridge to derivation semantics remains separate work.
+tables are discharged; the remaining messages must have exact integer balance
+for supplied rows and one entry request, with every provide and require having
+weight one. `System.checkMemo` instead accepts an integer provide weight per
+row; requires remain unit-weighted. Both directions between these checkers and
+their respective derivation models are proved. Neither checker generates
+assignments. See [integer accumulators](accumulators.md) for theorem hypotheses.
 
 `Derivation` is a finite closed tree: every enabled send needs a child proof.
 A node is either a valid chip instance or a static map membership leaf.
