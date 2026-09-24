@@ -1,7 +1,7 @@
 # Evaluation and circuit correctness
 
 The main implementation supports fields, arbitrary nested tuples, nominal enums,
-typed pointers, and static tables and maps. The completed field-only and tuple-only formalizations remain as
+typed pointers, static tables and maps, and typed nondeterministic values. The completed field-only and tuple-only formalizations remain as
 reference snapshots in `Aiur.Scalar` and `Aiur.Tuple`.
 
 ## Source evaluation
@@ -33,20 +33,30 @@ static rows and supplies an expression containing the aligned constant result.
 That expression neither reads nor allocates memory. `Tables.lean` proves this
 constant evaluation property and the lookup facts used by the compiler proofs.
 
-`evalExpr_spec` and `EvalExpr.eventually_runs` establish both directions between
-the predicate and successful execution, including the exact final heap.
-`eval_spec`, `eval_complete`, and `exists_eval_iff` establish:
+For `hint::<T>(key)`, the rule evaluates the key and then chooses any well-typed
+constant of the requested type. Hint result types are checked to contain no
+pointers. There is no logical requirement relating the key to the chosen value
+or requiring repeated requests to agree. See [hints](hints.md).
+
+`evalExpr_spec` and `eval_spec` establish soundness for every executor provider,
+including the exact final heap at expression level:
 
 ```text
-eval P f xs fuel = .ok y → EvalCall P f xs y
+eval P f xs fuel provider = .ok y → EvalCall P f xs y
+```
 
-(∃ fuel, eval P f xs fuel = .ok y)
+`EvalExpr.eventually_runs`, `eval_complete`, and `exists_eval_iff` retain the
+converse for the fragment without hints. Under `P.noHints = true`:
+
+```text
+(∃ fuel, eval P f xs fuel provider = .ok y)
   ↔ typecheck P = .ok () ∧ EvalCall P f xs y
 ```
 
-These statements concern successful execution. Exhausted fuel and runtime
-errors are not successful evaluations. Expression results and final heaps are
-proved deterministic, as are function and public entry results.
+A fixed stateless provider cannot replay every nondeterministic derivation.
+Exhausted fuel and runtime errors are not successful evaluations. Expression,
+function, and entry determinism are proved under absence-of-hints hypotheses;
+general evaluation is deliberately nonfunctional.
 
 ## Closed trees and fixed-ROM evaluation
 
@@ -166,7 +176,7 @@ theorems cover functions, maps, and allocations together.
 
 The proofs cover empty and singleton tuples, nominal enum payloads, recursive
 pointer enums, overlapping tuple and constructor patterns,
-field-specific duplicate pattern rejection, arbitrary recursive calls, and
+field-specific duplicate pattern rejection, typed nondeterministic values, arbitrary recursive calls, and
 inactive failing expressions. `MemoAcyclic` unfolds finite acyclic graphs to
 trees; unrestricted cyclic graphs remain admitted by the memoized model.
 
@@ -182,6 +192,9 @@ enum execution. Table tests cover shared inputs, programmatically generated
 rows, tuple argument packing, enum constants, field-conversion key collisions,
 inactive lookups, and incorrect input/output pairings. They also exercise
 tree and memoized proofs for maps and map results stored in ROM.
+Hint tests cover typed providers, dynamic keys, unavailable and malformed
+answers, independent logical choices, nested enum constraints, inactive requests,
+and the tree/memoized proof interfaces.
 Both reference suites remain checked.
 
 Automatic executable circuit-witness generation, a theorem connecting the exact

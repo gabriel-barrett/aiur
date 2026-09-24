@@ -21,7 +21,7 @@ fn main(x: Field) -> Field {
 -- Also returns the two allocated cells. Source locations are 0 and 1.
 
 example : EvalCall (pointerProgram.toField Rat) "main" [7] 15 :=
-  eval_spec (fuel := 20) (by decide +kernel)
+  eval_spec (hints := HintProvider.unavailable) (fuel := 20) (by decide +kernel)
 
 #eval (Circuit.compile (pointerProgram.toField Rat)).isOk
 -- true: both stores and loads produce guarded ROM requirements.

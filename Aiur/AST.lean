@@ -279,6 +279,7 @@ inductive Expr (α : Type) where
   | letValue (pattern : Pattern α) (value body : Expr α)
   | store (value : Expr α)
   | load (pointer : Expr α)
+  | hint (type : Ty) (key : Expr α)
   | neg (value : Expr α)
   | binary (op : BinOp) (left right : Expr α)
   | call (function : String) (args : List (Expr α))
@@ -374,6 +375,7 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .letValue pattern value body => .letValue (pattern.map f) (value.map f) (body.map f)
   | .store value => .store (value.map f)
   | .load pointer => .load (pointer.map f)
+  | .hint type key => .hint type (key.map f)
   | .neg value => .neg (value.map f)
   | .binary op left right => .binary op (left.map f) (right.map f)
   | .call name args => .call name (args.map (Expr.map f))
@@ -400,5 +402,28 @@ def Program.map (f : α → β) (program : Program α) : Program β :=
 
 def Program.toField (F : Type) [NatCast F] (program : Program Nat) : Program F :=
   program.map (fun n => (Nat.cast n : F))
+
+/-- A syntactic boundary for the original deterministic fragment. -/
+def Expr.noHints : Expr α → Bool
+  | .hint _ _ => false
+  | .literal _ | .var _ => true
+  | .tuple items | .construct _ _ items | .call _ items =>
+      (items.map Expr.noHints).all id
+  | .project value _ | .store value | .load value | .neg value => value.noHints
+  | .letValue _ value body | .binary _ value body => value.noHints && body.noHints
+  | .matchValue value arms => value.noHints && (arms.map fun arm => arm.2.noHints).all id
+termination_by expr => sizeOf expr
+decreasing_by
+  all_goals simp_wf
+  all_goals
+    first
+    | omega
+    | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›
+      first
+      | omega
+      | cases arm; simp_all only [Prod.mk.sizeOf_spec]; omega
+
+def Program.noHints (program : Program α) : Bool :=
+  (program.functions.map fun function => function.body.noHints).all id
 
 end Aiur

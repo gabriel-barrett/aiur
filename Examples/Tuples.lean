@@ -23,7 +23,7 @@ fn step(p: (Field, (Field, Field))) -> (Field, (Field, Field), ()) {
 
 example : EvalCall (tupleProgram.toField Rat) "step" [.tuple [0, .tuple [2, 3]]]
     (.tuple [0, .tuple [3, 2], .tuple []]) :=
-  eval_spec (fuel := 20) (by decide +kernel)
+  eval_spec (hints := HintProvider.unavailable) (fuel := 20) (by decide +kernel)
 
 #eval (Circuit.compile (tupleProgram.toField Rat)).isOk
 -- true

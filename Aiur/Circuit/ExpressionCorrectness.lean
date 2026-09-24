@@ -3,6 +3,7 @@ import Aiur.Circuit.ValueCorrectness
 import Aiur.Circuit.ValidationCorrectness
 import Aiur.WireComposition
 import Aiur.WireMemory
+import Aiur.InputTypes
 
 namespace Aiur.Circuit.Compiler
 
@@ -21,7 +22,7 @@ def CallsSound [Field F] [DecidableEq F] (decls : Declarations)
 def ExpressionMeaning [Field F] [DecidableEq F] (decls : Declarations)
     (rom : WireROM F) (calls : Aiur.CallRelation F) (locals : Environment F)
     (expr : Expr F) (output : WireValue F) : Prop :=
-  ∃ value, output.decode decls = some value ∧ ROMEvalExprWith (rom.decode decls) calls locals expr value
+  ∃ value, output.decode decls = some value ∧ ROMEvalExprWith decls (rom.decode decls) calls locals expr value
 
 mutual
   theorem lowerExpr_sound [Field F] [DecidableEq F]
@@ -187,6 +188,31 @@ mutual
                   obtain ⟨value, resultDecode⟩ := resultDecoded active
                   refine ⟨value, resultDecode, .load valueEval (WireROM.mem_decode.mpr ⟨_, cell active, resultDecode⟩) ?_⟩
                   exact (WireValue.decode_spec resultDecode).1.trans (freshValue_spec resultRun).2.2.1
+    | hint type key =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨input, s₁, keyRun, rest⟩ := bind_ok.mp compiled
+        split at rest
+        · simp [StateT.bind, bind, Except.bind] at rest
+        · rename_i free
+          have free : type.pointerFree program.enums = true := by simpa using free
+          obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+          obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+          obtain ⟨result, s₂, freshRun, rest⟩ := bind_ok.mp rest
+          obtain ⟨⟨⟩, s₃, validationRun, finished⟩ := bind_ok.mp rest
+          obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+          obtain ⟨s₂valid, resultDecoded⟩ := validateValue_sound checked validationRun valid
+          have s₁valid := freshValue_valid freshRun s₂valid
+          obtain ⟨previous, keyMeaning⟩ := lowerExpr_sound checked tags callSound keyRun s₁valid
+          refine ⟨previous, fun active environment decoded => ?_⟩
+          obtain ⟨keyValue, _, keyEval⟩ := keyMeaning active environment decoded
+          obtain ⟨value, resultDecode⟩ := resultDecoded active
+          have spec := WireValue.decode_spec resultDecode
+          have shape : value.type = type := spec.1.trans (freshValue_spec freshRun).2.2.1
+          have valueFree := Value.pointerFree_of_type (shape ▸ free) spec.2.1
+          obtain ⟨constant, same⟩ := value.exists_constant valueFree
+          subst value
+          exact ⟨_, resultDecode, .hint keyEval (by
+            simpa [Value.WellTyped, Value.hasType] using And.intro shape spec.2.1)⟩
     | neg operand =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, inputRun, rest⟩ := bind_ok.mp compiled
@@ -315,7 +341,7 @@ mutual
       before.Valid rom calls assignment ∧ (enable.denote assignment = 1 → ∀ environment,
         DecodesEnvironment program.enums (localsEnvironment locals assignment) environment → ∃ values,
           DecodesValues program.enums (outputs.map (WireValue.map (ArithExpr.denote assignment))) values ∧
-          ROMEvalArgsWith (rom.decode program.enums) sourceCalls environment args values) := by
+          ROMEvalArgsWith program.enums (rom.decode program.enums) sourceCalls environment args values) := by
     cases args with
     | nil =>
         obtain ⟨rfl, rfl⟩ := pure_ok.mp (by simpa only [lowerArgs] using compiled)

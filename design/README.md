@@ -19,8 +19,10 @@ design, and keep proposals and unanswered questions explicitly separate.
   canonical circuit layouts, root validity, and proved correspondence.
 - [Tables and maps](tables.md): shared precommitted traces, typed constants,
   function-style calls, static membership rules, and proved correspondence.
-- [Pointer-free input types](input-types.md): static restriction on public input
-  and table/map types, also agreed for future nondeterministic inputs.
+- [Hints and nondeterminism](hints.md): typed private values, dynamic keys,
+  executor providers, enum validation, and correctness guarantees.
+- [Pointer-free input types](input-types.md): static restriction on public input,
+  table/map types, and nondeterministic result types.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [TODO](todo.md): proposed extensions from the ix comparison, remaining proof

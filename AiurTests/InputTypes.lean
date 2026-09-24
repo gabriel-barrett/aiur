@@ -145,8 +145,8 @@ example : EncodedMemoEntryDerives system "read_plain" (entryValues [plain]) (.fi
 example (accepted : EncodedEntryDerives system "read_plain" (entryValues [plain]) (.field 0)) : False := by
   have wrong := compiler_entry_sound compiled accepted (by decide +kernel)
   have actual : EvalCall program "read_plain" [plain] (.field 7) :=
-    eval_spec (fuel := 16) (by decide +kernel)
-  have same := actual.deterministic wrong
+    eval_spec (hints := HintProvider.unavailable) (fuel := 16) (by decide +kernel)
+  have same := actual.deterministic wrong (by decide +kernel)
   simp [Value.mapAddress] at same
 
 /-- info: 'Aiur.Value.pointerFree_of_type' depends on axioms: [propext, Quot.sound] -/

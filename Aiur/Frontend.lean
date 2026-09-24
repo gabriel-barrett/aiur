@@ -35,6 +35,7 @@ syntax (name := constructorCall) ident "::" ident "(" sepBy(aiur_expr, ",", ",",
 syntax (name := parens) "(" aiur_expr ")" : aiur_expr
 syntax (name := block) "{" aiur_expr "}" : aiur_expr
 syntax (name := call) ident "(" sepBy(aiur_expr, ",", ",", allowTrailingSep) ")" : aiur_expr
+syntax (name := hintExpr) ident "::<" aiur_type ">" "(" aiur_expr ")" : aiur_expr
 syntax:75 (name := store) "&" aiur_expr:75 : aiur_expr
 syntax:75 (name := load) "*" aiur_expr:75 : aiur_expr
 syntax:75 (name := neg) "-" aiur_expr:75 : aiur_expr
@@ -127,6 +128,9 @@ private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := 
     lowerExpr stx[1]
   else if kind == ``store then return .store (← lowerExpr stx[1])
   else if kind == ``load then return .load (← lowerExpr stx[1])
+  else if kind == ``hintExpr then
+    if (← readName stx[0]) != "hint" then throw "only hint supports an explicit result type"
+    return .hint (← lowerType stx[2]) (← lowerExpr stx[5])
   else if kind == ``neg then
     return .neg (← lowerExpr stx[1])
   else if kind == ``add || kind == ``sub || kind == ``mul || kind == ``div then
@@ -287,6 +291,7 @@ private def quoteExpr : Aiur.Expr Nat → Lean.Expr
       mkApp4 (mkConst ``Aiur.Expr.letValue) natType (quotePattern pattern) (quoteExpr value) (quoteExpr body)
   | .store value => mkApp2 (mkConst ``Aiur.Expr.store) natType (quoteExpr value)
   | .load pointer => mkApp2 (mkConst ``Aiur.Expr.load) natType (quoteExpr pointer)
+  | .hint type key => mkApp3 (mkConst ``Aiur.Expr.hint) natType (quoteTy type) (quoteExpr key)
   | .neg value => mkApp2 (mkConst ``Aiur.Expr.neg) natType (quoteExpr value)
   | .binary op left right =>
       mkApp4 (mkConst ``Aiur.Expr.binary) natType (quoteOp op) (quoteExpr left) (quoteExpr right)

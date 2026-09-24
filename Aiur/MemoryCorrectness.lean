@@ -116,8 +116,8 @@ theorem compiler_run_complete [Field F] [DecidableEq F] [Fintype F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
     {name : String} {args : List (SourceValue F)} {fuel : Nat}
-    {value : SourceValue F} {heap : Heap F}
-    (executed : run program name args fuel = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
+    {value : SourceValue F} {heap : Heap F} {hints : HintProvider F program.enums}
+    (executed : run program name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
     ∃ encode : Nat → F, Circuit.EncodedEntryDerives system name (entryValues args) (value.mapAddress encode) := by
   obtain ⟨_, entry, locals, expr, prepared, body⟩ := run_eq_ok_iff.mp executed
   exact compiler_heap_complete_finite compiled entry (.intro prepared (evalExpr_spec body)) capacity
@@ -127,8 +127,8 @@ theorem memo_run_complete [Field F] [DecidableEq F] [Fintype F]
     {program : Program F} {system : Circuit.System F}
     (compiled : Circuit.compile program = .ok system)
     {name : String} {args : List (SourceValue F)} {fuel : Nat}
-    {value : SourceValue F} {heap : Heap F}
-    (executed : run program name args fuel = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
+    {value : SourceValue F} {heap : Heap F} {hints : HintProvider F program.enums}
+    (executed : run program name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
     ∃ encode : Nat → F, Circuit.EncodedMemoEntryDerives system name (entryValues args) (value.mapAddress encode) := by
   obtain ⟨encode, tree⟩ := compiler_run_complete compiled executed capacity
   exact ⟨encode, tree.memo⟩

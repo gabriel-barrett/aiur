@@ -164,8 +164,8 @@ example : EncodedEntryDerives system "through_rom" (entryValues [])
 
 example (accepted : EncodedEntryDerives system "bit_add" (entryValues [1, 1]) (.field 0)) : False := by
   have wrong := compiler_entry_sound compiled accepted (by decide +kernel)
-  have actual : EvalCall program "bit_add" [1, 1] (.field 2) := eval_spec (fuel := 4) (by decide +kernel)
-  have same := actual.deterministic wrong
+  have actual : EvalCall program "bit_add" [1, 1] (.field 2) := eval_spec (hints := HintProvider.unavailable) (fuel := 4) (by decide +kernel)
+  have same := actual.deterministic wrong (by decide +kernel)
   simp [Value.mapAddress] at same
 
 example (graph : MemoDerivation system ⟨[]⟩ ⟨"bit_add", [.field 1, .field 1], .field 0⟩)

@@ -34,7 +34,7 @@ mutual
       (localsBound : LocalsBounded before.nextVar locals) (enableBound : enable.inBounds before.nextVar = true)
       (active : enable.denote initial = 1) {environment : Environment F}
       (decoded : DecodesEnvironment program.enums (localsEnvironment locals initial) environment)
-      {value : Value F} (evaluated : ROMEvalExprWith (rom.decode program.enums) sourceCalls environment expr value) :
+      {value : Value F} (evaluated : ROMEvalExprWith program.enums (rom.decode program.enums) sourceCalls environment expr value) :
       ∃ assignment, Extension rom calls before after initial assignment ∧ Bounded after.nextVar output ∧
         (output.map (ArithExpr.denote assignment)).decode program.enums = some value := by
     cases expr with
@@ -251,6 +251,32 @@ mutual
                       exact ⟨c, throughValidation.trans e₅, resultBound.mono ((e₃.trans e₄).trans e₅).increase,
                         by simp only [WireValue.map_map]; change (result.map c).decode program.enums = some value
                            rw [outputEq]; exact valueDecode⟩
+    | hint type key =>
+        cases evaluated with
+        | hint keyEval valueTyped =>
+            rename_i constant
+            simp only [lowerExpr] at compiled
+            obtain ⟨input, s₁, keyRun, rest⟩ := bind_ok.mp compiled
+            split at rest
+            · simp [StateT.bind, bind, Except.bind] at rest
+            · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+              obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+              obtain ⟨result, s₂, freshRun, rest⟩ := bind_ok.mp rest
+              obtain ⟨⟨⟩, s₃, validationRun, finished⟩ := bind_ok.mp rest
+              obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+              obtain ⟨a, e₁, _, _⟩ := lowerExpr_complete checked tags typed callComplete keyRun
+                layout valid localsBound enableBound active decoded keyEval
+              have valueTyped : constant.type = type ∧ constant.wellFormed program.enums = true := by
+                simpa [Value.WellTyped, Value.hasType] using valueTyped
+              obtain ⟨b, e₂, resultBound, resultDecode⟩ := freshValue_decoded_complete checked tags freshRun
+                e₁.layout e₁.valid constant.toValue (by simpa using valueTyped.1)
+                (by simpa using valueTyped.2)
+              have ext := e₁.trans e₂
+              have decodedResult : ((result.map ArithExpr.var).map (ArithExpr.denote b)).decode program.enums =
+                  some constant.toValue := by simpa only [WireValue.map_map] using resultDecode
+              obtain ⟨c, e₃⟩ := validateValue_complete tags validationRun e₂.layout e₂.valid
+                (ext.bound enableBound) resultBound (Or.inr ⟨constant.toValue, decodedResult⟩)
+              exact ⟨c, ext.trans e₃, resultBound.mono e₃.increase, e₃.decoded_value resultBound decodedResult⟩
     | neg operand =>
         cases evaluated with
         | neg inputEval operation =>
@@ -424,7 +450,7 @@ mutual
       (localsBound : LocalsBounded before.nextVar locals) (enableBound : enable.inBounds before.nextVar = true)
       (active : enable.denote initial = 1) {environment : Environment F}
       (decoded : DecodesEnvironment program.enums (localsEnvironment locals initial) environment)
-      {values : List (Value F)} (evaluated : ROMEvalArgsWith (rom.decode program.enums) sourceCalls environment args values) :
+      {values : List (Value F)} (evaluated : ROMEvalArgsWith program.enums (rom.decode program.enums) sourceCalls environment args values) :
       ∃ assignment, Extension rom calls before after initial assignment ∧
         (∀ wire ∈ outputs, Bounded after.nextVar wire) ∧
         DecodesValues program.enums (outputs.map (WireValue.map (ArithExpr.denote assignment))) values := by
@@ -470,7 +496,7 @@ mutual
       (inputDecode : (scrutinee.map (ArithExpr.denote initial)).decode program.enums = some input)
       (resultDecode : (result.map (ArithExpr.denote initial)).decode program.enums = some value)
       {matched : Environment F} {body : Expr F} (selected : selectArm input arms = some (matched, body))
-      (evaluated : ROMEvalExprWith (rom.decode program.enums) sourceCalls (matched ++ environment) body value) :
+      (evaluated : ROMEvalExprWith program.enums (rom.decode program.enums) sourceCalls (matched ++ environment) body value) :
       ∃ assignment, Extension rom calls before after initial assignment ∧
         (∀ selector ∈ selectors, selector.inBounds after.nextVar = true) ∧
         Scalar.Circuit.SelectorsValid (1 : F) (selectors.map (ArithExpr.denote assignment)) := by

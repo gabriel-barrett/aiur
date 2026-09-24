@@ -67,6 +67,15 @@ def findDuplicate : List String → List String → Option String
 def requireType (caller : String) (expected actual : Ty) : Except CheckError Unit :=
   if expected = actual then .ok () else .error (.typeMismatch caller expected actual)
 
+/-- Check the declared type even when no value or table row is supplied. -/
+def requirePointerFree (decls : Declarations) (context : String) (type : Ty) : Except CheckError Unit :=
+  if type.pointerFree decls then .ok () else .error (.pointerType context type)
+
+def checkHintType (decls : Declarations) (caller : String) (type : Ty) : Except CheckError Ty := do
+  (type.checkNames decls).mapError CheckError.invalidDeclarations
+  requirePointerFree decls s!"hint in '{caller}'" type
+  return type
+
 mutual
   def patternTypes (decls : Declarations) (caller : String) (pattern : Pattern α) (type : Ty) :
       Except CheckError (List (String × Ty)) := do
@@ -135,6 +144,9 @@ mutual
     | .load pointer =>
         let .ptr target ← inferType program caller locals pointer | throw (.expectedPointer caller)
         return target
+    | .hint type key =>
+        let _ ← inferType program caller locals key
+        checkHintType program.enums caller type
     | .neg value =>
         requireType caller .field (← inferType program caller locals value)
         return .field
@@ -194,10 +206,6 @@ def checkTableRow (program : Program α) (table : Table α)
   if row.type ≠ table.rowType then
     throw (.tableRowType table.name index table.rowType row.type)
   if !row.wellFormed program.enums then throw (.malformedTableRow table.name index)
-
-/-- Check the declared type even when no value or table row is supplied. -/
-def requirePointerFree (decls : Declarations) (context : String) (type : Ty) : Except CheckError Unit :=
-  if type.pointerFree decls then .ok () else .error (.pointerType context type)
 
 def checkTable (program : Program α) (table : Table α) : Except CheckError Unit := do
   (table.rowType.checkNames program.enums).mapError CheckError.invalidDeclarations

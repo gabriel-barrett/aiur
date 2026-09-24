@@ -242,6 +242,12 @@ mutual
         return value
     | .neg value =>
         return .field (.sub (.const 0) (← asField (← lowerExpr program function locals enable value)))
+    | .hint type key =>
+        let _ ← lowerExpr program function locals enable key
+        if !type.pointerFree program.enums then throw .invalidShape
+        let result ← freshValue program.enums type
+        validateValue program.enums enable (result.map ArithExpr.var)
+        return result.map ArithExpr.var
     | .binary op left right =>
         let left ← asField (← lowerExpr program function locals enable left)
         let right ← asField (← lowerExpr program function locals enable right)

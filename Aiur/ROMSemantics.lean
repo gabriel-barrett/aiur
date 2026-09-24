@@ -26,6 +26,9 @@ mutual
     | load (pointer : ROMEvalExpr rom program locals expr (.ptr target address))
         (cell : (address, result) ∈ rom.entries) (typed : result.type = target) :
         ROMEvalExpr rom program locals (.load expr) result
+    | hint (key : ROMEvalExpr rom program locals expr input)
+        {value : Constant F} (typed : value.WellTyped program.enums type) :
+        ROMEvalExpr rom program locals (.hint type expr) value.toValue
     | neg (value : ROMEvalExpr rom program locals expr input) (operation : evalNeg input = .ok result) :
         ROMEvalExpr rom program locals (.neg expr) result
     | binary (left : ROMEvalExpr rom program locals lhs x) (right : ROMEvalExpr rom program locals rhs y)

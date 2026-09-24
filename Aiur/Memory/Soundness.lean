@@ -72,6 +72,13 @@ theorem ROMEvalExpr.realize [Field F] [DecidableEq F] (valid : rom.Valid)
       obtain ⟨source, after, evaluated, grows, result⟩ := ih heap locals related
       obtain ⟨value, operation, result⟩ := result.neg operation
       exact ⟨value, after, .neg evaluated operation, grows, result⟩
+  | @hint locals expr input type _ constant typed ih =>
+      intro heap sourceLocals related
+      obtain ⟨key, after, keyEval, grows, _⟩ := ih heap sourceLocals related
+      refine ⟨constant.toValue, after, .hint keyEval typed, grows, ?_⟩
+      simpa only [Constant.toValue_mapAddress] using
+        (Represents.of_pointerFree (rom := rom) (heap := after) constant.toValue
+          (Constant.toValue_pointerFree constant) (fun _ => (0 : F)))
   | binary _ _ operation leftIH rightIH =>
       intro heap locals related
       obtain ⟨left, middle, leftEval, first, leftRep⟩ := leftIH heap locals related

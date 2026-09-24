@@ -18,8 +18,7 @@ not an outstanding TODO.
   component types are inspected, including for empty tables. The evaluation
   and circuit acceptance predicates, proofs, and regressions use this rule;
   internal functions may continue to receive and return pointers. Apply the
-  same rule to future nondeterministic inputs. Nondeterminism and hint execution
-  remain discussion-only.
+  same rule to nondeterministic hint result types; see [hints](hints.md).
 
 ## Language extensions from the ix comparison
 
@@ -139,8 +138,9 @@ Pointers remain opaque. Address extraction (`ptr_val` in ix), pointer equality,
 arithmetic, and casts belong to a possible future unsafe extension. They are not
 part of the safe language backlog or its current soundness guarantee.
 
-Nondeterminism and general unconstrained witness hints require a later design
-of their own. Maps retain unique inputs and deterministic lookup for now.
+Typed nondeterministic values and stateless keyed executor providers are
+[implemented](hints.md). Provider state and dedicated internal or external hint
+functions remain deferred. Maps retain unique inputs and deterministic lookup.
 Recursion-depth parameters and constraints remain deferred; acyclic memoized
 soundness continues to require neither totality nor a depth bound. The frontend
 remains field agnostic, function signatures stay explicit, and singleton tuples

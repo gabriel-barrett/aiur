@@ -167,8 +167,17 @@ in Lean or written as frontend constants. See [tables and maps](tables.md) for
 the syntax, checks, membership rules, and correctness proofs.
 
 The [input type design](input-types.md) explains this shared static restriction
-and its proof model. The same rule is agreed for future nondeterministic inputs;
-nondeterminism and hint execution remain unimplemented.
+and its proof model. It also applies to the result type of `hint::<T>(key)`.
+
+## Nondeterministic values
+
+`hint::<T>(key)` evaluates an ordinary dynamic key expression and introduces a
+well-formed value of `T`. The whole result type must contain no pointers. A
+stateless executor provider receives the key and expected type and returns a
+certified value or an error. The logical relation allows any well-typed choice;
+provider behavior and repeated-key consistency impose no circuit constraints.
+Fresh result columns receive the existing recursive enum validation constraints.
+See [hints](hints.md) for the interface and correctness guarantees.
 
 ## Open questions
 
@@ -179,4 +188,4 @@ identified by the ix comparison, separately from the current specification.
 - Whether division by zero and partial matches remain runtime errors.
 - Additional data structures and binding forms beyond tuples and enums.
 - Constraints enforcing depth or other termination measures, deliberately deferred.
-- Nondeterministic operations, including any future extension of maps.
+- Stateful executor providers, dedicated hint functions, and nondeterministic maps.

@@ -1,6 +1,7 @@
 import Aiur.Typecheck
 import Aiur.Constant
 import Aiur.Memory
+import Aiur.Hints
 import Mathlib.Algebra.Field.Defs
 
 namespace Aiur
@@ -27,6 +28,7 @@ inductive EvalError where
   | outOfFuel
   | missingMapInput (name : String)
   | invalidMap (name : String)
+  | hint (error : HintError)
   deriving Repr, BEq, DecidableEq
 
 mutual

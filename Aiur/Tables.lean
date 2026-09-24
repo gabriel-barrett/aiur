@@ -78,13 +78,13 @@ theorem lookupMap_mapAddress [DecidableEq F] (program : Program F) (name : Strin
       simp only [List.length_map, List.zip_map_right, List.forIn_map, Prod.map_fst,
         Prod.map_snd, id_eq, Value.type_mapAddress, Value.wellFormed_mapAddress, same]
 
-theorem ROMEvalArgsWith.map_iff [Field F] [DecidableEq F]
+theorem ROMEvalArgsWith.map_iff [Field F] [DecidableEq F] {decls : Declarations}
     {rom : ROM F} {calls : CallRelation F} {locals : Environment F}
     (items : List α) (expression : α → Expr F) (value : α → Value F)
     (each : ∀ item ∈ items, ∀ result,
-      ROMEvalExprWith rom calls locals (expression item) result ↔ result = value item)
+      ROMEvalExprWith decls rom calls locals (expression item) result ↔ result = value item)
     {results : List (Value F)} :
-    ROMEvalArgsWith rom calls locals (items.map expression) results ↔ results = items.map value := by
+    ROMEvalArgsWith decls rom calls locals (items.map expression) results ↔ results = items.map value := by
   induction items generalizing results with
   | nil =>
       constructor
@@ -104,10 +104,10 @@ theorem ROMEvalArgsWith.map_iff [Field F] [DecidableEq F]
           ((ih (fun v mem => each v (by simp [mem]))).mpr rfl)
 
 /-- Returning a constant is independent of the ROM and every call relation. -/
-theorem ROMEvalExprWith.constant_iff [Field F] [DecidableEq F]
+theorem ROMEvalExprWith.constant_iff [Field F] [DecidableEq F] {decls : Declarations}
     {rom : ROM F} {calls : CallRelation F} {locals : Environment F}
     (constant : Constant F) {result : Value F} :
-    ROMEvalExprWith rom calls locals constant.toExpr result ↔ result = constant.toValue := by
+    ROMEvalExprWith decls rom calls locals constant.toExpr result ↔ result = constant.toValue := by
   cases constant with
   | field x =>
       simp only [Constant.toExpr, Constant.toValue, Value.mapAddress]
@@ -117,9 +117,9 @@ theorem ROMEvalExprWith.constant_iff [Field F] [DecidableEq F]
   | ptr _ address => exact Empty.elim address
   | tuple items =>
       have arguments (results : List (Value F)) := ROMEvalArgsWith.map_iff
-        (rom := rom) (calls := calls) (locals := locals) (results := results)
+        (decls := decls) (rom := rom) (calls := calls) (locals := locals) (results := results)
         items Constant.toExpr Constant.toValue
-        (fun item _ _ => ROMEvalExprWith.constant_iff item)
+        (fun item _ _ => ROMEvalExprWith.constant_iff (decls := decls) item)
       simp only [Constant.toExpr, Constant.toValue, Value.mapAddress]
       constructor
       · intro evaluated
@@ -129,9 +129,9 @@ theorem ROMEvalExprWith.constant_iff [Field F] [DecidableEq F]
         exact .tuple ((arguments _).mpr rfl)
   | construct name ctor items =>
       have arguments (results : List (Value F)) := ROMEvalArgsWith.map_iff
-        (rom := rom) (calls := calls) (locals := locals) (results := results)
+        (decls := decls) (rom := rom) (calls := calls) (locals := locals) (results := results)
         items Constant.toExpr Constant.toValue
-        (fun item _ _ => ROMEvalExprWith.constant_iff item)
+        (fun item _ _ => ROMEvalExprWith.constant_iff (decls := decls) item)
       simp only [Constant.toExpr, Constant.toValue, Value.mapAddress]
       constructor
       · intro evaluated
@@ -166,6 +166,50 @@ theorem Constant.evaluates [Field F] [DecidableEq F] {program : Program F}
       simp only [Constant.toExpr, Constant.toValue, Value.mapAddress]
       exact .construct (EvalArgs.constants items Constant.toExpr Constant.toValue
         (fun item _ => Constant.evaluates item))
+termination_by sizeOf constant
+
+theorem EvalArgs.constants_result [Field F] [DecidableEq F] {program : Program F}
+    {locals : Environment F Nat} (items : List α) (expression : α → Expr F)
+    (value : α → SourceValue F)
+    (each : ∀ item ∈ items, ∀ before result after,
+      EvalExpr program locals (expression item) before result after → result = value item ∧ after = before)
+    {before after : Heap F} {results : List (SourceValue F)}
+    (evaluated : EvalArgs program locals (items.map expression) before results after) :
+    results = items.map value ∧ after = before := by
+  induction items generalizing before results with
+  | nil => cases evaluated; exact ⟨rfl, rfl⟩
+  | cons item items ih =>
+      cases evaluated with
+      | cons head tail =>
+          obtain ⟨rfl, rfl⟩ := each item (by simp) _ _ _ head
+          obtain ⟨rfl, rfl⟩ := ih (fun x h => each x (by simp [h])) tail
+          exact ⟨rfl, rfl⟩
+
+/-- Constant results remain unique even when other functions contain hints. -/
+theorem EvalExpr.constant_result [Field F] [DecidableEq F] {program : Program F}
+    {locals : Environment F Nat} (constant : Constant F) {before after : Heap F}
+    {result : SourceValue F} (evaluated : EvalExpr program locals constant.toExpr before result after) :
+    result = constant.toValue ∧ after = before := by
+  cases constant with
+  | field x =>
+      simp only [Constant.toExpr] at evaluated
+      cases evaluated
+      simp [Constant.toValue, Value.mapAddress]
+  | ptr _ address => exact Empty.elim address
+  | tuple items =>
+      simp only [Constant.toExpr] at evaluated
+      cases evaluated with
+      | tuple arguments =>
+          obtain ⟨rfl, rfl⟩ := EvalArgs.constants_result items Constant.toExpr Constant.toValue
+            (fun item _ _ _ _ h => EvalExpr.constant_result item h) arguments
+          simp [Constant.toValue, Value.mapAddress]
+  | construct name ctor items =>
+      simp only [Constant.toExpr] at evaluated
+      cases evaluated with
+      | construct arguments =>
+          obtain ⟨rfl, rfl⟩ := EvalArgs.constants_result items Constant.toExpr Constant.toValue
+            (fun item _ _ _ _ h => EvalExpr.constant_result item h) arguments
+          simp [Constant.toValue, Value.mapAddress]
 termination_by sizeOf constant
 
 end Aiur

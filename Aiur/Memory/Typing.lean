@@ -41,6 +41,15 @@ theorem EvalExpr.wellTyped [Field F] [DecidableEq F] {program : Program F}
       refine ⟨?_, formed _ (List.mem_of_find?_eq_some lookup), memory⟩
       simpa [inferType, environmentTypes, List.find?_map, Function.comp_def, lookup,
         pure, Except.pure] using checked
+  | hint _ typed ih =>
+      intro memory formed caller type checked
+      simp only [inferType] at checked
+      obtain ⟨keyType, keyRun, checked⟩ := except_bind_ok.mp checked
+      have heapGood := (ih memory formed caller keyType keyRun).2.2
+      obtain ⟨rfl, _⟩ := checkHintType_ok checked
+      have typed := (by simpa [Value.WellTyped, Value.hasType] using typed)
+      exact ⟨by simpa using typed.1,
+        ⟨by simpa using typed.2, Value.pointerNames_of_free (Constant.toValue_pointerFree _)⟩, heapGood⟩
   | tuple _ ih =>
       intro memory formed caller type checked
       simp only [inferType] at checked
@@ -231,7 +240,7 @@ theorem EvalExpr.wellTyped [Field F] [DecidableEq F] {program : Program F}
         obtain ⟨map, key, mapFound, _, _, _, _, typed⟩ := lookupMap_spec looked
         have same := Option.some.inj (found.symm.trans (Program.signature_of_map absent mapFound))
         subst signature
-        obtain ⟨rfl, rfl⟩ := evaluated.deterministic constant.evaluates
+        obtain ⟨rfl, rfl⟩ := EvalExpr.constant_result constant evaluated
         have typed : constant.type = map.result ∧ constant.wellFormed program.enums = true := by
           simpa [Value.hasType] using typed
         exact ⟨by simpa using typed.1, ⟨by simpa using typed.2,
@@ -255,7 +264,7 @@ theorem EvalFn.heap_good [Field F] [DecidableEq F] {program : Program F}
           rw [parameterTypes _ _ types]
           exact typecheck_function checked (List.mem_of_find?_eq_some found))).2
       · obtain ⟨constant, _, looked, rfl, rfl⟩ := table
-        obtain ⟨rfl, rfl⟩ := body.deterministic constant.evaluates
+        obtain ⟨rfl, rfl⟩ := EvalExpr.constant_result constant body
         obtain ⟨_, _, _, _, _, _, _, typed⟩ := lookupMap_spec looked
         have formed : constant.wellFormed program.enums = true := by
           simp only [Value.hasType, Bool.and_eq_true] at typed

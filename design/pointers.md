@@ -53,7 +53,8 @@ operand has run, so `*&x` works. Inactive match arms do not allocate.
 `EvalExpr`, `EvalArgs`, and internal `EvalFn` thread before/after heaps without
 fuel. Public `EvalCall` requires pointer-free parameter types and starts `EvalFn` at
 an empty heap. The executable evaluator and these predicates are proved to
-agree; successful evaluations and their final heaps are deterministic.
+agree on successful hinted execution. Results and final heaps are deterministic
+for the fragment without hints; see [nondeterministic evaluation](hints.md).
 
 ## Prover-chosen table and chip lowering
 

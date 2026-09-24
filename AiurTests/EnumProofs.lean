@@ -50,8 +50,8 @@ example (accepted : EncodedEntryDerives system "wrap" (entryValues [7])
     (.construct "Outcome" "Empty" [])) : False := by
   have wrong := compiler_entry_sound compiled accepted (by decide +kernel)
   have actual : EvalCall (source.toField Rat) "wrap" [7]
-      (.construct "Outcome" "Pair" [.tuple [7, 8]]) := eval_spec (fuel := 16) (by decide +kernel)
-  have same := actual.deterministic wrong
+      (.construct "Outcome" "Pair" [.tuple [7, 8]]) := eval_spec (hints := HintProvider.unavailable) (fuel := 16) (by decide +kernel)
+  have same := actual.deterministic wrong (by decide +kernel)
   simp [Value.mapAddress] at same
 
 instance : Fact (Nat.Prime 7) := ⟨by decide⟩

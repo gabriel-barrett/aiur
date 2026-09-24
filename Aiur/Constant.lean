@@ -74,6 +74,17 @@ end StaticList
     (value.toValue : Value F A).type = value.type := by
   exact Value.type_mapAddress Empty.elim value
 
+@[simp] theorem Constant.toValue_mapAddress (value : Constant F) (encode : A → B) :
+    (value.toValue : Value F A).mapAddress encode = value.toValue := by
+  cases value with
+  | field => simp [Constant.toValue, Value.mapAddress]
+  | ptr _ address => exact Empty.elim address
+  | tuple values | construct _ _ values =>
+      simp only [Constant.toValue, Value.mapAddress, List.map_map,
+        Value.tuple.injEq, Value.construct.injEq, true_and]
+      exact List.map_congr_left (fun value _ => Constant.toValue_mapAddress value encode)
+termination_by sizeOf value
+
 @[simp] theorem Constant.toValue_wellFormed (decls : Declarations) (value : Constant F) :
     (value.toValue : Value F A).wellFormed decls = value.wellFormed decls := by
   exact Value.wellFormed_mapAddress decls Empty.elim value
@@ -163,5 +174,28 @@ theorem Value.toConstant_spec {value : Value F A} {constant : Constant F}
               exact congrArg₂ List.cons (each item (by simp) c found)
                 (ih (fun v h => each v (by simp [h])))
 termination_by sizeOf value
+
+/-- A pointer-free value has a constant representation in any address space. -/
+theorem Value.exists_constant (value : Value F A) :
+    value.pointerFree = true → ∃ constant : Constant F, constant.toValue = value := by
+  induction value using Value.rec
+    (motive_2 := fun values => (∀ value ∈ values, value.pointerFree = true) →
+      ∃ constants : List (Constant F), constants.map Constant.toValue = values) with
+  | field x => intro _; exact ⟨.field x, by simp [Constant.toValue, Value.mapAddress]⟩
+  | ptr => simp [Value.pointerFree]
+  | tuple values ih =>
+      intro free
+      obtain ⟨constants, rfl⟩ := ih (by simpa [Value.pointerFree] using free)
+      exact ⟨.tuple constants, by simp [Constant.toValue, Value.mapAddress]⟩
+  | construct name ctor values ih =>
+      intro free
+      obtain ⟨constants, rfl⟩ := ih (by simpa [Value.pointerFree] using free)
+      exact ⟨.construct name ctor constants, by simp [Constant.toValue, Value.mapAddress]⟩
+  | nil => exact ⟨[], rfl⟩
+  | cons head tail headIH tailIH =>
+      rename_i free
+      obtain ⟨constant, rfl⟩ := headIH (free head (by simp))
+      obtain ⟨constants, rfl⟩ := tailIH (fun v h => free v (by simp [h]))
+      exact ⟨constant :: constants, rfl⟩
 
 end Aiur

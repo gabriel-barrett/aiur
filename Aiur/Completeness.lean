@@ -66,9 +66,9 @@ theorem evaluation_complete [Field F] [DecidableEq F]
   have declarations := typecheck_declarations stages.1
   induction evaluated using ROMEvalCall.rec
     (motive_1 := fun locals expr value _ =>
-      ROMEvalExprWith (rom.decode program.enums) (Circuit.EncodedEvaluates program.enums system rom) locals expr value)
+      ROMEvalExprWith program.enums (rom.decode program.enums) (Circuit.EncodedEvaluates program.enums system rom) locals expr value)
     (motive_2 := fun locals exprs values _ =>
-      ROMEvalArgsWith (rom.decode program.enums) (Circuit.EncodedEvaluates program.enums system rom) locals exprs values) with
+      ROMEvalArgsWith program.enums (rom.decode program.enums) (Circuit.EncodedEvaluates program.enums system rom) locals exprs values) with
   | literal => exact .literal
   | var lookup => exact .var lookup
   | tuple _ ih => exact .tuple ih
@@ -77,6 +77,7 @@ theorem evaluation_complete [Field F] [DecidableEq F]
   | letValue _ matched _ inputIH bodyIH => exact .letValue inputIH matched bodyIH
   | store _ cell ih => exact .store ih cell
   | load _ cell typed ih => exact .load ih cell typed
+  | hint _ typed ih => exact .hint ih typed
   | neg _ operation ih => exact .neg ih operation
   | binary _ _ operation leftIH rightIH => exact .binary leftIH rightIH operation
   | call _ _ argsIH calleeIH => exact .call argsIH calleeIH
