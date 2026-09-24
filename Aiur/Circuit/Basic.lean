@@ -2,6 +2,7 @@ import Aiur.AST
 import Aiur.Memory
 import Aiur.Wire
 import Aiur.Scalar.Circuit.Basic
+import Aiur.Circuit.Balance
 
 namespace Aiur.Circuit
 
@@ -154,39 +155,83 @@ def Chip.checkRow [Field F] [DecidableEq F] (chip : Chip F) (rom : WireROM F) (r
   if !chip.wellFormed then throw (.invalidLayout chip.name)
   if row.values.length != chip.numVars then
     throw (.wrongRowSize chip.name chip.numVars row.values.length)
-  for (polynomial, index) in chip.constraints.zipIdx do
-    if polynomial.denote row.assignment ≠ 0 then throw (.constraintNotZero chip.name index)
-  for (lookup, index) in chip.memory.zipIdx do
+  let _ ← chip.constraints.zipIdx.mapM fun (polynomial, index) =>
+    if polynomial.denote row.assignment ≠ 0 then
+      throw (.constraintNotZero chip.name index) else pure (() : Unit)
+  let _ ← chip.memory.zipIdx.mapM fun (lookup, index) => do
     if lookup.enable.denote row.assignment = 1 then
       if !rom.entries.any (fun entry => decide (entry =
           (lookup.address.denote row.assignment,
             lookup.value.map (ArithExpr.denote row.assignment)))) then
         throw (.missingCell chip.name index)
+    pure (() : Unit)
   return (chip.receive row, chip.premises row)
 
-def System.check [Field F] [DecidableEq F] (system : System F)
-    (rom : WireROM F) (entry : Message F) (rows : List (Row F)) : Except WitnessError Unit := do
-  for argument in entry.args do
+/-- Check the whole chip namespace, including chips unused by a trace. -/
+def checkChips (seen : List String) : List (Chip F) → Except WitnessError Unit
+  | [] => .ok ()
+  | chip :: chips => do
+      if chip.name ∈ seen then throw (.duplicateChip chip.name)
+      if !chip.wellFormed then throw (.invalidLayout chip.name)
+      checkChips (chip.name :: seen) chips
+
+/-- Checks shared by the unit and memoized trace checkers. -/
+def System.checkContext [Field F] [DecidableEq F] (system : System F)
+    (rom : WireROM F) (entry : Message F) : Except WitnessError Unit := do
+  let _ ← entry.args.mapM fun argument => do
     if (argument.decode system.enums).isNone then throw .malformedEntry
     if !argument.type.pointerFree system.enums then throw .pointerEntryArgument
+    pure (() : Unit)
   if (entry.result.decode system.enums).isNone then throw .malformedEntry
   if ¬rom.Valid then throw .invalidROM
-  let mut seen := []
-  for chip in system.chips do
-    if chip.name ∈ seen then throw (.duplicateChip chip.name)
-    seen := chip.name :: seen
-    if !chip.wellFormed then throw (.invalidLayout chip.name)
-  let mut received := []
-  let mut sent := [entry]
-  for row in rows do
-    let some chip := system.findChip? row.chip | throw (.unknownChip row.chip)
-    let (input, output) ← chip.checkRow rom row
-    received := input :: received
-    sent := output ++ sent
-  let pending := sent.filter (fun message => !decide (system.MapClaim message))
-  if pending.Perm received then pure () else throw .unbalancedMessages
+  checkChips [] system.chips
+
+/-- A row provides its conclusion with an exact integer weight. Its active
+premises always have weight one, including when the provide weight is zero. -/
+structure WeightedRow (F : Type) where
+  row : Row F
+  multiplicity : Int
+  deriving Repr, BEq
+
+def System.inspectRow [Field F] [DecidableEq F] (system : System F)
+    (rom : WireROM F) (row : Row F) : Except WitnessError (RuleClaims (Message F)) := do
+  let some chip := system.findChip? row.chip | throw (.unknownChip row.chip)
+  chip.checkRow rom row
+
+def System.inspectRows [Field F] [DecidableEq F] (system : System F)
+    (rom : WireROM F) (rows : List (Row F)) : Except WitnessError (List (RuleClaims (Message F))) :=
+  rows.mapM (system.inspectRow rom)
+
+def System.inspectWeightedRows [Field F] [DecidableEq F] (system : System F)
+    (rom : WireROM F) (rows : List (WeightedRow F)) :
+    Except WitnessError (List (RuleClaims (Message F) × Int)) :=
+  rows.mapM fun weighted => do
+    let claims ← system.inspectRow rom weighted.row
+    return (claims, weighted.multiplicity)
+
+/-- Unordered, exact integer balance; every provided and required occurrence has weight one. -/
+def System.check [Field F] [DecidableEq F] (system : System F)
+    (rom : WireROM F) (entry : Message F) (rows : List (Row F)) : Except WitnessError Unit := do
+  system.checkContext rom entry
+  let rules ← system.inspectRows rom rows
+  let ledger := Balance.accumulator (fun claim => decide (system.MapClaim claim)) entry
+    (rules.map fun rule => (rule, 1))
+  if ledger.isZero then pure () else throw .unbalancedMessages
+
+/-- The LogUp-style abstraction: arbitrary integer provide weights, unit requires.
+This checks exact claims and integers, without a cryptographic accumulator or a field cast. -/
+def System.checkMemo [Field F] [DecidableEq F] (system : System F)
+    (rom : WireROM F) (entry : Message F) (rows : List (WeightedRow F)) : Except WitnessError Unit := do
+  system.checkContext rom entry
+  let rules ← system.inspectWeightedRows rom rows
+  let ledger := Balance.accumulator (fun claim => decide (system.MapClaim claim)) entry rules
+  if ledger.isZero then pure () else throw .unbalancedMessages
 
 def System.Accepts [Field F] [DecidableEq F] (system : System F)
     (rom : WireROM F) (entry : Message F) (rows : List (Row F)) : Prop := system.check rom entry rows = .ok ()
+
+def System.AcceptsMemo [Field F] [DecidableEq F] (system : System F)
+    (rom : WireROM F) (entry : Message F) (rows : List (WeightedRow F)) : Prop :=
+  system.checkMemo rom entry rows = .ok ()
 
 end Aiur.Circuit

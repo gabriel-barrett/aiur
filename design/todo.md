@@ -108,8 +108,11 @@ without admitted proof steps.
 
 - [ ] Provide executable circuit-witness generation, with correctness against
   the existing row and derivation definitions.
-- [ ] Prove the precise relationship between the executable multiset balance
-  checker and closed derivation trees, including static map leaves.
+- [x] Prove both directions between the executable unit balance checker and
+  closed derivation trees, including static map leaves. Add an exact integer
+  provide-weighted checker and prove both directions with memoized graphs,
+  including cycles. See [integer accumulators](accumulators.md) for the precise
+  context hypotheses, source-proof composition, and regression coverage.
 - [ ] Define an interface for replacing a constraint compiler by proving
   equivalence of the local conclusion/premise relation after existentially
   quantifying auxiliary assignments. Include guarded ROM requirements and

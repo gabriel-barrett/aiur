@@ -5,3 +5,4 @@ import Aiur.Circuit.Derivation
 import Aiur.Circuit.MemoDerivation
 import Aiur.Circuit.MemoAcyclic
 import Aiur.Circuit.Entry
+import Aiur.Circuit.CheckerContext

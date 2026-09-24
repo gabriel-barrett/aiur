@@ -28,9 +28,11 @@ target unproven nodes. Completion means every node has its valid local instance.
 For example, `fn loop() -> Field { loop() }` permits a one-node graph claiming
 any field result, though it has no finite source evaluation.
 
-The abstraction assumes feasible executions cannot wrap claim counts around
-the field characteristic. No multiplicities, field-valued balances, or
-fingerprinting computations appear in this graph model.
+The graph itself has no multiplicities. Its correspondence to the executable
+`System.checkMemo` is now proved in both directions, using exact integer provide
+weights and unit requirements. This makes wraparound irrelevant even over a
+small circuit field. Field-valued balances and fingerprints remain deferred.
+See [integer accumulators](accumulators.md) for the checker and the proofs.
 
 ## Acyclic unfolding
 

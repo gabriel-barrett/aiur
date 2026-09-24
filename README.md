@@ -147,7 +147,9 @@ separate from the allocation-capacity bound.
 
 `System.check` checks root encoding validity and supplied rows against one valid
 prover-chosen ROM, discharges static map claims by membership, and checks exact
-balance of the remaining messages. Both store and load compile to guarded claims that an address
+integer balance of the remaining messages, with unit provides and requires.
+`System.checkMemo` allows integer provide weights while every require remains
+one; it models sharing and cyclic justification. Both store and load compile to guarded claims that an address
 contains a value. A pointer occupies one field column; addresses may differ
 from source locations and may be shared between allocations.
 
@@ -173,9 +175,11 @@ added axioms.** The main theorems in [MemoryCorrectness.lean](Aiur/MemoryCorrect
 and derivability of canonical encodings for a fixed raw table.
 `EncodedEntryDerives` and `EncodedMemoEntryDerives` expose semantic values at the
 public theorem boundary. Soundness permits several fresh source
-locations to share one circuit address. Automatic executable circuit witness
-generation and the bridge from the exact row-balance checker to trees remain
-separate work.
+locations to share one circuit address. Both directions between the unit checker
+and trees, and between the weighted checker and memoized graphs, are proved;
+see [integer accumulators](design/accumulators.md) for their context conditions.
+No field wraparound assumption is needed. Automatic executable circuit witness
+generation remains separate work.
 
 The completed field-only and tuple-only models remain under `Aiur.Scalar`
 (`scalar_aiur%`) and `Aiur.Tuple` (`tuple_aiur%`). Their proof and regression suites
