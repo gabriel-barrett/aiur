@@ -1,8 +1,8 @@
 # Aiur
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
-field arithmetic, nested tuples, nominal enums, typed ROM pointers, mutually
-recursive functions, pattern matching, static tables and maps, and compilation
+field arithmetic, nested tuples, generic functions and nominal enums, typed ROM
+pointers, mutual recursion, pattern matching, static tables and maps, and compilation
 to chips with polynomial equations and abstract call messages.
 
 ## Build and test
@@ -15,6 +15,7 @@ lake test
 lake env lean Examples/Pointers.lean
 lake env lean Examples/Tables.lean
 lake env lean Examples/RefutableLets.lean
+lake env lean Examples/Generics.lean
 ```
 
 ## Use from Lean
@@ -49,6 +50,36 @@ table rows to a chosen field. Source arguments and results use `SourceValue F = 
 field leaves, tuples, nominal constructors, and typed opaque pointers are distinct.
 Natural numerals denote field leaves. The intermediate ROM semantics uses
 `Value F` with field addresses. Circuit values use `WireValue F`: a nominal type and a flat list of field elements.
+
+## Generics and entrypoints
+
+Use `Generic.Program Nat` with the same `aiur%` string elaborator:
+
+```lean
+def generic : Generic.Program Nat := aiur% "
+fn identity<T>(x: T) -> T { x }
+fn main(x: Field) -> Field { identity(x) }
+"
+
+#eval do
+  let source ← Generic.prepare (generic.toField Rat)
+  let specialized ← Generic.specialize source ["main"]
+  specialized.run "main" [.field 42]
+-- Except.ok (Aiur.Value.field 42, [])
+```
+
+Generic enums use `enum Option<T> { None, Some(T) }`. Calls and qualified
+constructors infer type arguments; explicit forms are `identity::<Field>(x)`
+and `Option::<Field>::Some(x)`. Signatures remain explicit, and hint result
+types must always be concrete.
+
+`source.run` evaluates directly without collecting a finite set of instances.
+`Generic.specialize` selects non-generic entry functions externally and rejects
+recursive paths that change a function's type arguments. The resulting wrapper
+keeps that public interface; `specialized.compile` produces a circuit artifact
+with the same entrypoint checks. Specialization is proved equivalent to source
+evaluation on the selected entries, with circuit and accumulator proof reuse.
+See [the design](design/generics.md) and [the example](Examples/Generics.lean).
 
 ## Syntax and evaluation
 

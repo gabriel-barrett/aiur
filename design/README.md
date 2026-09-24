@@ -11,6 +11,8 @@ design, and keep proposals and unanswered questions explicitly separate.
 
 - [Language](language.md): initial scope, operations, pattern matching, and open
   semantic questions.
+- [Generics](generics.md): inferred type arguments, generic functions and enums,
+  external entry selection, direct evaluation, and proved specialization.
 - [Tuples](tuples.md): nested values and patterns, explicit signatures, structured
   circuit interfaces, first-match equations, and proof boundaries.
 - [Pointers and ROM](pointers.md): typed opaque pointers, a prover-chosen

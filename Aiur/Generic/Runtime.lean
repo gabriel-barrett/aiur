@@ -1,0 +1,109 @@
+import Aiur.Generic.Elaborate
+import Aiur.Generic.Engine
+
+namespace Aiur.Generic
+
+def wellFormed (enums : String → Option Aiur.EnumDecl) : Value F A → Bool
+  | .field _ | .ptr _ _ => true
+  | .tuple xs => (xs.map (wellFormed enums)).all id
+  | .construct n c xs =>
+      match enums n >>= (fun d => d.constructors.find? (·.name == c)) with
+      | none => false
+      | some ctor => decide (xs.map Value.type = ctor.fields) && (xs.map (wellFormed enums)).all id
+termination_by v => sizeOf v
+
+def hasType (enums : String → Option Aiur.EnumDecl) (t : Aiur.Ty) (v : Value F A) : Bool :=
+  decide (v.type = t) && wellFormed enums v
+
+def constantOfExpr : Aiur.Expr α → Except String (Constant α)
+  | .literal x => pure (.field x)
+  | .tuple xs => return .tuple (← xs.mapM constantOfExpr)
+  | .construct n c xs => return .construct n c (← xs.mapM constantOfExpr)
+  | _ => throw "table rows must be constant literals, tuples, or constructors"
+termination_by e => sizeOf e
+
+def staticProgram (p : Program α) : Except String (Aiur.Program α) := do
+  let tables ← p.tables.mapM fun t => do
+    let rows ← t.rows.mapM (fun e => constantOfExpr (e.lower []))
+    return { name := t.name, rowType := t.rowType.toCore, rows : Aiur.Table α }
+  let maps := p.maps.map fun m => {
+    name := m.name, params := m.params.map fun (n, t) => (n, t.toCore)
+    result := m.result.toCore, input := m.input, output := m.output : Aiur.MapDecl }
+  let enums ← collectEnums p [] 1024 []
+    ((tables.flatMap fun t => coreTypeNames t.rowType) ++
+      (maps.flatMap fun m => (m.params.map Prod.snd ++ [m.result]).flatMap coreTypeNames))
+  return { functions := [], enums, tables, maps }
+
+/-- Checked source plus its static tables. Generic functions remain templates;
+there is no entrypoint choice or function-instance cache here. -/
+structure Source (F : Type) [DecidableEq F] where
+  program : Program F
+  tables : Aiur.Program F
+  tablesChecked : typecheck tables = .ok ()
+
+def prepareFunction (enums : String → Option Aiur.EnumDecl) (fn : Aiur.Function F)
+    (args : List (SourceValue F)) : Except EvalError (Environment F Nat × Aiur.Expr F) :=
+  if fn.params.map Prod.snd = args.map Value.type ∧ (args.map (wellFormed enums)).all id = true then
+    .ok ((fn.params.map Prod.fst).zip args, fn.body)
+  else .error (.malformedValue (.tuple (args.map Value.type)))
+
+def Source.world [DecidableEq F] (s : Source F) : Engine.World F where
+  prepare name args := match s.program.function? name with
+    | some fn => prepareFunction s.program.enum? fn args
+    | none => return ([], (← lookupMap s.tables name args).toExpr)
+  typed t v := hasType s.program.enum? t v
+
+def prepare [DecidableEq F] (p : Program F) : Except String (Source F) := do
+  let p ← elaborate p
+  let tables ← staticProgram p
+  if checked : typecheck tables = .ok () then return ⟨p, tables, checked⟩
+  else match typecheck tables with
+    | .error e => throw (toString e)
+    | .ok _ => throw "invalid static tables"
+
+def Source.checkEntry [DecidableEq F] (s : Source F) (name : String) : Except String Unit := do
+  let some fn := s.program.findFunction? name | throw s!"unknown entrypoint '{name}'"
+  if !fn.typeParams.isEmpty then throw s!"entrypoint '{name}' must be non-generic"
+  let fn ← resolveFunction s.program ⟨name, []⟩
+  let enums ← collectEnums s.program [] 1024 [] ((fn.params.map Prod.snd).flatMap coreTypeNames)
+  (Aiur.checkEntry ({ functions := [fn], enums } : Aiur.Program F) name).mapError (fun e => reprStr e)
+
+abbrev Source.HintProvider [DecidableEq F] (s : Source F) := Engine.HintProvider s.world
+
+def Source.checkedHints [DecidableEq F] (s : Source F)
+    (provider : SourceValue F → Aiur.Ty → Except HintError (Constant F)) : s.HintProvider := fun key t => do
+  let v ← provider key t
+  if typed : s.world.typed t v = true then return ⟨v, typed⟩
+  else throw (.invalidValue t v.type)
+
+def Source.run [Field F] [DecidableEq F] (s : Source F) (name : String)
+    (args : List (SourceValue F)) (fuel : Nat := 1000)
+    (hints : s.HintProvider := Engine.unavailable) : Except String (SourceValue F × Heap F) := do
+  s.checkEntry name
+  let (locals, body) ← (s.world.prepare name args).mapError reprStr
+  (Engine.evalExprWith s.world hints locals fuel body []).mapError reprStr
+
+def Source.EvalCall [Field F] [DecidableEq F] (s : Source F) (name : String)
+    (args : List (SourceValue F)) (result : SourceValue F) : Prop :=
+  s.checkEntry name = .ok () ∧ ∃ heap, Engine.EvalFn s.world name args [] result heap
+
+/-- A hint provider is operational only. Every successful direct execution
+has a provider-independent relational evaluation, including the final heap. -/
+theorem Source.run_spec [Field F] [DecidableEq F] {s : Source F}
+    {hints : s.HintProvider} {name args fuel result heap}
+    (run : s.run name args fuel hints = .ok (result, heap)) :
+    s.checkEntry name = .ok () ∧ Engine.EvalFn s.world name args [] result heap := by
+  cases entry : s.checkEntry name with
+  | error e => simp [Source.run, entry, bind, Except.bind] at run
+  | ok u =>
+      cases u
+      cases prepared : s.world.prepare name args with
+      | error e => simp [Source.run, entry, prepared, Except.mapError, bind, Except.bind] at run
+      | ok pair =>
+          rcases pair with ⟨locals, body⟩
+          have executed : Engine.evalExprWith s.world hints locals fuel body [] = .ok (result, heap) := by
+            cases h : Engine.evalExprWith s.world hints locals fuel body [] <;>
+              simpa [Source.run, entry, prepared, h, Except.mapError, bind, Except.bind] using run
+          exact ⟨rfl, .intro prepared (Engine.evalExpr_spec executed)⟩
+
+end Aiur.Generic

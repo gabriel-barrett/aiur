@@ -4,6 +4,14 @@ The main implementation supports fields, arbitrary nested tuples, nominal enums,
 typed pointers, static tables and maps, and typed nondeterministic values. The completed field-only and tuple-only formalizations remain as
 reference snapshots in `Aiur.Scalar` and `Aiur.Tuple`.
 
+Generic source is interpreted directly by `Generic.Source.run` and its fuel-free
+engine relations. `Generic.Source.run_spec` proves successful-run correctness.
+`Generic.Specialized.evalCall_iff` proves that successful specialization preserves
+and reflects evaluation on externally selected entries, including nondeterminism
+and allocation heaps. `Generic/Circuit.lean` composes it with the tree, memoized,
+and integer-checker theorems below. See [generics](generics.md) for the exact
+certificate, recursion rule, API, and theorem names.
+
 ## Source evaluation
 
 The fuel-free source relations thread immutable allocation heaps:
