@@ -29,8 +29,11 @@
   execution returning `SourceValue F`; `run` also returns the allocation heap.
 - `Aiur/Semantics.lean`: fuel-free heap-threading `EvalExpr`, `EvalArgs`, internal
   `EvalFn`, and pointer-free public `EvalCall`.
-- `Aiur/EvalCorrectness.lean`: both directions of evaluator correspondence and
-  expression and call determinism.
+- `Aiur/Hints.lean`: keyed, typed partial hint providers and validation of raw
+  answers. The frontend supports explicit `hint::<T>(key)` expressions.
+- `Aiur/EvalCorrectness.lean`: successful execution with any provider implies
+  evaluation; replay and determinism are restricted to the hint-free fragment.
+  `Semantics/NoHints.lean` establishes the syntactic conditions for that fragment.
 - `Aiur/Circuit/Basic.lean`: typed flat interfaces and messages, flat rows, and
   ROM lookups, static map membership, and exact balance of dynamic calls.
   Polynomial syntax and rows reuse the scalar reference.
@@ -128,7 +131,11 @@ bound. The bound measures nesting and recursive call depth rather than total
 steps. The entry point starts at the function body and defaults to 1000 fuel.
 For a map, call preparation selects its static result and evaluates a constant
 expression for that value, with the same heap and fuel rules. Map entries are
-invoked through the same `eval` and `run` interfaces.
+invoked through the same `eval` and `run` interfaces. Both also accept an optional
+`hints` provider. `evalExprWith` threads it through all recursive expression
+execution. Hint keys evaluate normally, including their allocations; only the
+provider request itself is absent from circuit and logical execution rules.
+The default provider reports an error if an active request is reached.
 
 The semantic definitions and compiler are total Lean definitions. Only frontend
 traversal uses metaprogramming. Constraints have no execution order. Automatic

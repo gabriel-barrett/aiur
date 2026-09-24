@@ -11,6 +11,7 @@ import AiurTests.Tuples
 import AiurTests.Tables
 import AiurTests.RefutableLets
 import AiurTests.InputTypes
+import AiurTests.Hints
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -172,3 +173,4 @@ def main : IO Unit := do
   AiurTableTests.run
   AiurRefutableLetTests.run
   AiurInputTypeTests.run
+  AiurHintTests.run

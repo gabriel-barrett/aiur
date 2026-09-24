@@ -6,6 +6,17 @@ import Mathlib.Data.List.Forall2
 
 namespace Aiur
 
+theorem checkHintType_ok {decls : Declarations} {caller : String} {type result : Ty}
+    (checked : checkHintType decls caller type = .ok result) :
+    result = type ∧ type.pointerFree decls = true := by
+  cases names : type.checkNames decls with
+  | error error => simp [checkHintType, names, Except.mapError, bind, Except.bind] at checked
+  | ok done =>
+      cases done
+      cases free : type.pointerFree decls <;>
+        simp_all [checkHintType, names, requirePointerFree, Except.mapError, bind, Except.bind,
+          pure, Except.pure]
+
 variable {F : Type} {rom : ROM F}
 
 /-- A call premise has the result shape of the function or map it names. -/
@@ -70,7 +81,7 @@ def ROM.WellFormed (decls : Declarations) (rom : ROM F) : Prop :=
 theorem ROMEvalExprWith.wellTyped [Field F] [DecidableEq F] {program : Program F} {calls : CallRelation F}
     (typed : CallsTyped program calls) (memory : rom.WellFormed program.enums)
     {locals : Environment F} {expr : Expr F} {result : Value F}
-    (evaluated : ROMEvalExprWith rom calls locals expr result) :
+    (evaluated : ROMEvalExprWith program.enums rom calls locals expr result) :
     locals.WellFormed program.enums → ∀ caller type,
       inferType program caller (environmentTypes locals) expr = .ok type →
         result.type = type ∧ result.wellFormed program.enums = true := by
@@ -87,6 +98,12 @@ theorem ROMEvalExprWith.wellTyped [Field F] [DecidableEq F] {program : Program F
       refine ⟨?_, formed _ (List.mem_of_find?_eq_some lookup)⟩
       simpa [inferType, environmentTypes, List.find?_map, Function.comp_def, lookup,
         pure, Except.pure] using checked
+  | hint _ typed _ =>
+      intro formed caller type checked
+      simp only [inferType] at checked
+      obtain ⟨_, _, checked⟩ := except_bind_ok.mp checked
+      obtain ⟨rfl, _⟩ := checkHintType_ok checked
+      simpa [Value.WellTyped, Value.hasType, Constant.toValue] using typed
   | tuple _ ih =>
       intro formed caller type checked
       simp only [inferType] at checked
@@ -246,7 +263,7 @@ theorem ROMEvalExprWith.wellTyped [Field F] [DecidableEq F] {program : Program F
 theorem ROMEvalExprWith.type [Field F] [DecidableEq F] {program : Program F} {calls : CallRelation F}
     (typed : CallsTyped program calls) (memory : rom.WellFormed program.enums)
     {locals : Environment F} {expr : Expr F} {result : Value F}
-    (evaluated : ROMEvalExprWith rom calls locals expr result)
+    (evaluated : ROMEvalExprWith program.enums rom calls locals expr result)
     (formed : locals.WellFormed program.enums) (caller : String) (type : Ty)
     (checked : inferType program caller (environmentTypes locals) expr = .ok type) : result.type = type :=
   (evaluated.wellTyped typed memory formed caller type checked).1

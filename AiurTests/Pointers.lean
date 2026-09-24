@@ -82,7 +82,7 @@ example : run (sample.toField Rat) "ordered" [7] 10 =
     .ok (.tuple [.ptr .field 0, .ptr .field 1], [7, 8]) := by decide +kernel
 example : run (sample.toField Rat) "branch" [0, 7] 10 = .ok (7, []) := by decide +kernel
 example : EvalCall (sample.toField Rat) "tuple_memory" [7] 15 :=
-  eval_spec (fuel := 20) (by decide +kernel)
+  eval_spec (hints := HintProvider.unavailable) (fuel := 20) (by decide +kernel)
 
 def sampleSystem : System Rat := (compile (sample.toField Rat)).toOption.getD { chips := [] }
 theorem sample_compiled : compile (sample.toField Rat) = .ok sampleSystem := by
@@ -155,8 +155,8 @@ example (accepted : Circuit.EncodedEntryDerives roundtripSystem "f" (entryValues
   have wrong := compiler_entry_sound roundtrip_compiled accepted
     (by decide +kernel)
   have actual : EvalCall (roundtrip.toField Rat) "f" [7] 7 :=
-    eval_spec (fuel := 10) (by decide +kernel)
-  have equal := actual.deterministic wrong
+    eval_spec (hints := HintProvider.unavailable) (fuel := 10) (by decide +kernel)
+  have equal := actual.deterministic wrong (by decide +kernel)
   change (7 : SourceValue Rat) = Value.mapAddress (fun _ : Rat => 0) (.field 8) at equal
   simp only [Value.mapAddress] at equal
   exact (by decide +kernel : (7 : SourceValue Rat) ≠ 8) equal
@@ -171,7 +171,7 @@ example (accepted : Circuit.EncodedEntryDerives roundtripSystem "f" (entryValues
 /-- info: 'Aiur.memo_acyclic_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.memo_acyclic_heap_sound
-/-- info: 'Aiur.exists_eval_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Aiur.exists_eval_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.exists_eval_iff
 

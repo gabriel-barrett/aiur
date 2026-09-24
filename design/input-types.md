@@ -1,11 +1,11 @@
 # Pointer-free input types
 
-Status: enforced for public entry inputs, tables, and maps. Nondeterminism and
-executor hints remain under discussion and are not implemented.
+Status: enforced for public entry inputs, tables, maps, and
+[nondeterministic hint results](hints.md).
 
 ## Shared restriction
 
-Public entry inputs, static tables/maps, and future nondeterministic inputs must
+Public entry inputs, static tables/maps, and nondeterministic inputs must
 have types containing no pointers anywhere. The check examines the complete
 declared type, including every constructor of every reachable enum, regardless
 of the value supplied or the variants represented in a table. The extra
@@ -55,14 +55,14 @@ Apply the same type predicate at each boundary:
   These agree with the input table's argument-pack type and the output table's
   row type under the existing signature checks.
 - **Nondeterministic inputs:** the declared type of the supplied witness value
-  must be pointer-free. This decision does not settle hint syntax or the
-  executor's handler interface.
+  must be pointer-free. `hint::<T>(key)` checks `T` statically and introduces a
+  well-typed constant value; its dynamic key has no prescribed type.
 
 This does not ban pointer-bearing types from the language. Internal calls,
 allocations, loads, and ordinary function results retain their existing pointer
 support. The restriction on a nondeterministic input concerns the introduced
-witness value; the interface for passing context to a hint handler is still a
-separate design question.
+witness value. Hint keys use ordinary runtime values and may contain existing
+opaque pointers; the executor provider introduces no new pointers.
 
 ## Well-formedness and proofs
 
@@ -82,13 +82,14 @@ compiler proofs relate these circuit types to the selected source signature.
 Table and map checking enforce the condition on their declarations even when
 their traces are empty.
 
-For future nondeterministic inputs, an accepted type has no pointer-bearing
+For nondeterministic inputs, an accepted type has no pointer-bearing
 constructor. Circuit well-formedness checks therefore need no additional
 runtime choice of which pointer-bearing variants to exclude.
 
 ## Representation and validation
 
-`Constant F = Value F Empty` continues to represent table rows without addresses.
+`Constant F = Value F Empty` represents table rows and successful hint results
+without addresses.
 This representation alone does not establish the type restriction, so
 `checkTable` also checks the declared row type. `checkMap` independently checks
 the argument-pack and result types. `Value.pointerFree` remains useful in the

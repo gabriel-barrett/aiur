@@ -39,7 +39,7 @@ fn main(x: Field, y: Field) -> Field {
 example : eval (enums.toField Rat) "main" [7, 8] 64 = .ok 16 := by decide +kernel
 
 example : EvalCall (enums.toField Rat) "main" [7, 8] 16 :=
-  eval_spec (fuel := 64) (by decide +kernel)
+  eval_spec (hints := HintProvider.unavailable) (fuel := 64) (by decide +kernel)
 
 #eval (Circuit.compile (enums.toField Rat)).isOk
 -- true

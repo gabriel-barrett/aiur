@@ -52,7 +52,7 @@ theorem lowerFunction_sound [Field F] [DecidableEq F]
       sourceCalls message.channel args result) :
     ∃ args result, DecodesValues program.enums (chip.receive row).args args ∧
       (chip.receive row).result.decode program.enums = some result ∧
-      ROMEvalExprWith (rom.decode program.enums) sourceCalls
+      ROMEvalExprWith program.enums (rom.decode program.enums) sourceCalls
         ((fn.params.map Prod.fst).zip args) fn.body result := by
   let calls : Circuit.CallRelation F := fun name args result => ⟨name, args, result⟩ ∈ chip.premises row
   have callSound : CallsSound program.enums calls sourceCalls := fun name args result member =>

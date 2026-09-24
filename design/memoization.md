@@ -75,7 +75,7 @@ The theorems are `Aiur.Scalar.memo_complete` and
 
 For the main compiler, `Aiur.memo_acyclic_sound` first recovers pure
 `ROMEvalCall` against the graph's fixed table. `Aiur.memo_acyclic_heap_sound`
-then reconstructs an execution with fresh source allocations, assuming a valid
+then reconstructs a finite logical evaluation with fresh source allocations, assuming a valid
 ROM and pointer-free entry arguments. Its output includes a heap and a
 contents-based `Represents` relation for the result. Pointer-free results agree
 as data. This proof has no totality or recursion-depth hypothesis.
@@ -96,6 +96,12 @@ Precommitted map rows likewise provide reusable leaf claims, represented
 explicitly by `RuleInstance.table`. Both ordinary and memoized completeness
 include map calls, and acyclic soundness reuses the ordinary tree theorem.
 Table input uniqueness ensures source lookup agrees with any accepted map claim.
+
+Typed [nondeterministic values](hints.md) use the same proofs. The local row
+constraints validate each hinted value's encoding; no provider lookup becomes
+a graph premise. Soundness yields an evaluation with suitable choices. The
+executor's stateless provider need not reproduce those choices, and its
+repeated-key behavior imposes no graph consistency requirement.
 
 The completed tuple-only graph theorems remain in `Aiur.Tuple`. See
 [correctness](correctness.md) and [pointers](pointers.md) for the current proof chain.

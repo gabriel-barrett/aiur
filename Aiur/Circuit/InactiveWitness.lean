@@ -164,6 +164,22 @@ mutual
                       have zero := (throughValidation.polynomial enableBound).trans inactive
                       exact (zero_ne_one (zero.symm.trans active)).elim)
                   exact ⟨c, throughValidation.trans e₅, resultBound.mono ((e₃.trans e₄).trans e₅).increase⟩
+    | hint type key =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨input, s₁, keyRun, rest⟩ := bind_ok.mp compiled
+        split at rest
+        · simp [StateT.bind, bind, Except.bind] at rest
+        · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+          obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+          obtain ⟨result, s₂, freshRun, rest⟩ := bind_ok.mp rest
+          obtain ⟨⟨⟩, s₃, validationRun, finished⟩ := bind_ok.mp rest
+          obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+          obtain ⟨a, e₁, _⟩ := lowerExpr_inactive keyRun layout valid localsBound enableBound inactive
+          obtain ⟨b, e₂, resultBound⟩ := freshValue_zero_complete freshRun e₁.layout e₁.valid
+          have ext := e₁.trans e₂
+          obtain ⟨c, e₃⟩ := validateValue_inactive validationRun e₂.layout e₂.valid
+            (ext.bound enableBound) resultBound ((ext.polynomial enableBound).trans inactive)
+          exact ⟨c, ext.trans e₃, resultBound.mono e₃.increase⟩
     | neg value =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, s₁, valueRun, rest⟩ := bind_ok.mp compiled

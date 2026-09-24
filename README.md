@@ -117,9 +117,17 @@ pointers, and validates supplied argument shapes and constructor payloads.
 The fuel bound defaults to 1000;
 division by zero, failed let patterns, uncovered matches, and exhausted fuel produce errors.
 
-`EvalCall` is the fuel-free evaluation predicate. `eval_spec`, `eval_complete`,
-and `exists_eval_iff` prove its correspondence with successful execution for the
-language including allocation and loading. Results and final heaps are deterministic.
+`hint::<T>(key)` introduces a nondeterministic value of an explicitly declared,
+wholly pointer-free type. Pass a keyed, typed provider with
+`eval program name args (hints := provider)`. The key is an ordinary dynamic
+expression; the provider itself is only used by execution. Missing hints and
+invalid raw answers produce errors. See [Examples/Hints.lean](Examples/Hints.lean)
+and the [hint design](design/hints.md).
+
+`EvalCall` is the fuel-free evaluation predicate. `eval_spec` proves that every
+successful run with any hint provider gives an evaluation derivation. Logical
+evaluation may have multiple results. `eval_complete`, `exists_eval_iff`, and
+the determinism theorems retain their guarantees for programs without hints.
 
 ## Circuits and proof status
 

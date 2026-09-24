@@ -102,3 +102,10 @@ maps that pair input and output rows. Map calls use the same guarded sends and
 fresh results as function calls. `System.MapClaim` checks the full encoded claim
 against the aligned static rows; `Derivation.table` has no premises or chip row.
 The same static claim can be used repeatedly in trees and memoized graphs.
+
+The [hint extension](hints.md) allocates fresh result columns and applies the
+same recursive enum validator under the expression's activation, including for
+an unused result. Hints add no provider lookup premise or key/result equation.
+Their dynamic key expressions retain ordinary call and memory constraints.
+Soundness chooses the decoded well-typed value in the nondeterministic relation;
+completeness encodes the chosen value and fills the validation auxiliaries.

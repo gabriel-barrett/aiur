@@ -68,6 +68,9 @@ theorem EvalExpr.toROM [Field F] [DecidableEq F] {program : Program F}
       intro cells
       refine .neg (ih cells) ?_
       rw [evalNeg_mapAddress, operation]; rfl
+  | hint _ typed ih =>
+      intro cells
+      simpa only [Constant.toValue_mapAddress] using ROMEvalExpr.hint (ih cells) typed
   | binary _ right operation leftIH rightIH =>
       intro cells
       refine .binary (leftIH (cells.of_prefix right.grows)) (rightIH cells) ?_

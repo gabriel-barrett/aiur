@@ -89,7 +89,8 @@ entry interface as function calls. Internally, `prepareCall` performs the static
 lookup and returns an expression containing the selected constant. Evaluating
 that expression preserves the heap. This reuses the existing evaluator and
 fuel-free evaluation relations; successful execution and relational evaluation
-still coincide. A map can also be invoked directly through `eval` or `run`.
+of the constant result coincide, even when other functions contain hints.
+A map can also be invoked directly through `eval` or `run`.
 
 ## Circuit membership rules
 

@@ -18,7 +18,7 @@ theorem lowerFunction_complete [Field F] [DecidableEq F]
     {args : List (Value F)} {value : Value F}
     (types : fn.params.map Prod.snd = args.map Value.type)
     (formed : ∀ arg ∈ args, arg.wellFormed program.enums = true)
-    (evaluated : ROMEvalExprWith (rom.decode program.enums) sourceCalls
+    (evaluated : ROMEvalExprWith program.enums (rom.decode program.enums) sourceCalls
       ((fn.params.map Prod.fst).zip args) fn.body value) :
     ∃ row, row.chip = fn.name ∧ chip.ValidRow rom row ∧
       DecodesValues program.enums (chip.receive row).args args ∧

@@ -25,6 +25,9 @@ mutual
     | load (pointer : EvalExpr program locals expr before input after)
         (loaded : loadValue after input = .ok result) :
         EvalExpr program locals (.load expr) before result after
+    | hint (key : EvalExpr program locals expr before input after)
+        {value : Constant F} (typed : value.WellTyped program.enums type) :
+        EvalExpr program locals (.hint type expr) before value.toValue after
     | neg (value : EvalExpr program locals expr before input after)
         (operation : evalNeg input = .ok result) :
         EvalExpr program locals (.neg expr) before result after

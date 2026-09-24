@@ -8,51 +8,54 @@ variable {F : Type} {rom : ROM F}
 abbrev CallRelation (F : Type) := String → List (Value F) → Value F → Prop
 
 mutual
-  inductive ROMEvalExprWith [Field F] [DecidableEq F] (rom : ROM F) (calls : CallRelation F) :
+  inductive ROMEvalExprWith [Field F] [DecidableEq F] (decls : Declarations) (rom : ROM F) (calls : CallRelation F) :
       Environment F → Expr F → Value F → Prop where
-    | literal : ROMEvalExprWith rom calls locals (.literal value) (.field value)
+    | literal : ROMEvalExprWith decls rom calls locals (.literal value) (.field value)
     | var (lookup : locals.find? (·.1 == name) = some (name, value)) :
-        ROMEvalExprWith rom calls locals (.var name) value
-    | tuple (items : ROMEvalArgsWith rom calls locals exprs values) :
-        ROMEvalExprWith rom calls locals (.tuple exprs) (.tuple values)
-    | construct (items : ROMEvalArgsWith rom calls locals exprs values) :
-        ROMEvalExprWith rom calls locals (.construct name ctor exprs) (.construct name ctor values)
-    | project (value : ROMEvalExprWith rom calls locals expr input)
+        ROMEvalExprWith decls rom calls locals (.var name) value
+    | tuple (items : ROMEvalArgsWith decls rom calls locals exprs values) :
+        ROMEvalExprWith decls rom calls locals (.tuple exprs) (.tuple values)
+    | construct (items : ROMEvalArgsWith decls rom calls locals exprs values) :
+        ROMEvalExprWith decls rom calls locals (.construct name ctor exprs) (.construct name ctor values)
+    | project (value : ROMEvalExprWith decls rom calls locals expr input)
         (projected : projectValue input index = .ok result) :
-        ROMEvalExprWith rom calls locals (.project expr index) result
-    | letValue (value : ROMEvalExprWith rom calls locals expr input)
+        ROMEvalExprWith decls rom calls locals (.project expr index) result
+    | letValue (value : ROMEvalExprWith decls rom calls locals expr input)
         (matched : pattern.bindings input = some bindings)
-        (body : ROMEvalExprWith rom calls (bindings ++ locals) rest result) :
-        ROMEvalExprWith rom calls locals (.letValue pattern expr rest) result
-    | store (value : ROMEvalExprWith rom calls locals expr input)
+        (body : ROMEvalExprWith decls rom calls (bindings ++ locals) rest result) :
+        ROMEvalExprWith decls rom calls locals (.letValue pattern expr rest) result
+    | store (value : ROMEvalExprWith decls rom calls locals expr input)
         (cell : (address, input) ∈ rom.entries) :
-        ROMEvalExprWith rom calls locals (.store expr) (.ptr input.type address)
-    | load (pointer : ROMEvalExprWith rom calls locals expr (.ptr target address))
+        ROMEvalExprWith decls rom calls locals (.store expr) (.ptr input.type address)
+    | load (pointer : ROMEvalExprWith decls rom calls locals expr (.ptr target address))
         (cell : (address, result) ∈ rom.entries) (typed : result.type = target) :
-        ROMEvalExprWith rom calls locals (.load expr) result
-    | neg (value : ROMEvalExprWith rom calls locals expr input) (operation : evalNeg input = .ok result) :
-        ROMEvalExprWith rom calls locals (.neg expr) result
-    | binary (left : ROMEvalExprWith rom calls locals lhs x) (right : ROMEvalExprWith rom calls locals rhs y)
+        ROMEvalExprWith decls rom calls locals (.load expr) result
+    | hint (key : ROMEvalExprWith decls rom calls locals expr input)
+        {value : Constant F} (typed : value.WellTyped decls type) :
+        ROMEvalExprWith decls rom calls locals (.hint type expr) value.toValue
+    | neg (value : ROMEvalExprWith decls rom calls locals expr input) (operation : evalNeg input = .ok result) :
+        ROMEvalExprWith decls rom calls locals (.neg expr) result
+    | binary (left : ROMEvalExprWith decls rom calls locals lhs x) (right : ROMEvalExprWith decls rom calls locals rhs y)
         (operation : evalBinOp op x y = .ok result) :
-        ROMEvalExprWith rom calls locals (.binary op lhs rhs) result
-    | call (arguments : ROMEvalArgsWith rom calls locals args values) (callee : calls name values result) :
-        ROMEvalExprWith rom calls locals (.call name args) result
-    | matchValue (value : ROMEvalExprWith rom calls locals expr input)
+        ROMEvalExprWith decls rom calls locals (.binary op lhs rhs) result
+    | call (arguments : ROMEvalArgsWith decls rom calls locals args values) (callee : calls name values result) :
+        ROMEvalExprWith decls rom calls locals (.call name args) result
+    | matchValue (value : ROMEvalExprWith decls rom calls locals expr input)
         (selected : selectArm input arms = some (bindings, body))
-        (branch : ROMEvalExprWith rom calls (bindings ++ locals) body result) :
-        ROMEvalExprWith rom calls locals (.matchValue expr arms) result
+        (branch : ROMEvalExprWith decls rom calls (bindings ++ locals) body result) :
+        ROMEvalExprWith decls rom calls locals (.matchValue expr arms) result
 
-  inductive ROMEvalArgsWith [Field F] [DecidableEq F] (rom : ROM F) (calls : CallRelation F) :
+  inductive ROMEvalArgsWith [Field F] [DecidableEq F] (decls : Declarations) (rom : ROM F) (calls : CallRelation F) :
       Environment F → List (Expr F) → List (Value F) → Prop where
-    | nil : ROMEvalArgsWith rom calls locals [] []
-    | cons (head : ROMEvalExprWith rom calls locals expr value)
-        (tail : ROMEvalArgsWith rom calls locals exprs values) :
-        ROMEvalArgsWith rom calls locals (expr :: exprs) (value :: values)
+    | nil : ROMEvalArgsWith decls rom calls locals [] []
+    | cons (head : ROMEvalExprWith decls rom calls locals expr value)
+        (tail : ROMEvalArgsWith decls rom calls locals exprs values) :
+        ROMEvalArgsWith decls rom calls locals (expr :: exprs) (value :: values)
 end
 
 theorem ROMEvalExprWith.toEvalExpr [Field F] [DecidableEq F] {program : Program F}
     {locals : Environment F} {expr : Expr F} {result : Value F}
-    (evaluates : ROMEvalExprWith rom (ROMEvalCall rom program) locals expr result) :
+    (evaluates : ROMEvalExprWith program.enums rom (ROMEvalCall rom program) locals expr result) :
     ROMEvalExpr rom program locals expr result := by
   induction evaluates using ROMEvalExprWith.rec
     (motive_2 := fun locals exprs values _ => ROMEvalArgs rom program locals exprs values) with
@@ -64,6 +67,7 @@ theorem ROMEvalExprWith.toEvalExpr [Field F] [DecidableEq F] {program : Program 
   | letValue _ matched _ valueIH bodyIH => exact .letValue valueIH matched bodyIH
   | store _ cell ih => exact .store ih cell
   | load _ cell typed ih => exact .load ih cell typed
+  | hint _ typed ih => exact .hint ih typed
   | neg _ operation ih => exact .neg ih operation
   | binary _ _ operation leftIH rightIH => exact .binary leftIH rightIH operation
   | call _ callee ih => exact .call ih callee
@@ -74,9 +78,9 @@ theorem ROMEvalExprWith.toEvalExpr [Field F] [DecidableEq F] {program : Program 
 theorem ROMEvalExpr.toEvalExprWith [Field F] [DecidableEq F] {program : Program F}
     {locals : Environment F} {expr : Expr F} {result : Value F}
     (evaluates : ROMEvalExpr rom program locals expr result) :
-    ROMEvalExprWith rom (ROMEvalCall rom program) locals expr result := by
+    ROMEvalExprWith program.enums rom (ROMEvalCall rom program) locals expr result := by
   induction evaluates using ROMEvalExpr.rec
-    (motive_2 := fun locals exprs values _ => ROMEvalArgsWith rom (ROMEvalCall rom program) locals exprs values)
+    (motive_2 := fun locals exprs values _ => ROMEvalArgsWith program.enums rom (ROMEvalCall rom program) locals exprs values)
     (motive_3 := fun _ _ _ _ => True) with
   | literal => exact .literal
   | var lookup => exact .var lookup
@@ -86,6 +90,7 @@ theorem ROMEvalExpr.toEvalExprWith [Field F] [DecidableEq F] {program : Program 
   | letValue _ matched _ valueIH bodyIH => exact .letValue valueIH matched bodyIH
   | store _ cell ih => exact .store ih cell
   | load _ cell typed ih => exact .load ih cell typed
+  | hint _ typed ih => exact .hint ih typed
   | neg _ operation ih => exact .neg ih operation
   | binary _ _ operation leftIH rightIH => exact .binary leftIH rightIH operation
   | call _ callee ih _ => exact .call ih callee
