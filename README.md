@@ -1,7 +1,7 @@
 # Aiur
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
-field arithmetic, nested tuples, generic functions and nominal enums, typed ROM
+field arithmetic, nested tuples, generic functions, nominal enums, type aliases, typed ROM
 pointers, mutual recursion, pattern matching, static tables and maps, and compilation
 to chips with polynomial equations and abstract call messages.
 
@@ -16,6 +16,7 @@ lake env lean Examples/Pointers.lean
 lake env lean Examples/Tables.lean
 lake env lean Examples/RefutableLets.lean
 lake env lean Examples/Generics.lean
+lake env lean Examples/Aliases.lean
 ```
 
 ## Use from Lean
@@ -72,6 +73,11 @@ Generic enums use `enum Option<T> { None, Some(T) }`. Calls and qualified
 constructors infer type arguments; explicit forms are `identity::<Field>(x)`
 and `Option::<Field>::Some(x)`. Signatures remain explicit, and hint result
 types must always be concrete.
+
+Transparent aliases use `type Scalar = Field;` and `type Pair<T> = (T, T);`.
+They expand before generic inference, while literals are still natural numbers.
+Aliases of enums also support qualified constructors and patterns. See
+[type aliases](design/type-aliases.md) and [the example](Examples/Aliases.lean).
 
 `source.run` evaluates directly without collecting a finite set of instances.
 `Generic.specialize` selects non-generic entry functions externally and rejects

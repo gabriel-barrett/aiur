@@ -1,4 +1,4 @@
-import Aiur.Generic.Lower
+import Aiur.Generic.Aliases
 
 namespace Aiur.Generic
 
@@ -82,7 +82,13 @@ private def ctorFields (p : Program α) (name ctor : String) (ts : List Ty) : Ex
   let some c := decl.constructors.find? (·.name == ctor) | throw s!"unknown constructor '{name}::{ctor}'"
   return c.fields.map (Ty.subst env)
 
-private def inferPattern (p : Program α) : Nat → Pattern α → Ty → Infer (Pattern α × List (String × Ty))
+private def instantiateTemplate (p : Program α) (rigid params : List String) (target : Ty) : Infer Ty := do
+  liftM (checkParams params)
+  liftM (checkType p (params ++ rigid) target)
+  let ts ← params.mapM fun _ => fresh
+  return target.subst (params.zip ts)
+
+private def inferPattern (p : Program α) (rigid : List String) : Nat → Pattern α → Ty → Infer (Pattern α × List (String × Ty))
   | 0, _, _ => throw "pattern depth limit exceeded"
   | fuel + 1, pat, expected => do
       match pat with
@@ -92,20 +98,28 @@ private def inferPattern (p : Program α) : Nat → Pattern α → Ty → Infer 
       | .tuple ps =>
           let ts ← ps.mapM fun _ => fresh
           agree (.tuple ts) expected
-          let pairs ← (ps.zip ts).mapM fun (pat, t) => inferPattern p fuel pat t
+          let pairs ← (ps.zip ts).mapM fun (pat, t) => inferPattern p rigid fuel pat t
           return (.tuple (pairs.map Prod.fst), pairs.flatMap Prod.snd)
-      | .construct (.named n _) ctor ps =>
+      | .construct (.named n supplied) ctor ps =>
           let some decl := p.findEnum? n | throw s!"unknown enum '{n}'"
-          let ts ← decl.typeParams.mapM fun _ => fresh
+          let ts ← typeArgs p rigid decl.typeParams (if supplied.isEmpty then none else some supplied)
           agree (.named n ts) expected
           let fields ← liftM (ctorFields p n ctor ts)
           if ps.length != fields.length then throw s!"wrong arity for constructor '{n}::{ctor}'"
-          let pairs ← (ps.zip fields).mapM fun (pat, t) => inferPattern p fuel pat t
+          let pairs ← (ps.zip fields).mapM fun (pat, t) => inferPattern p rigid fuel pat t
           return (.construct (.named n ts) ctor (pairs.map Prod.fst), pairs.flatMap Prod.snd)
       | .construct _ _ _ => throw "constructor pattern requires a nominal enum type"
+      | .constructAs params target ctor ps =>
+          let target ← instantiateTemplate p rigid params target
+          agree target expected
+          let .named n ts ← zonk target | throw "constructor pattern requires a known nominal enum type"
+          let fields ← liftM (ctorFields p n ctor ts)
+          if ps.length != fields.length then throw s!"wrong arity for constructor '{n}::{ctor}'"
+          let pairs ← (ps.zip fields).mapM fun (pat, t) => inferPattern p rigid fuel pat t
+          return (.construct (.named n ts) ctor (pairs.map Prod.fst), pairs.flatMap Prod.snd)
 
-private def pattern (p : Program α) (pat : Pattern α) (t : Ty) : Infer (Pattern α × List (String × Ty)) := do
-  let (pat, bindings) ← inferPattern p 1024 pat t
+private def pattern (p : Program α) (rigid : List String) (pat : Pattern α) (t : Ty) : Infer (Pattern α × List (String × Ty)) := do
+  let (pat, bindings) ← inferPattern p rigid 1024 pat t
   if let some n := findDuplicate (bindings.map Prod.fst) [] then throw s!"duplicate pattern binding '{n}'"
   return (pat, bindings)
 
@@ -131,6 +145,14 @@ private def infer (p : Program α) (rigid : List String) :
           if xs.length != fields.length then throw s!"wrong arity for constructor '{n}::{ctor}'"
           let pairs ← (xs.zip fields).mapM fun (x, t) => infer p rigid fuel locals x (some t)
           pure (.named n ts, .construct n (some ts) ctor (pairs.map Prod.snd))
+      | .constructAs params target ctor xs => do
+          let target ← instantiateTemplate p rigid params target
+          if let some expected := expected then agree target expected
+          let .named n ts ← zonk target | throw "constructor requires a known nominal enum type"
+          let fields ← liftM (ctorFields p n ctor ts)
+          if xs.length != fields.length then throw s!"wrong arity for constructor '{n}::{ctor}'"
+          let pairs ← (xs.zip fields).mapM fun (x, t) => infer p rigid fuel locals x (some t)
+          pure (.named n ts, .construct n (some ts) ctor (pairs.map Prod.snd))
       | .project x i => do
           let (t, x) ← infer p rigid fuel locals x none
           let .tuple ts ← zonk t | throw "projection requires a known tuple type"
@@ -138,7 +160,7 @@ private def infer (p : Program α) (rigid : List String) :
           pure (t, .project x i)
       | .letValue pat x b => do
           let (t, x) ← infer p rigid fuel locals x none
-          let (pat, bs) ← pattern p pat t
+          let (pat, bs) ← pattern p rigid pat t
           let (t, b) ← infer p rigid fuel (bs ++ locals) b expected
           pure (t, .letValue pat x b)
       | .store x => do
@@ -182,7 +204,7 @@ private def infer (p : Program α) (rigid : List String) :
           let (t, x) ← infer p rigid fuel locals x none
           let result ← match expected with | some t => pure t | none => fresh
           let arms ← arms.mapM fun (pat, b) => do
-            let (pat, bs) ← pattern p pat t
+            let (pat, bs) ← pattern p rigid pat t
             let (_, b) ← infer p rigid fuel (bs ++ locals) b (some result)
             return (pat, b)
           pure (result, .matchValue x arms)
@@ -195,6 +217,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .bind n => pure (.bind n)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
   | .construct t c ps => return .construct (← finishType s t) c (← ps.mapM (finishPattern s))
+  | .constructAs _ _ _ _ => throw "unelaborated constructor pattern template"
 termination_by p => sizeOf p
 
 private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
@@ -202,6 +225,7 @@ private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
   | .var n => pure (.var n)
   | .tuple xs => return .tuple (← xs.mapM (finishExpr s))
   | .construct n ts c xs => return .construct n (some (← (ts.getD []).mapM (finishType s))) c (← xs.mapM (finishExpr s))
+  | .constructAs _ _ _ _ => throw "unelaborated constructor template"
   | .project x i => return .project (← finishExpr s x) i
   | .letValue p x b => return .letValue (← finishPattern s p) (← finishExpr s x) (← finishExpr s b)
   | .store x => return .store (← finishExpr s x)
@@ -224,18 +248,10 @@ def elaborateExpr (p : Program α) (rigid : List String) (locals : List (String 
   let ((_, e), state) ← infer p rigid 4096 locals e (some expected) {}
   finishExpr state e
 
-def checkIdentifier (name : String) : Except String Unit :=
-  if name.isEmpty || name.contains '$' then throw "empty or reserved identifier" else pure ()
-
-def checkParams (params : List String) : Except String Unit := do
-  if let some n := findDuplicate params [] then throw s!"duplicate type parameter '{n}'"
-  for n in params do
-    checkIdentifier n
-    if n == "Field" then throw "Field is a reserved type name"
-
 /-- Infer omitted arguments once, treating declared parameters as rigid nominal
 types. This deliberately does not apply the specialization recursion rule. -/
 def elaborate (p : Program α) : Except String (Program α) := do
+  let p ← expandAliases p
   if let some n := findDuplicate (p.functions.map (·.name) ++ p.maps.map (·.name)) [] then
     throw s!"duplicate function/map '{n}'"
   if let some n := findDuplicate (p.enums.map (·.name)) [] then throw s!"duplicate enum '{n}'"

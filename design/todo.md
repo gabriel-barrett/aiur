@@ -31,10 +31,11 @@ not an outstanding TODO.
   See ix's [syntax](../../ix/Ix/Aiur/Meta.lean) and
   [array lowering](../../ix/Ix/Aiur/Compiler/Lower.lean).
 
-- [ ] **Type aliases.** Add named and parameterized aliases, with expansion and
-  cycle checks before core typechecking. Keep nominal enum identity distinct from
-  aliases. See ix's [declarations](../../ix/Ix/Aiur/Stages/Source.lean) and
-  [alias expansion](../../ix/Ix/Aiur/Compiler/Check.lean).
+- [x] **Type aliases.** Named and parameterized aliases expand before generic
+  inference while literals are still natural numbers. Forward references,
+  qualified constructors/patterns, cycle checks, and canonical specialization
+  preserve the distinction between transparent aliases and nominal enums.
+  See [type aliases](type-aliases.md).
 
 - [x] **Generic functions and enums.** Implement inferred/explicit type arguments,
   direct generic evaluation, external entry selection, and conservative finite

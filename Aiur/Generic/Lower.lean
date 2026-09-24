@@ -22,7 +22,7 @@ def Pattern.lower (env : List (String × Ty)) : Pattern α → Aiur.Pattern α
   | .wildcard => .wildcard
   | .bind n => .bind n
   | .tuple ps => .tuple (ps.map (Pattern.lower env))
-  | .construct t c ps =>
+  | .construct t c ps | .constructAs _ t c ps =>
       let name := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
       .construct name c (ps.map (Pattern.lower env))
 termination_by p => sizeOf p
@@ -35,6 +35,9 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .tuple xs => .tuple (xs.map (Expr.lower env))
   | .construct n ts c xs =>
       .construct (Instance.symbol ⟨n, (ts.getD []).map (Ty.subst env)⟩) c (xs.map (Expr.lower env))
+  | .constructAs _ t c xs =>
+      let name := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
+      .construct name c (xs.map (Expr.lower env))
   | .project x i => .project (x.lower env) i
   | .letValue p x b => .letValue (p.lower env) (x.lower env) (b.lower env)
   | .store x => .store (x.lower env)
