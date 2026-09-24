@@ -34,6 +34,11 @@ unification with an occurs check and keeps declared type parameters distinct
 from inference variables. Nested generic types, arbitrary tuples, pointer
 types, forward references, and mutually recursive functions are supported.
 
+[Transparent type aliases](type-aliases.md), including parameterized aliases,
+expand before this inference step while source literals are still natural
+numbers. Alias-qualified constructors and patterns preserve the underlying
+enum's nominal identity; specialization keys always use expanded types.
+
 Enums remain nominal: `Option<Field>` and `Option<(Field, Field)>` are distinct
 types. Concrete instances receive canonical generated names, using an
 unambiguous serialization of the original name and type arguments. Both the

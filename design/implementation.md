@@ -4,6 +4,9 @@
 
 - `Aiur/Generic/AST.lean`, `Elaborate.lean`, and `Frontend.lean`: generic source
   types and definitions, unification of omitted arguments, and Rust-like quotation.
+- `Aiur/Generic/Aliases.lean` and `AliasFacts.lean`: checked alias dependency
+  expansion before inference, constructor templates, and a proof that expansion
+  commutes with literal conversion. The frontend runs this pass on `Program Nat`.
 - `Aiur/Generic/Runtime.lean` and `Engine.lean`: checked source, dynamic instance
   resolution, heap execution, relational evaluation, and successful-run correctness.
 - `Aiur/Generic/Lower.lean` and `Specialize.lean`: body substitution, concrete

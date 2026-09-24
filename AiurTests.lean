@@ -14,6 +14,7 @@ import AiurTests.InputTypes
 import AiurTests.Hints
 import AiurTests.Accumulators
 import AiurTests.Generics
+import AiurTests.Aliases
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -178,3 +179,4 @@ def main : IO Unit := do
   AiurHintTests.run
   AiurAccumulatorTests.run
   AiurGenericTests.run
+  AiurAliasTests.run

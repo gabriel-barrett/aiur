@@ -69,6 +69,9 @@ inductive Pattern (α : Type) where
   | bind (name : String)
   | tuple (items : List (Pattern α))
   | construct (type : Ty) (constructor : String) (args : List (Pattern α))
+  /-- An expanded constructor qualifier; `params` bind inference slots in `type`.
+  Elaboration replaces this with an ordinary nominal constructor pattern. -/
+  | constructAs (params : List String) (type : Ty) (constructor : String) (args : List (Pattern α))
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 inductive Expr (α : Type) where
@@ -76,6 +79,8 @@ inductive Expr (α : Type) where
   | var (name : String)
   | tuple (items : List (Expr α))
   | construct (name : String) (types : Option (List Ty)) (constructor : String) (args : List (Expr α))
+  /-- Alias-free constructor template, consumed by generic inference. -/
+  | constructAs (params : List String) (type : Ty) (constructor : String) (args : List (Expr α))
   | project (value : Expr α) (index : Nat)
   | letValue (pattern : Pattern α) (value body : Expr α)
   | store (value : Expr α)
@@ -120,11 +125,19 @@ structure MapDecl where
   output : String
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
+structure AliasDecl where
+  name : String
+  typeParams : List String := []
+  target : Ty
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
 structure Program (α : Type) where
   functions : List (Function α)
   enums : List EnumDecl := []
   tables : List (Table α) := []
   maps : List MapDecl := []
+  /-- Surface declarations. Alias expansion removes these before inference. -/
+  aliases : List AliasDecl := []
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 def Program.findFunction? (p : Program α) (name : String) := p.functions.find? (·.name == name)
@@ -136,6 +149,7 @@ def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .bind n => .bind n
   | .tuple xs => .tuple (xs.map (Pattern.map f))
   | .construct t c xs => .construct t c (xs.map (Pattern.map f))
+  | .constructAs ps t c xs => .constructAs ps t c (xs.map (Pattern.map f))
 termination_by p => sizeOf p
 
 def Expr.map (f : α → β) : Expr α → Expr β
@@ -143,6 +157,7 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .var n => .var n
   | .tuple xs => .tuple (xs.map (Expr.map f))
   | .construct n ts c xs => .construct n ts c (xs.map (Expr.map f))
+  | .constructAs ps t c xs => .constructAs ps t c (xs.map (Expr.map f))
   | .project x i => .project (x.map f) i
   | .letValue p x b => .letValue (p.map f) (x.map f) (b.map f)
   | .store x => .store (x.map f)
@@ -163,6 +178,7 @@ def Program.map (f : α → β) (p : Program α) : Program β := {
   enums := p.enums
   tables := p.tables.map fun table => { table with rows := table.rows.map (Expr.map f) }
   maps := p.maps
+  aliases := p.aliases
 }
 
 def Program.toField (p : Program Nat) (F : Type) [NatCast F] : Program F := p.map Nat.cast

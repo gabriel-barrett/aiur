@@ -3,7 +3,7 @@
 Aiur is a first-order programming language for zero-knowledge circuits, formalized
 in Lean. Source programs use arithmetic, calls, and pattern matching rather than
 gates or wires. A Lean elaborator accepts a Rust-like source string containing all
-enum declarations, function definitions, tables, and maps.
+enum declarations, type aliases, function definitions, tables, and maps.
 
 ## Values and signatures
 
@@ -12,6 +12,9 @@ any arity. `()` is unit; `(x,)` is a singleton tuple; `(x)` is grouping. Tuple
 shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
 arrays, structs, or higher-order values. Generic functions and nominal enums
 accept type parameters; see [generics](generics.md).
+Transparent [type aliases](type-aliases.md) use `type Scalar = Field;` or
+`type Pair<T> = (T, T);`. They expand before generic inference, while literals
+are still natural numbers. Aliases do not introduce nominal type identities.
 
 Every parameter and return type must be explicit, including `Field` and `()`:
 

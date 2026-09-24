@@ -15,6 +15,11 @@ syntax (name := genericCall) ident "::<" sepBy1(aiur_type, ",", ",", allowTraili
 syntax (name := genericConstructor) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">" "::" ident : aiur_expr
 syntax (name := genericConstructorArgs) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">" "::" ident
   "(" sepBy(aiur_expr, ",", ",", allowTrailingSep) ")" : aiur_expr
+declare_syntax_cat aiur_alias (behavior := symbol)
+syntax (name := aliasDefinition) &"type" ident "=" aiur_type ";" : aiur_alias
+syntax (name := genericAlias) &"type" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
+  "=" aiur_type ";" : aiur_alias
+syntax (name := aliasDecl) aiur_alias : aiur_decl
 
 private def readName (s : Syntax) : Except String String :=
   match s.getId with
@@ -27,7 +32,9 @@ private partial def type (params : List String) (s : Syntax) : Except String Ty 
     let n ← readName s[0]
     return if n == "Field" then .field else if params.contains n then .param n else .named n []
   else if s.getKind == ``appliedType then
-    return .named (← readName s[0]) (← s[2].getSepArgs.toList.mapM (type params))
+    let n ← readName s[0]
+    if params.contains n then throw s!"type parameter '{n}' does not take arguments"
+    return .named n (← s[2].getSepArgs.toList.mapM (type params))
   else if s.getKind == ``unitType then return .tuple []
   else if s.getKind == ``typeParens then type params s[1]
   else if s.getKind == ``tupleType then
@@ -86,10 +93,10 @@ private def irrefutable (enums : List EnumDecl) : Pattern Nat → Bool
   | .literal _ => false
   | .wildcard | .bind _ => true
   | .tuple ps => (ps.map (irrefutable enums)).all id
-  | .construct (.named n _) c ps =>
+  | .construct (.named n _) c ps | .constructAs _ (.named n _) c ps =>
       (enums.find? (·.name == n)).any (fun d => d.constructors.length == 1 && d.constructors.any (·.name == c)) &&
         (ps.map (irrefutable enums)).all id
-  | .construct _ _ _ => false
+  | .construct _ _ _ | .constructAs _ _ _ _ => false
 termination_by p => sizeOf p
 
 private def lowerEnum (s : Syntax) : Except String EnumDecl := do
@@ -103,13 +110,21 @@ private def lowerEnum (s : Syntax) : Except String EnumDecl := do
       return { name := ← readName c[0], fields }
   }
 
+private def lowerAlias (s : Syntax) : Except String AliasDecl := do
+  let generic := s.getKind == ``genericAlias
+  let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
+  return {
+    name := ← readName s[1], typeParams := ps
+    target := ← type ps s[if generic then 6 else 3]
+  }
+
 private def bindingNames : Pattern α → List String
   | .literal _ | .wildcard => []
   | .bind n => [n]
-  | .tuple ps | .construct _ _ ps => ps.flatMap bindingNames
+  | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap bindingNames
 termination_by p => sizeOf p
 
-private def lowerFunction (enums : List EnumDecl) (s : Syntax) : Except String (Function Nat) := do
+private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl) (s : Syntax) : Except String (Function Nat) := do
   let generic := s.getKind == ``genericFunction
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
   let offset := if generic then 3 else 0
@@ -119,7 +134,7 @@ private def lowerFunction (enums : List EnumDecl) (s : Syntax) : Except String (
   for (param, i) in s[3 + offset].getSepArgs.toList.zipIdx do
     let pat ← pattern param[0]
     boundNames := boundNames ++ bindingNames pat
-    if !irrefutable enums pat then throw "parameter patterns must be irrefutable"
+    if !irrefutable enums (← Aliases.expandPattern aliases pat) then throw "parameter patterns must be irrefutable"
     let t ← type ps param[2]
     match pat with
     | .bind n => inputs := inputs ++ [(n, t)]
@@ -143,7 +158,9 @@ def ofString (env : Lean.Environment) (source : String) : Except String (Program
   let s ← Parser.runParserCategory env `aiur_program source "<aiur>"
   let ds := s[0].getArgs.toList
   let enums ← (ds.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])
-  let functions ← (ds.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction enums d[0])
+  let aliases ← (ds.filter (·.getKind == ``aliasDecl)).mapM (fun d => lowerAlias d[0])
+  let expanded ← Aliases.resolveDeclarations ({ functions := [], enums, aliases } : Program Nat)
+  let functions ← (ds.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction enums expanded d[0])
   let tables ← (ds.filter (·.getKind == ``tableDecl)).mapM fun d => do
     let s := d[0]
     return { name := ← readName s[1], rowType := ← type [] s[3], rows := ← s[5].getSepArgs.toList.mapM (expr []) : Table Nat }
@@ -153,7 +170,7 @@ def ofString (env : Lean.Environment) (source : String) : Except String (Program
       let .bind n ← pattern param[0] | throw "map parameters must be named bindings"
       return (n, ← type [] param[2])
     return { name := ← readName s[1], params, result := ← type [] s[6], input := ← readName s[8], output := ← readName s[10] : MapDecl }
-  return (← prepare { functions, enums, tables, maps }).program
+  return (← prepare { functions, enums, tables, maps, aliases }).program
 
 /-- The ordinary quotation supports the source AST when that type is expected.
 Existing quotations of the monomorphic core remain compatible. -/

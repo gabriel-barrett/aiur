@@ -247,6 +247,9 @@ def ofString (env : Environment) (source : String) : Except String (Program Nat)
   let source := String.ofList (normalizeWhitespace (← maskComments source.toList 0 false))
   let stx ← Parser.runParserCategory env `aiur_program source "<aiur>"
   let declarations := stx[0].getArgs.toList
+  for d in declarations do
+    unless [``enumDecl, ``functionDecl, ``tableDecl, ``mapDecl].contains d.getKind do
+      throw "declaration requires the generic source frontend (Generic.Program Nat)"
   let enums ← (declarations.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])
   (checkDeclarations enums).mapError toString
   let program := {
