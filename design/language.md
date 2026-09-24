@@ -10,7 +10,8 @@ enum declarations, function definitions, tables, and maps.
 Types are `Field`, nominal enums, pointers `&A`, and finite tuples of types, nested to any depth. Tuples may have
 any arity. `()` is unit; `(x,)` is a singleton tuple; `(x)` is grouping. Tuple
 shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
-arrays, structs, generics, or higher-order values.
+arrays, structs, or higher-order values. Generic functions and nominal enums
+accept type parameters; see [generics](generics.md).
 
 Every parameter and return type must be explicit, including `Field` and `()`:
 
@@ -31,9 +32,12 @@ name and cannot themselves be passed or returned as values. Maps use the same
 call syntax and callable namespace, with their signatures available alongside
 function signatures.
 
-The frontend remains field agnostic: `Program Nat` contains natural literals.
-`Program.toField F` casts literals in expressions, patterns, and table rows into
-the chosen field. `Nat` is a representation choice, not a source-language type.
+The frontend remains field agnostic: `Generic.Program Nat` contains natural
+literals and type parameters; `Program Nat` is the concrete core. Both support
+`toField F` for conversion to field values.
+This casts literals in expressions, patterns, and table rows into the chosen
+field. Function specialization is a separate pass, selected by an external list
+of non-generic entry functions. `Nat` is a representation choice, not a source-language type.
 
 ## Expressions and binding
 

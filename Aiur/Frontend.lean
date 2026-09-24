@@ -106,7 +106,14 @@ private partial def lowerPattern (stx : Syntax) : Except String (Pattern Nat) :=
 /-- Lower Lean's syntax tree for the embedded language; no field is chosen here. -/
 private partial def lowerExpr (stx : Syntax) : Except String (Aiur.Expr Nat) := do
   let kind := stx.getKind
-  if kind == ``literal then
+  if kind == `choice then
+    let mut error := "unsupported ambiguous expression"
+    for alternative in stx.getArgs do
+      match lowerExpr alternative with
+      | .ok expr => return expr
+      | .error message => error := message
+    throw error
+  else if kind == ``literal then
     let some value := stx[0].isNatLit? | throw "expected a natural-number literal"
     return .literal value
   else if kind == ``constructorExpr then
@@ -209,7 +216,7 @@ private def lowerMap (stx : Syntax) : Except String MapDecl := do
   }
 
 /-- Mask Rust comments before invoking Lean's parser, preserving lines and token boundaries. -/
-private def maskComments : List Char → Nat → Bool → Except String (List Char)
+def maskComments : List Char → Nat → Bool → Except String (List Char)
   | [], depth, _ =>
       if depth == 0 then .ok [] else .error "unterminated block comment"
   | '/' :: '/' :: rest, 0, false => do
@@ -223,7 +230,7 @@ private def maskComments : List Char → Nat → Bool → Except String (List Ch
       return masked :: (← maskComments rest depth (inLine && char != '\n'))
 
 /-- Keep adjacent arithmetic operators from being interpreted as Lean comments. -/
-private def normalizeWhitespace : List Char → List Char
+def normalizeWhitespace : List Char → List Char
   | [] => []
   | char :: rest =>
       let normalized := if char == '\t' || char == '\r' then ' ' else char
@@ -360,7 +367,7 @@ private def quoteProgram (program : Program Nat) : Lean.Expr :=
     (quoteList (mkConst ``MapDecl) (program.maps.map quoteMap))
 
 /-- Elaborate a Rust-like source string directly to a checked `Program Nat`. -/
-elab "aiur% " source:str : term => do
+elab (name := aiurTerm) "aiur% " source:str : term => do
   match ofString (← getEnv) source.getString with
   | .error error => throwErrorAt source "{error}"
   | .ok program => return quoteProgram program

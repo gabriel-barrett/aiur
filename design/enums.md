@@ -440,7 +440,9 @@ The regression coverage includes:
 - All evaluator, tree, and memoized correctness results checked without `sorry`
   or added axioms, with the same explicit conditional-soundness boundary.
 
-The remaining extensions are generics, named fields, custom or alternative tag
+Generic enums are now implemented through the proved source specialization
+layer; see [generics](generics.md). The remaining extensions are named fields,
+custom or alternative tag
 assignments, equality operations, and empty enums. These are outside this change.
 
 ## Root claims and representable tags

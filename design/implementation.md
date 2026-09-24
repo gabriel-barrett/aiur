@@ -2,6 +2,18 @@
 
 ## Current modules
 
+- `Aiur/Generic/AST.lean`, `Elaborate.lean`, and `Frontend.lean`: generic source
+  types and definitions, unification of omitted arguments, and Rust-like quotation.
+- `Aiur/Generic/Runtime.lean` and `Engine.lean`: checked source, dynamic instance
+  resolution, heap execution, relational evaluation, and successful-run correctness.
+- `Aiur/Generic/Lower.lean` and `Specialize.lean`: body substitution, concrete
+  enum collection, external entry selection, instance collection, recursion checks,
+  and an executable structural certificate for the resulting core program.
+- `Aiur/Generic/Simulation.lean`, `ValueTyping.lean`, and `Correctness.lean`:
+  runtime simulation, agreement of enum validation, and bidirectional specialization
+  correctness. `Generic/Circuit.lean` composes these with tree, memoized, and
+  integer-checker proofs and provides the compiled entrypoint wrapper.
+
 - `Aiur/AST.lean`: recursive field, tuple, enum, and pointer types, values, patterns, expressions, explicitly typed
   signatures, constant tables, map references, and field specialization.
 - `Aiur/Constant.lean`: address-free constants, extraction, and invariance under
@@ -192,3 +204,8 @@ static entry selection, ordinary value validation, and internal pointer use.
 Proof regressions reject forbidden source/tree/memoized entries and establish
 completeness for pointer-free enum inputs. The type-to-value pointer-freedom
 lemma has an axiom guard alongside the existing end-to-end guards.
+
+`AiurTests/Generics.lean` checks type inference, explicit arguments, nested generic
+and pointer-recursive enums, direct growing-type recursion, conservative rejection
+of specialization, cache-order independence, maps, hints, root selection, and
+circuit composition. See [generics](generics.md) and `Examples/Generics.lean`.

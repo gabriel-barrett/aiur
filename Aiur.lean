@@ -11,3 +11,4 @@ import Aiur.MemoSoundness
 import Aiur.Frontend
 import Aiur.MemoryCorrectness
 import Aiur.CheckerCorrectness
+import Aiur.Generic

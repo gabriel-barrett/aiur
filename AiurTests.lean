@@ -13,6 +13,7 @@ import AiurTests.RefutableLets
 import AiurTests.InputTypes
 import AiurTests.Hints
 import AiurTests.Accumulators
+import AiurTests.Generics
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -176,3 +177,4 @@ def main : IO Unit := do
   AiurInputTypeTests.run
   AiurHintTests.run
   AiurAccumulatorTests.run
+  AiurGenericTests.run

@@ -36,12 +36,10 @@ not an outstanding TODO.
   aliases. See ix's [declarations](../../ix/Ix/Aiur/Stages/Source.lean) and
   [alias expansion](../../ix/Ix/Aiur/Compiler/Check.lean).
 
-- [ ] **Generic functions and enums.** Add type parameters and specialization to
-  monomorphic declarations. Retain explicit function signatures, nominal enum
-  identity, and the requirement that recursive type cycles pass through pointers.
-  This does not require function values or higher-order calls. Prove that
-  specialization preserves evaluation before composing it with the current
-  compiler. See ix's [concretization](../../ix/Ix/Aiur/Compiler/Concretize.lean).
+- [x] **Generic functions and enums.** Implement inferred/explicit type arguments,
+  direct generic evaluation, external entry selection, and conservative finite
+  specialization. Prove evaluation equivalence and compose it with the existing
+  circuit and integer-checker theorems. See [generics](generics.md).
 
 - [ ] **OR patterns.** Support alternatives such as `p1 | p2`, checking that
   alternatives bind the same names at compatible types. Preserve first-match
@@ -89,10 +87,9 @@ not an outstanding TODO.
   are evaluated; printing itself must not affect circuit claims.
 - [ ] Support qualified global names and checked composition of programs,
   including enum, function, table, and map declarations.
-- [ ] Consider explicit public entry declarations such as `pub fn`. Specify
-  their meaning independently of compilation optimizations. Preserve the current
-  pointer-free entry-argument check; any change to permitted outputs needs a
-  separate design decision.
+- [x] Select public entrypoints externally, independently of the toplevel syntax.
+  Only non-generic functions qualify; compiled artifacts retain the whitelist
+  and the existing pointer-free input-type restriction. See [generics](generics.md).
 
 The corresponding ix facilities are in its
 [frontend](../../ix/Ix/Aiur/Meta.lean) and
