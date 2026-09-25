@@ -7,6 +7,9 @@
 - `Aiur/Generic/Aliases.lean` and `AliasFacts.lean`: checked alias dependency
   expansion before inference, constructor templates, and a proof that expansion
   commutes with literal conversion. The frontend runs this pass on `Program Nat`.
+- `Aiur/Generic/Consts.lean` and `ConstFacts.lean`: fully specified value/pattern
+  templates, checked dependencies, lexical name resolution and substitution
+  before alias expansion and generic inference, with field-independence proofs.
 - `Aiur/Generic/PatternLowering.lean`, `PatternChecks.lean`, and `PatternFacts.lean`:
   nested pointer patterns, duplicate-condition validation before lowering,
   fresh temporary bindings, and equivalence between read/test plans and core
@@ -225,3 +228,9 @@ single evaluation, aliases, field collisions, and circuit compilation. Axiom
 guards cover the load-binding rule and the read/test plan equivalences.
 `Examples/PointerPatterns.lean` shows direct execution, specialization, and
 compilation of a pointer-recursive list.
+
+`AiurTests/Consts.lean` checks const expansion, value/pattern name resolution,
+forward references and cycles, fresh stores and pointer matches, tables, generic
+constructors, field collisions, and circuit compilation. An axiom guard covers
+the field-conversion theorem. `Examples/Consts.lean` shows both interpreters and
+the compiler.

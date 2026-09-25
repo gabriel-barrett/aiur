@@ -10,6 +10,7 @@ def Pattern.toCore? (env : List (String × Ty)) : Pattern α → Option (Aiur.Pa
   | .literal x => some (.literal x)
   | .wildcard => some .wildcard
   | .bind n => some (.bind n)
+  | .global _ => none
   | .load _ => none
   | .tuple ps => return .tuple (← ps.mapM (Pattern.toCore? env))
   | .construct t c ps | .constructAs _ t c ps => do
@@ -64,6 +65,7 @@ its payload, and a load precedes all tests of its contents. -/
 def plan (env : List (String × Ty)) (stem : String) :
     Pattern α → String → StateM Nat (Plan α)
   | .literal x, input => return ⟨[.test (.literal x) input], []⟩
+  | .global n, input => return ⟨[.test (.construct ("$const:" ++ n) "$unexpanded" []) input], []⟩
   | .wildcard, _ => return {}
   | .bind n, input => return ⟨[], [(n, input)]⟩
   | .load p, input => do

@@ -18,6 +18,7 @@ lake env lean Examples/RefutableLets.lean
 lake env lean Examples/Generics.lean
 lake env lean Examples/Aliases.lean
 lake env lean Examples/PointerPatterns.lean
+lake env lean Examples/Consts.lean
 ```
 
 ## Use from Lean
@@ -79,6 +80,13 @@ Transparent aliases use `type Scalar = Field;` and `type Pair<T> = (T, T);`.
 They expand before generic inference, while literals are still natural numbers.
 Aliases of enums also support qualified constructors and patterns. See
 [type aliases](design/type-aliases.md) and [the example](Examples/Aliases.lean).
+
+Consts name complete value/pattern templates: `const zero = 0;` and
+`const cell = &(zero,);`. They expand early and reject dependency cycles.
+Use `::cell` in a pattern to load and check its contents. A bare pattern name
+always binds; in values, bare names prefer locals, then globals. `::name` always
+resolves globally, and capitalization does not affect resolution. See
+[consts](design/consts.md) and [the example](Examples/Consts.lean).
 
 `source.run` evaluates directly without collecting a finite set of instances.
 `Generic.specialize` selects non-generic entry functions externally and rejects

@@ -67,6 +67,8 @@ inductive Pattern (α : Type) where
   | literal (value : α)
   | wildcard
   | bind (name : String)
+  /-- A rooted source reference, expanded before type inference. -/
+  | global (name : String)
   /-- Load the matched pointer, then match its contents. -/
   | load (pattern : Pattern α)
   | tuple (items : List (Pattern α))
@@ -79,6 +81,8 @@ inductive Pattern (α : Type) where
 inductive Expr (α : Type) where
   | literal (value : α)
   | var (name : String)
+  /-- A rooted source reference, independent of local variable bindings. -/
+  | global (name : String)
   | tuple (items : List (Expr α))
   | construct (name : String) (types : Option (List Ty)) (constructor : String) (args : List (Expr α))
   /-- Alias-free constructor template, consumed by generic inference. -/
@@ -133,6 +137,13 @@ structure AliasDecl where
   target : Ty
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
+/-- A value/pattern template. Checking excludes binders and wildcards; `load`
+denotes a read in patterns and a store in expressions. -/
+structure ConstDecl (α : Type) where
+  name : String
+  value : Pattern α
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
 structure Program (α : Type) where
   functions : List (Function α)
   enums : List EnumDecl := []
@@ -140,26 +151,28 @@ structure Program (α : Type) where
   maps : List MapDecl := []
   /-- Surface declarations. Alias expansion removes these before inference. -/
   aliases : List AliasDecl := []
+  /-- Source templates, expanded and checked before generic inference of uses. -/
+  consts : List (ConstDecl α) := []
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 def Program.findFunction? (p : Program α) (name : String) := p.functions.find? (·.name == name)
 def Program.findEnum? (p : Program α) (name : String) := p.enums.find? (·.name == name)
 
 def Pattern.bindingNames : Pattern α → List String
-  | .literal _ | .wildcard => []
+  | .literal _ | .wildcard | .global _ => []
   | .bind n => [n]
   | .load p => p.bindingNames
   | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap Pattern.bindingNames
 termination_by p => sizeOf p
 
 def Pattern.hasLoads : Pattern α → Bool
-  | .literal _ | .wildcard | .bind _ => false
+  | .literal _ | .wildcard | .bind _ | .global _ => false
   | .load _ => true
   | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => (ps.map Pattern.hasLoads).any id
 termination_by p => sizeOf p
 
 def Pattern.irrefutable (enums : List EnumDecl) : Pattern α → Bool
-  | .literal _ => false
+  | .literal _ | .global _ => false
   | .wildcard | .bind _ => true
   | .load p => p.irrefutable enums
   | .tuple ps => (ps.map (Pattern.irrefutable enums)).all id
@@ -172,6 +185,7 @@ termination_by p => sizeOf p
 /-- Binder spelling does not change a pattern's matching condition. -/
 def Pattern.condition : Pattern α → Pattern α
   | .literal x => .literal x
+  | .global n => .global n
   | .wildcard | .bind _ => .wildcard
   | .load p => .load p.condition
   | .tuple ps => .tuple (ps.map Pattern.condition)
@@ -183,6 +197,7 @@ def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .literal x => .literal (f x)
   | .wildcard => .wildcard
   | .bind n => .bind n
+  | .global n => .global n
   | .load p => .load (p.map f)
   | .tuple xs => .tuple (xs.map (Pattern.map f))
   | .construct t c xs => .construct t c (xs.map (Pattern.map f))
@@ -192,6 +207,7 @@ termination_by p => sizeOf p
 def Expr.map (f : α → β) : Expr α → Expr β
   | .literal x => .literal (f x)
   | .var n => .var n
+  | .global n => .global n
   | .tuple xs => .tuple (xs.map (Expr.map f))
   | .construct n ts c xs => .construct n ts c (xs.map (Expr.map f))
   | .constructAs ps t c xs => .constructAs ps t c (xs.map (Expr.map f))
@@ -210,12 +226,16 @@ decreasing_by
   all_goals first | omega | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›; try simp_all only [Prod.mk.sizeOf_spec]
   all_goals first | omega | cases ‹Pattern α × Expr α›; simp_all only [Prod.mk.sizeOf_spec]; omega
 
+def ConstDecl.map (f : α → β) (d : ConstDecl α) : ConstDecl β :=
+  { name := d.name, value := d.value.map f }
+
 def Program.map (f : α → β) (p : Program α) : Program β := {
   functions := p.functions.map fun fn => { fn with body := fn.body.map f }
   enums := p.enums
   tables := p.tables.map fun table => { table with rows := table.rows.map (Expr.map f) }
   maps := p.maps
   aliases := p.aliases
+  consts := p.consts.map (ConstDecl.map f)
 }
 
 def Program.toField (p : Program Nat) (F : Type) [NatCast F] : Program F := p.map Nat.cast

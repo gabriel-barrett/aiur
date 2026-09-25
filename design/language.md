@@ -3,7 +3,7 @@
 Aiur is a first-order programming language for zero-knowledge circuits, formalized
 in Lean. Source programs use arithmetic, calls, and pattern matching rather than
 gates or wires. A Lean elaborator accepts a Rust-like source string containing all
-enum declarations, type aliases, function definitions, tables, and maps.
+enum declarations, type aliases, consts, function definitions, tables, and maps.
 
 ## Values and signatures
 
@@ -43,6 +43,14 @@ field. Function specialization is a separate pass, selected by an external list
 of non-generic entry functions. `Nat` is a representation choice, not a source-language type.
 
 ## Expressions and binding
+
+`const name = value;` names a complete value/pattern template, expanded before
+generic inference. For example, `const cell = &(0,);` allocates on each value
+use and loads and tests contents when used as a pattern. Bare names in patterns
+always bind; `::name` refers globally. In values, bare names prefer locals and
+then globals, while `::name` always refers globally. Const bodies are value
+positions, so `const a = b;` can reference another const. Capitalization has no
+semantic role. See [consts](consts.md) for the allowed forms and cycle checks.
 
 Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
 store `&x`, load `*p`, tuple and qualified enum construction, zero-based projection (`p.0`, `p.1.0`), blocks, `let`, and

@@ -27,8 +27,8 @@ Singleton tuples retain their distinction from their component type.
 ## Pipeline
 
 1. Parse the whole source with numeric literals represented by `Nat`.
-2. Collect enum and alias declarations, check alias definitions, and expand
-   aliases throughout the program.
+2. Expand [const references](consts.md), then check alias definitions and expand
+   aliases throughout the program, including const constructor qualifiers.
 3. Infer generic arguments and check the expanded generic program.
 4. Convert literals to the chosen field and prepare its static tables, retaining
    field-dependent validation.
