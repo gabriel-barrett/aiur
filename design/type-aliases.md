@@ -109,9 +109,10 @@ concrete even when its written argument is a type parameter.
 ## Semantics and verification
 
 Aliases are surface type notation; prepared-source semantics is the existing
-generic semantics on expanded types. The executor, specialization equivalence,
-tree correctness, acyclic memoized soundness, and integer checker proofs reuse
-the existing definitions.
+generic semantics on expanded types. Native executor correctness and finite
+source specialization are proved. Circuit and integer-checker proofs remain
+checked for the monomorphic core; the full source-to-core composition is
+[pending](source-semantics.md#proof-boundary).
 
 `Generic.expandAliases_map` and `Generic.expandAliases_toField` in
 `Aiur/Generic/AliasFacts.lean` prove that expansion commutes with literal

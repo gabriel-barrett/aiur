@@ -61,7 +61,8 @@ Arrays use `[a, b, c]` or `[value; n]`, which evaluates `value` once and copies
 the result, even when `n` is zero. Static slices return arrays and evaluate their
 operand once. Lengths, indices, and range bounds are natural-number literals;
 out-of-bounds and dynamic accesses are rejected. Arrays retain a distinct,
-homogeneous source type and lower to tuples. See [arrays](arrays.md).
+homogeneous source type and have native evaluation rules. They lower to tuples
+on the circuit path, after the [source semantic boundary](source-semantics.md). See [arrays](arrays.md).
 
 ```rust
 fn combine(p: (Field, (Field, Field))) -> (Field, Field) {

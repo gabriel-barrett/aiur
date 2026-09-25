@@ -66,23 +66,19 @@ it does not choose entrypoints or collect function instances.
 
 ## Direct evaluation
 
-`Generic.Source.run` interprets checked generic source. At a call it resolves
-the original definition, binds its concrete type arguments, substitutes them
-into that one body, and evaluates it. It does not first specialize the whole
-call graph. It threads the same fresh-allocation heap as the existing executor
-and retains fuel exhaustion and hint-provider errors.
+`Generic.Source.run` interprets checked `Generic.Expr` directly. A call resolves
+the original definition and binds its concrete type arguments in a separate
+environment. It does not rewrite the body or specialize the whole call graph.
+Arrays, repetition, slicing, and pointer patterns retain their native operations.
+The evaluator threads the existing fresh-allocation heap and reports fuel
+exhaustion and hint-provider errors.
 
-That shared body-lowering step also expands [pointer patterns](pointer-patterns.md)
-into ordinary loads and tests. Thus generic parameter patterns such as
-`fn read<T>(&x: &T) -> T { x }` use the same semantics before and after
-specialization.
-
-`Engine.EvalExpr`, `Engine.EvalArgs`, and `Engine.EvalFn` give the corresponding
-fuel-free relations over a runtime that resolves function and enum definitions
-on demand. `Source.EvalCall` adds public entry checking and an initially empty
-heap. Hints are existential well-typed values in this relation; their provider
-is an executor mechanism. `Source.run_spec` proves that every successful run
-has this relational evaluation, including its final heap.
+`SourceSemantics.EvalExpr`, `EvalArgs`, and `EvalFn` are the corresponding
+fuel-free relations on source expressions. `Source.EvalCall` adds public entry
+checking and an initially empty heap. Hints are existential well-typed values;
+their provider is an executor mechanism. `Source.run_spec` proves that every
+successful run has a source evaluation with exactly its final heap. See the
+[semantic boundary](source-semantics.md) for preparation order and runtime values.
 
 Consequently a terminating run of a type-growing function can succeed even
 though that function cannot be specialized under the rule below. Execution
@@ -97,8 +93,10 @@ same source differently. Public input types must be entirely pointer-free;
 reachable internal helpers can accept pointers as before.
 
 The result is `Specialized source entries`, containing a checked concrete
-program and a structural certificate. The wrapper retains the entry list;
-`Specialized.run` rejects an unselected helper. `Specialized.compile` retains
+core program, a finite cache of original bodies with concrete type bindings,
+and structural certificates. The wrapper retains the entry list;
+`Specialized.run` evaluates the source cache and rejects an unselected helper.
+`Specialized.coreRun` separately executes the lowered circuit program. `Specialized.compile` retains
 this interface in a compiled artifact whose `check` and `checkMemo` wrappers
 also enforce the selected root. The underlying core program/system APIs are
 still available for internal reasoning.
@@ -131,44 +129,40 @@ also exceed these limits.
 
 ## Correctness and proof reuse
 
-`Specialized.evalFn_iff` proves preservation and reflection for every reachable
-concrete function instance, arbitrary initial and final heaps, and every result.
-`Specialized.evalCall_iff` is the public entrypoint theorem:
+`Specialized.evalFn_iff` proves preservation and reflection between the generic
+source runtime and its finite source cache, for every reachable instance,
+arbitrary initial/final heaps, and every result. `Specialized.evalCall_iff`
+restricts this to selected entries:
 
 ```text
 name in entries ->
   source.EvalCall name arguments result
-    iff Aiur.EvalCall specialized.program name arguments result
+    iff specialized.EvalCall name arguments result
 ```
 
-Successful specialization returns the certificate needed by these theorems;
-the caller does not supply an unproved semantic-equivalence condition.
-The certificate checks concrete typing, exact function-instance lookup,
-exact enum declarations, closed enum dependencies, body dependencies and hint
-types, preservation of static tables/maps, and both entry checks. Every check
-is finite and executable. The proof uses induction on finite evaluation
-derivations and a reusable runtime simulation, not an assumption of termination.
-It applies to every successful nondeterministic outcome, not only to hint-free
-programs or one chosen hint provider.
+The proof is induction on native source evaluations. Successful specialization
+checks that all calls from source bodies lie within the finite cache, including
+inactive arms. The certificate asks for no semantic equivalence or totality
+assumption. `Specialized.run_spec` connects successful execution of that cache
+to its source relation. Hints retain every well-typed nondeterministic outcome.
 
-Concrete enum names, values, pointer annotations, and allocation order agree
-on both sides, so this theorem uses equality of heaps and results. The existing
-heap/ROM representation relation is still used at the circuit boundary.
+The previous theorem compared already lowered expressions. That theorem remains
+available as `coreEvalFn_iff` / `coreEvalCall_iff`, and `Generic/Circuit.lean`
+retains its composition with the compiler under explicit `core_*` names:
 
-`Generic/Circuit.lean` composes this result with the existing proofs:
+- `core_heap_complete`, `core_run_complete`, and `core_memo_run_complete`;
+- `core_heap_sound` and `core_memo_acyclic_heap_sound`;
+- `core_checker_run_complete`, `core_checkerMemo_run_complete`, and
+  `core_checker_heap_sound`.
 
-- `heap_complete` and `run_complete`: generic source evaluation/execution
-  produces a tree derivation, subject to the existing address-capacity bound.
-- `memo_run_complete`: the same source execution produces a memoized graph.
-- `heap_sound` and `memo_acyclic_heap_sound`: accepted trees, or acyclic
-  memoized graphs, have generic source evaluations with related heap values.
-- `checker_run_complete`, `checkerMemo_run_complete`, and
-  `checker_heap_sound`: the integer row checkers connect to generic source
-  through the existing derivation bridges.
+These remain theorems about the lowered core. The complete preservation and
+reflection theorem connecting native source evaluation to that core is pending.
+Existing plan and array lemmas are useful parts of it, but do not establish
+correctness of the entire lowering. See [the exact proof boundary](source-semantics.md#proof-boundary).
+No proof admissions or new axioms have been added.
 
-No totality hypothesis, field-valued balance assumption, or restriction against
-cycles in the memoized model has been added. The implementation and these
-proofs contain no admitted steps. `AiurTests/Generics.lean` exercises the syntax,
-inference, independent and recursive instances, cache-order regressions,
-generic enum layouts, pointers, concrete hints, tables/maps, and theorem reuse.
+`AiurTests/Generics.lean` covers inference, independent and recursive instances,
+cache-order regressions, enums, pointers, hints, tables/maps, and theorem reuse.
+`AiurTests/SourceEvaluation.lean` checks source syntax retention, source fuel
+behavior, hint-key effects, and both directions of source specialization.
 `Examples/Generics.lean` shows the public API.

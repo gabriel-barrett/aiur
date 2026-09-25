@@ -61,6 +61,20 @@ def runSpecialized (name : String) (args : List (SourceValue Rat)) := do
   let q ← Generic.specialize s [name]
   q.run name args
 
+def runCore (name : String) (args : List (SourceValue Rat)) := do
+  let s ← Generic.prepare (source.toField Rat)
+  let q ← Generic.specialize s [name]
+  q.coreRun name args
+
+-- Check the independent implementations around ordered loads and bindings.
+#guard ([
+  ("simple", [.field 13]), ("nested", [.field 5]), ("tuple", [.field 5]),
+  ("dispatch", [.field 0]), ("dispatch", [.field 1]), ("dispatch", [.field 2]),
+  ("fallback", [.field 42]), ("overlap", [.field 0, .field 0]),
+  ("overlap", [.field 1, .field 0]), ("let_fail", []), ("match_fail", [])
+] : List (String × List (SourceValue Rat))).all fun (name, args) =>
+  runSource name args == runCore name args
+
 -- The basic spelling lowers to precisely the explicit load, without a helper call.
 #guard (source.findFunction? "simple").map (fun d => d.body.lower []) ==
   (source.findFunction? "explicit").map (fun d => d.body.lower [])
@@ -92,15 +106,15 @@ def runSpecialized (name : String) (args : List (SourceValue Rat)) := do
 -- failed field test skips the read; `&_` itself always performs a read.
 def runInternal (name : String) (args : List (SourceValue Rat)) := do
   let s ← Generic.prepare (source.toField Rat)
-  let (locals, body) ← (s.world.prepare name args).mapError reprStr
-  (Generic.Engine.evalExprWith s.world Generic.Engine.unavailable locals 100 body []).mapError reprStr
+  let (types, locals, body) ← (s.world.prepare name args).mapError reprStr
+  (Generic.SourceSemantics.evalExprWith s.world Generic.SourceSemantics.unavailable types locals 100 body []).mapError reprStr
 
 #guard runInternal "guarded" [.tuple [.field 1, .ptr .field 99]] == .ok (.field 19, [])
 #guard (runInternal "guarded" [.tuple [.field 0, .ptr .field 99]]).toOption.isNone
 #guard (runInternal "ignore" [.ptr .field 99]).toOption.isNone
 
--- Source and specialized interpreters use the same desugaring, and all the
--- existing ROM/circuit correctness theorems apply to the resulting loads.
+-- Compilation uses the existing guarded ROM loads and keeps all call
+-- dependencies visible, independently of native source execution.
 #guard (do
   let s ← Generic.prepare (source.toField (ZMod 101))
   let q ← Generic.specialize s ["simple", "call", "nested", "tuple", "aliased", "match_once",
@@ -135,6 +149,10 @@ def handBuilt : Generic.Program Nat := {
 #guard (do
   let s ← Generic.prepare (handBuilt.toField Rat)
   s.run "main" [.field 42]) == .ok (.field 42, [.field 5])
+#guard (do
+  let s ← Generic.prepare (handBuilt.toField Rat)
+  let q ← Generic.specialize s ["main"]
+  q.coreRun "main" [.field 42]) == .ok (.field 42, [.field 5])
 
 -- Keep all original arm dependencies visible to conservative specialization,
 -- even though the first arm makes the growing call unreachable at runtime.

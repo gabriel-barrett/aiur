@@ -41,5 +41,5 @@ fn main(x: Field) -> Field {
 -- The theorem works for arbitrary inputs, outputs, recursion and hint values.
 example [Field F] [DecidableEq F] (source : Generic.Source F)
     (specialized : Generic.Specialized source ["main"]) :
-    source.EvalCall "main" args output ↔ EvalCall specialized.program "main" args output :=
+    source.EvalCall "main" args output ↔ specialized.EvalCall "main" args output :=
   specialized.evalCall_iff (by simp)

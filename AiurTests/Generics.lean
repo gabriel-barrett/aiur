@@ -214,7 +214,7 @@ fn entry(x: E<&Field>) -> Field { 0 }
 -- successful outcome, rather than just a particular evaluator fuel bound.
 example [Field F] [DecidableEq F] (s : Generic.Source F)
     (q : Generic.Specialized s roots) (selected : name ∈ roots) :
-    s.EvalCall name args result ↔ Aiur.EvalCall q.program name args result :=
+    s.EvalCall name args result ↔ q.EvalCall name args result :=
   q.evalCall_iff selected
 
 def run : IO Unit := do
@@ -245,23 +245,23 @@ def run : IO Unit := do
 /-- info: 'Aiur.Generic.Specialized.evalCall_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.Generic.Specialized.evalCall_iff
-/-- info: 'Aiur.Generic.Specialized.run_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'Aiur.Generic.Specialized.core_run_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Generic.Specialized.run_complete
-/-- info: 'Aiur.Generic.Specialized.heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#print axioms Aiur.Generic.Specialized.core_run_complete
+/-- info: 'Aiur.Generic.Specialized.core_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Generic.Specialized.heap_sound
-/-- info: 'Aiur.Generic.Specialized.memo_acyclic_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#print axioms Aiur.Generic.Specialized.core_heap_sound
+/-- info: 'Aiur.Generic.Specialized.core_memo_acyclic_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Generic.Specialized.memo_acyclic_heap_sound
-/-- info: 'Aiur.Generic.Specialized.checker_run_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#print axioms Aiur.Generic.Specialized.core_memo_acyclic_heap_sound
+/-- info: 'Aiur.Generic.Specialized.core_checker_run_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Generic.Specialized.checker_run_complete
-/-- info: 'Aiur.Generic.Specialized.checkerMemo_run_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#print axioms Aiur.Generic.Specialized.core_checker_run_complete
+/-- info: 'Aiur.Generic.Specialized.core_checkerMemo_run_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Generic.Specialized.checkerMemo_run_complete
-/-- info: 'Aiur.Generic.Specialized.checker_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#print axioms Aiur.Generic.Specialized.core_checkerMemo_run_complete
+/-- info: 'Aiur.Generic.Specialized.core_checker_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms Aiur.Generic.Specialized.checker_heap_sound
+#print axioms Aiur.Generic.Specialized.core_checker_heap_sound
 
 end AiurGenericTests

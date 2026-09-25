@@ -1,6 +1,6 @@
 import Aiur.Generic.AST
 
-/-! Arrays use the core's tuple representation. The only bodies under these
+/-! Late circuit lowering uses the core's tuple representation. The only bodies under these
 generated bindings are generated variable references and projections, so they
 cannot capture names in the operand, even in programmatically built ASTs. -/
 

@@ -23,9 +23,9 @@ not an outstanding TODO.
 ## Language extensions from the ix comparison
 
 - [x] **Fixed-size arrays.** Homogeneous `[A; n]` types, literals, repetition,
-  patterns, and static indexing/slicing lower to tuples and fixed projections.
-  Repetition and slicing evaluate their operands once, with proved relational
-  rules. See [arrays](arrays.md).
+  patterns, and static indexing/slicing have native evaluation rules. Their
+  circuit compilation uses tuples and fixed projections; repetition and slicing
+  evaluate operands once. See [arrays](arrays.md).
 - [ ] **Further array conveniences.** Functional updates, bounded compile-time
   folds, rest patterns, and symbolic lengths/const generics. Dynamic indexing,
   mutable memory, and runtime loops remain separate from these conveniences.
@@ -38,8 +38,8 @@ not an outstanding TODO.
 
 - [x] **Generic functions and enums.** Implement inferred/explicit type arguments,
   direct generic evaluation, external entry selection, and conservative finite
-  specialization. Prove evaluation equivalence and compose it with the existing
-  circuit and integer-checker theorems. See [generics](generics.md).
+  specialization. Source evaluation equivalence is proved for finite instance
+  selection. The source-to-core compilation bridge is tracked below. See [generics](generics.md).
 
 - [ ] **OR patterns.** Support alternatives such as `p1 | p2`, checking that
   alternatives bind the same names at compatible types. Preserve first-match
@@ -98,12 +98,20 @@ The corresponding ix facilities are in its
 
 ## Proof reuse and later infrastructure
 
-Prefer elaboration or proved simplification into the existing core when that
-preserves the intended source semantics. New passes need preservation proofs;
-reusing the core does not establish their correctness automatically. Keep the
+Define evaluation on the source AST. Expand consts and aliases before
+typechecking while literals are natural numbers; keep other transformations on
+the circuit path, after the semantic boundary. Reusing the core does not prove
+a transformation correct automatically. Keep the
 existing evaluator correspondence and tree/memoized correctness results checked
 without admitted proof steps.
 
+- [x] Define native generic-source execution and its fuel-free predicate,
+  preserving arrays and pointer patterns. Prove executor correspondence and
+  equivalence with finite source specialization.
+- [ ] Prove the complete native-source to lowered-core equivalence, including
+  recursive pattern matching versus read/test plans, temporary-variable scope,
+  first-match continuations, and slice shape/bounds. Compose it with the existing
+  core circuit and row-checker theorems. See [proof status](source-semantics.md).
 - [ ] Provide executable circuit-witness generation, with correctness against
   the existing row and derivation definitions.
 - [x] Prove both directions between the executable unit balance checker and

@@ -1,4 +1,5 @@
 import Aiur.Generic.Specialize
+import Aiur.Generic.CoreRuntime
 import Aiur.TableChecking
 
 namespace Aiur.Generic
@@ -70,9 +71,9 @@ termination_by sizeOf v
 
 /-- Checked instance lookup and closed declarations imply the runtime
 agreement needed by the general simulation theorem. -/
-theorem Specialized.agreement [DecidableEq F] {s : Source F} {entries : List String}
+theorem Specialized.coreAgreement [DecidableEq F] {s : Source F} {entries : List String}
     (q : Specialized s entries) :
-    Engine.Agreement s.world (.ofProgram q.program)
+    Engine.Agreement s.coreWorld (.ofProgram q.program)
       (callableNames q.program) (knownType q.program.enums) := by
   rcases q.valid with ⟨checked, tables, maps, functions, enums, closed, bodies, roots⟩
   have enumAgreement : ∀ n d, q.program.enums.findEnum? n = some d → s.program.enum? n = some d := by
@@ -80,13 +81,13 @@ theorem Specialized.agreement [DecidableEq F] {s : Source F} {entries : List Str
     have hn : d.name = n := by simpa [Declarations.findEnum?] using List.find?_some found
     simpa [hn] using enums d (List.mem_of_find?_eq_some found)
   have prep : ∀ n ∈ callableNames q.program, ∀ args locals body,
-      s.world.prepare n args = .ok (locals, body) ↔ prepareCall q.program n args = .ok (locals, body) := by
+      s.coreWorld.prepare n args = .ok (locals, body) ↔ prepareCall q.program n args = .ok (locals, body) := by
     intro n hn args locals body
     have fnAgreement := functions n hn
     cases found : q.program.findFunction? n with
     | none =>
         have absent : s.program.function? n = none := fnAgreement.trans found
-        simp only [Source.world, absent, prepareCall, found]
+        simp only [Source.coreWorld, absent, prepareCall, found]
         simp only [except_bind_ok, except_pure_ok, Prod.mk.injEq]
         constructor
         · rintro ⟨v, hv, hl, hb⟩
@@ -95,7 +96,7 @@ theorem Specialized.agreement [DecidableEq F] {s : Source F} {entries : List Str
           exact ⟨v, lookupMap_transfer s.tablesChecked tables maps hv, hl, hb⟩
     | some fn =>
         have resolved : s.program.function? n = some fn := fnAgreement.trans found
-        simp only [Source.world, resolved, prepareFunction_iff, prepared_function_iff found]
+        simp only [Source.coreWorld, resolved, prepareFunction_iff, prepared_function_iff found]
         by_cases ht : fn.params.map Prod.snd = args.map Value.type
         · have known := (bodies fn (List.mem_of_find?_eq_some found)).1
           have values : ∀ v ∈ args, wellFormed s.program.enum? v = v.wellFormed q.program.enums := by
@@ -119,22 +120,109 @@ theorem Specialized.agreement [DecidableEq F] {s : Source F} {entries : List Str
     · exact (bodies fn (List.mem_of_find?_eq_some found)).2
     · exact constant_scope v
 
-/-- Specialization preserves and reflects every internal finite evaluation,
-with exactly the same value and allocation heap. Generic enum identities use
-the same canonical concrete names on both sides. No totality is assumed. -/
+/-- The lowered reference interpreter and the concrete compiler program agree.
+This core-level result is separate from source-level specialization. -/
+theorem Specialized.coreEvalFn_iff [Field F] [DecidableEq F] {s : Source F} {entries : List String}
+    (q : Specialized s entries) (reachable : name ∈ callableNames q.program) :
+    Engine.EvalFn s.coreWorld name args before result after ↔
+      Aiur.EvalFn q.program name args before result after :=
+  (Engine.evalFn_iff q.coreAgreement reachable).trans Engine.core_iff
+
+/-- Core-level equivalence at selected entries. -/
+theorem Specialized.coreEvalCall_iff [Field F] [DecidableEq F] {s : Source F} {entries : List String}
+    (q : Specialized s entries) (selected : name ∈ entries) :
+    s.CoreEvalCall name args result ↔ Aiur.EvalCall q.program name args result := by
+  have root := q.valid.2.2.2.2.2.2.2 name selected
+  simp only [Source.CoreEvalCall, Aiur.EvalCall, root.2.1, root.2.2, true_and]
+  exact exists_congr fun heap => q.coreEvalFn_iff root.1
+
+private theorem cached_lookup {A : Type} (lookup : String → Option A)
+    {names : List String} {name : String} (member : name ∈ names) :
+    (((names.map fun n => (n, lookup n)).find? (·.1 == name)).bind Prod.snd) = lookup name := by
+  induction names with
+  | nil => simp at member
+  | cons n names ih =>
+      by_cases same : n = name
+      · subst n; simp
+      · have hn := (List.mem_cons.mp member).resolve_left (Ne.symm same)
+        simpa [List.find?, same] using ih hn
+
+private theorem source_constant_scope (v : Constant F) :
+    SourceSemantics.inScope names (fun _ => true) types (constantExpr v) = true := by
+  cases v with
+  | field => simp [constantExpr, SourceSemantics.inScope]
+  | ptr _ a => exact Empty.elim a
+  | tuple xs | construct n c xs =>
+      simp only [constantExpr, SourceSemantics.inScope, List.all_map, List.all_eq_true, Function.comp_def, id_eq]
+      intro x hx
+      exact source_constant_scope x
+termination_by sizeOf v
+
+/-- Finite specialization preserves source bodies and concrete type bindings.
+This agreement is independent of the later translation into core expressions. -/
+theorem Specialized.sourceAgreement [DecidableEq F] {s : Source F} {entries : List String}
+    (q : Specialized s entries) :
+    SourceSemantics.Agreement s.world q.world (callableNames q.program) (fun _ => true) := by
+  have prep : ∀ n ∈ callableNames q.program, ∀ args,
+      s.world.prepare n args = q.world.prepare n args := by
+    intro n hn args
+    simp only [Source.world, Specialized.world, Specialized.instances, sourceWorld,
+      cached_lookup s.program.sourceFunction? hn]
+  refine ⟨fun n hn args _ _ _ => (congrArg (· = _) (prep n hn args)).to_iff,
+    fun _ _ _ => Iff.rfl, ?_⟩
+  intro n hn args types locals body prepared
+  cases found : s.program.sourceFunction? n with
+  | none =>
+      simp only [Source.world, sourceWorld, found, except_bind_ok, except_pure_ok,
+        Prod.mk.injEq] at prepared
+      obtain ⟨v, _, rfl, rfl, rfl⟩ := prepared
+      exact source_constant_scope v
+  | some fn =>
+      have closed := q.sourceClosed n hn
+      simp only [found, Option.all_some] at closed
+      simp only [Source.world, sourceWorld, found, SourceFunction.prepare] at prepared
+      split at prepared
+      · obtain ⟨rfl, rfl, rfl⟩ := Prod.mk.inj (Except.ok.inj prepared) |>.imp_right Prod.mk.inj
+        exact closed
+      · simp at prepared
+
+/-- Source-level specialization preserves and reflects every finite evaluation,
+including native array operations, pointer patterns, hints, and the exact heap. -/
 theorem Specialized.evalFn_iff [Field F] [DecidableEq F] {s : Source F} {entries : List String}
     (q : Specialized s entries) (reachable : name ∈ callableNames q.program) :
-    Engine.EvalFn s.world name args before result after ↔
-      Aiur.EvalFn q.program name args before result after :=
-  (Engine.evalFn_iff q.agreement reachable).trans Engine.core_iff
+    SourceSemantics.EvalFn s.world name args before result after ↔
+      SourceSemantics.EvalFn q.world name args before result after :=
+  SourceSemantics.evalFn_iff q.sourceAgreement reachable
 
-/-- The public theorem quantifies only over externally selected, non-generic
-entrypoints. It includes nondeterministic hints and heap effects. -/
 theorem Specialized.evalCall_iff [Field F] [DecidableEq F] {s : Source F} {entries : List String}
     (q : Specialized s entries) (selected : name ∈ entries) :
-    s.EvalCall name args result ↔ Aiur.EvalCall q.program name args result := by
+    s.EvalCall name args result ↔ q.EvalCall name args result := by
   have root := q.valid.2.2.2.2.2.2.2 name selected
-  simp only [Source.EvalCall, Aiur.EvalCall, root.2.1, root.2.2, true_and]
+  have entry := q.checkEntry_iff.mpr selected
+  simp only [Source.EvalCall, Specialized.EvalCall, root.2.1, entry, true_and]
   exact exists_congr fun heap => q.evalFn_iff root.1
+
+theorem Specialized.run_spec [Field F] [DecidableEq F] {s : Source F} {entries : List String}
+    {q : Specialized s entries} {hints : s.HintProvider} {name args fuel result heap}
+    (run : q.run name args fuel hints = .ok (result, heap)) :
+    q.checkEntry name = .ok () ∧ SourceSemantics.EvalFn q.world name args [] result heap := by
+  cases entry : q.checkEntry name with
+  | error e => simp [Specialized.run, entry, bind, Except.bind] at run
+  | ok u =>
+      cases u
+      cases prepared : q.world.prepare name args with
+      | error e => simp [Specialized.run, entry, prepared, Except.mapError, bind, Except.bind] at run
+      | ok triple =>
+          rcases triple with ⟨types, locals, body⟩
+          have executed : SourceSemantics.evalExprWith q.world hints types locals fuel body [] = .ok (result, heap) := by
+            cases h : SourceSemantics.evalExprWith q.world hints types locals fuel body [] <;>
+              simpa [Specialized.run, entry, prepared, h, Except.mapError, bind, Except.bind] using run
+          exact ⟨rfl, .intro prepared (SourceSemantics.evalExpr_spec executed)⟩
+
+theorem Specialized.evalCall_of_run [Field F] [DecidableEq F] {s : Source F} {entries : List String}
+    {q : Specialized s entries} {hints : s.HintProvider} {name args fuel result heap}
+    (run : q.run name args fuel hints = .ok (result, heap)) : q.EvalCall name args result := by
+  obtain ⟨entry, evaluated⟩ := Specialized.run_spec run
+  exact ⟨entry, heap, evaluated⟩
 
 end Aiur.Generic

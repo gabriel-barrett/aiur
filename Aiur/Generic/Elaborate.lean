@@ -156,7 +156,7 @@ private def inferPattern (p : Program α) (rigid : List String) : Nat → Patter
           let t ← fresh
           agree (.array t n) expected
           let (pat, bindings) ← inferPattern p rigid fuel pat t
-          return (.array (List.replicate n pat), (List.replicate n bindings).flatten)
+          return (.repeat pat n, (List.replicate n bindings).flatten)
       | .construct (.named n supplied) ctor ps =>
           let some decl := p.findEnum? n | throw s!"unknown enum '{n}'"
           let ts ← typeArgs p rigid decl.typeParams (if supplied.isEmpty then none else some supplied)
@@ -301,7 +301,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .load p => return .load (← finishPattern s p)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
   | .array ps => return .array (← ps.mapM (finishPattern s))
-  | .repeat _ _ => throw "unelaborated repeated pattern"
+  | .repeat p n => return .repeat (← finishPattern s p) n
   | .construct t c ps => return .construct (← finishType s t) c (← ps.mapM (finishPattern s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor pattern template"
 termination_by p => sizeOf p

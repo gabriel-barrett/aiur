@@ -4,15 +4,18 @@ The main implementation supports fields, arbitrary nested tuples, nominal enums,
 typed pointers, static tables and maps, and typed nondeterministic values. The completed field-only and tuple-only formalizations remain as
 reference snapshots in `Aiur.Scalar` and `Aiur.Tuple`.
 
-Generic source is interpreted directly by `Generic.Source.run` and its fuel-free
-engine relations. `Generic.Source.run_spec` proves successful-run correctness.
-`Generic.Specialized.evalCall_iff` proves that successful specialization preserves
-and reflects evaluation on externally selected entries, including nondeterminism
-and allocation heaps. `Generic/Circuit.lean` composes it with the tree, memoized,
-and integer-checker theorems below. See [generics](generics.md) for the exact
-certificate, recursion rule, API, and theorem names.
+Generic source has independent native relations in `Generic.SourceSemantics`.
+`Generic.Source.run_spec` proves successful-run correctness, and
+`Generic.Specialized.evalCall_iff` proves equivalence with finite source
+specialization. Their full connection to the lowered core is pending; see the
+[semantic boundary](source-semantics.md#proof-boundary).
 
-## Source evaluation
+The remainder of this document describes the completed correctness results for
+the monomorphic `Aiur.Program` core. `Generic/Circuit.lean` retains the core-level
+composition under explicit `core_*` names. These results do not yet establish
+correctness of every transformation from native `Generic.Expr`.
+
+## Core evaluation with source allocation addresses
 
 The fuel-free source relations thread immutable allocation heaps:
 
