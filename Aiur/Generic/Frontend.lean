@@ -21,6 +21,15 @@ syntax (name := genericAlias) &"type" ident "<" sepBy1(ident, ",", ",", allowTra
   "=" aiur_type ";" : aiur_alias
 syntax (name := aliasDecl) aiur_alias : aiur_decl
 syntax:75 (name := loadPattern) "&" aiur_pattern:75 : aiur_pattern
+syntax (name := globalPattern) "::" ident : aiur_pattern
+syntax (name := globalExpr) "::" ident : aiur_expr
+syntax (name := genericConstructorPattern) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">"
+  "::" ident : aiur_pattern
+syntax (name := genericConstructorPatternArgs) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">"
+  "::" ident "(" sepBy(aiur_pattern, ",", ",", allowTrailingSep) ")" : aiur_pattern
+declare_syntax_cat aiur_const (behavior := symbol)
+syntax (name := constDefinition) &"const" ident "=" aiur_expr ";" : aiur_const
+syntax (name := constDecl) aiur_const : aiur_decl
 
 private def readName (s : Syntax) : Except String String :=
   match s.getId with
@@ -42,17 +51,23 @@ private partial def type (params : List String) (s : Syntax) : Except String Ty 
     return .tuple ((← type params s[1]) :: (← s[3].getSepArgs.toList.mapM (type params)))
   else throw "expected an Aiur type"
 
-private partial def pattern (s : Syntax) : Except String (Pattern Nat) := do
-  if s.getKind == ``loadPattern then return .load (← pattern s[1])
+private partial def pattern (params : List String) (s : Syntax) : Except String (Pattern Nat) := do
+  if s.getKind == ``loadPattern then return .load (← pattern params s[1])
+  else if s.getKind == ``globalPattern then return .global (← readName s[1])
   else if s.getKind == ``literalPattern then return .literal (s[0].isNatLit?.getD 0)
   else if s.getKind == ``wildcardPattern then return .wildcard
   else if s.getKind == ``bindPattern then return .bind (← readName s[0])
   else if s.getKind == ``constructorPattern then return .construct (.named (← readName s[0]) []) (← readName s[2]) []
   else if s.getKind == ``constructorPatternArgs then
-    return .construct (.named (← readName s[0]) []) (← readName s[2]) (← s[4].getSepArgs.toList.mapM pattern)
+    return .construct (.named (← readName s[0]) []) (← readName s[2]) (← s[4].getSepArgs.toList.mapM (pattern params))
+  else if s.getKind == ``genericConstructorPattern || s.getKind == ``genericConstructorPatternArgs then
+    let ts ← s[2].getSepArgs.toList.mapM (type params)
+    let ps ← if s.getKind == ``genericConstructorPatternArgs then
+      s[7].getSepArgs.toList.mapM (pattern params) else pure []
+    return .construct (.named (← readName s[0]) ts) (← readName s[5]) ps
   else if s.getKind == ``unitPattern then return .tuple []
-  else if s.getKind == ``patternParens then pattern s[1]
-  else if s.getKind == ``tuplePattern then return .tuple ((← pattern s[1]) :: (← s[3].getSepArgs.toList.mapM pattern))
+  else if s.getKind == ``patternParens then pattern params s[1]
+  else if s.getKind == ``tuplePattern then return .tuple ((← pattern params s[1]) :: (← s[3].getSepArgs.toList.mapM (pattern params)))
   else throw "expected an Aiur pattern"
 
 private partial def expr (params : List String) (s : Syntax) : Except String (Expr Nat) := do
@@ -60,6 +75,7 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
   if k == `choice then expr params s[0]
   else if k == ``literal then return .literal (s[0].isNatLit?.getD 0)
   else if k == ``variableExpr then return .var (← readName s[0])
+  else if k == ``globalExpr then return .global (← readName s[1])
   else if k == ``unitExpr then return .tuple []
   else if k == ``tupleExpr then return .tuple ((← expr params s[1]) :: (← s[3].getSepArgs.toList.mapM (expr params)))
   else if k == ``constructorExpr || k == ``constructorCall then
@@ -79,7 +95,7 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
       return .hint t x
     return .call n (some ts) xs
   else if k == ``project then return .project (← expr params s[0]) (s[2].isNatLit?.getD 0)
-  else if k == ``letValue then return .letValue (← pattern s[1]) (← expr params s[3]) (← expr params s[5])
+  else if k == ``letValue then return .letValue (← pattern params s[1]) (← expr params s[3]) (← expr params s[5])
   else if k == ``parens || k == ``block then expr params s[1]
   else if k == ``store then return .store (← expr params s[1])
   else if k == ``load then return .load (← expr params s[1])
@@ -88,7 +104,7 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
     let op := if k == ``add then BinOp.add else if k == ``sub then .sub else if k == ``mul then .mul else .div
     return .binary op (← expr params s[0]) (← expr params s[2])
   else if k == ``matchValue then
-    return .matchValue (← expr params s[1]) (← s[3].getSepArgs.toList.mapM fun arm => return (← pattern arm[0], ← expr params arm[2]))
+    return .matchValue (← expr params s[1]) (← s[3].getSepArgs.toList.mapM fun arm => return (← pattern params arm[0], ← expr params arm[2]))
   else throw s!"unsupported expression: {k}"
 
 private def lowerEnum (s : Syntax) : Except String EnumDecl := do
@@ -110,7 +126,8 @@ private def lowerAlias (s : Syntax) : Except String AliasDecl := do
     target := ← type ps s[if generic then 6 else 3]
   }
 
-private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl) (s : Syntax) : Except String (Function Nat) := do
+private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
+    (consts : List (ConstDecl Nat)) (s : Syntax) : Except String (Function Nat) := do
   let generic := s.getKind == ``genericFunction
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
   let offset := if generic then 3 else 0
@@ -118,7 +135,7 @@ private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl) (s 
   let mut inputs := []
   let mut boundNames := []
   for (param, i) in s[3 + offset].getSepArgs.toList.zipIdx do
-    let pat ← pattern param[0]
+    let pat ← Consts.expandPattern consts (← pattern ps param[0])
     boundNames := boundNames ++ pat.bindingNames
     if !(← Aliases.expandPattern aliases pat).irrefutable enums then throw "parameter patterns must be irrefutable"
     let t ← type ps param[2]
@@ -147,18 +164,21 @@ def ofString (env : Lean.Environment) (source : String) : Except String (Program
   let ds := s[0].getArgs.toList
   let enums ← (ds.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])
   let aliases ← (ds.filter (·.getKind == ``aliasDecl)).mapM (fun d => lowerAlias d[0])
+  let consts ← (ds.filter (·.getKind == ``constDecl)).mapM fun d => do
+    return { name := ← readName d[0][1], value := ← Consts.ofExpr (← expr [] d[0][3]) : ConstDecl Nat }
   let expanded ← Aliases.resolveDeclarations ({ functions := [], enums, aliases } : Program Nat)
-  let functions ← (ds.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction enums expanded d[0])
+  let resolved ← Consts.resolveDeclarations ({ functions := [], enums, aliases, consts } : Program Nat)
+  let functions ← (ds.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction enums expanded resolved d[0])
   let tables ← (ds.filter (·.getKind == ``tableDecl)).mapM fun d => do
     let s := d[0]
     return { name := ← readName s[1], rowType := ← type [] s[3], rows := ← s[5].getSepArgs.toList.mapM (expr []) : Table Nat }
   let maps ← (ds.filter (·.getKind == ``mapDecl)).mapM fun d => do
     let s := d[0]
     let params ← s[3].getSepArgs.toList.mapM fun param => do
-      let .bind n ← pattern param[0] | throw "map parameters must be named bindings"
+      let .bind n ← pattern [] param[0] | throw "map parameters must be named bindings"
       return (n, ← type [] param[2])
     return { name := ← readName s[1], params, result := ← type [] s[6], input := ← readName s[8], output := ← readName s[10] : MapDecl }
-  return (← prepare { functions, enums, tables, maps, aliases }).program
+  return (← prepare { functions, enums, tables, maps, aliases, consts }).program
 
 /-- The ordinary quotation supports the source AST when that type is expected.
 Existing quotations of the monomorphic core remain compatible. -/

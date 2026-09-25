@@ -102,6 +102,7 @@ def expandPattern (aliases : List AliasDecl) : Pattern α → Except String (Pat
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
+  | .global n => pure (.global n)
   | .load p => return .load (← expandPattern aliases p)
   | .tuple ps => return .tuple (← ps.mapM (expandPattern aliases))
   | .construct t c ps => do
@@ -118,6 +119,7 @@ termination_by p => sizeOf p
 def expandExpr (aliases : List AliasDecl) : Expr α → Except String (Expr α)
   | .literal x => pure (.literal x)
   | .var n => pure (.var n)
+  | .global n => pure (.global n)
   | .tuple xs => return .tuple (← xs.mapM (expandExpr aliases))
   | .construct n ts c xs => do
       let xs ← xs.mapM (expandExpr aliases)
@@ -154,7 +156,7 @@ def checkPatternHead (enums : List EnumDecl) (aliases : List AliasDecl) (rigid :
   | _ => checkSurfaceType enums aliases rigid t
 
 def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Pattern α → Except String Unit
-  | .literal _ | .wildcard | .bind _ => pure ()
+  | .literal _ | .wildcard | .bind _ | .global _ => pure ()
   | .load p => checkPatternTypes enums aliases rigid p
   | .tuple ps => do
       let _ ← ps.mapM (checkPatternTypes enums aliases rigid)
@@ -170,7 +172,7 @@ def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid 
 termination_by pat => sizeOf pat
 
 def checkExprTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Expr α → Except String Unit
-  | .literal _ | .var _ => pure ()
+  | .literal _ | .var _ | .global _ => pure ()
   | .tuple xs => do
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
       pure ()
@@ -229,12 +231,18 @@ def expandMap (enums : List EnumDecl) (raw aliases : List AliasDecl)
     params := ← m.params.mapM (fun (n, t) => return (n, ← expandType aliases t))
     result := ← expandType aliases m.result }
 
+def expandConst (enums : List EnumDecl) (raw aliases : List AliasDecl)
+    (d : ConstDecl α) : Except String (ConstDecl α) := do
+  checkPatternTypes enums raw [] d.value
+  return { d with value := ← expandPattern aliases d.value }
+
 def expandProgram (aliases : List AliasDecl) (p : Program α) : Except String (Program α) := do
   let functions ← p.functions.mapM (expandFunction p.enums p.aliases aliases)
   let enums ← p.enums.mapM (expandEnum p.enums p.aliases aliases)
   let tables ← p.tables.mapM (expandTable p.enums p.aliases aliases)
   let maps ← p.maps.mapM (expandMap p.enums p.aliases aliases)
-  return { functions, enums, tables, maps, aliases := [] }
+  let consts ← p.consts.mapM (expandConst p.enums p.aliases aliases)
+  return { functions, enums, tables, maps, aliases := [], consts }
 
 end Aliases
 

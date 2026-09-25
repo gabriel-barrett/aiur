@@ -16,6 +16,7 @@ when preparation is repeated after `toField`. Conditions following an
 irrefutable arm are discarded, as in the core compiler. -/
 def checkLoadPatterns [DecidableEq α] (enums : List EnumDecl) (caller : String) : Expr α → Except String Unit
   | .literal _ | .var _ => pure ()
+  | .global n => throw s!"unexpanded const reference '::{n}'"
   | .tuple xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => do
       for x in xs do checkLoadPatterns enums caller x
   | .project x _ | .store x | .load x | .hint _ x | .neg x => checkLoadPatterns enums caller x

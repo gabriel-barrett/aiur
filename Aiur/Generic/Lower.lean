@@ -23,6 +23,7 @@ callee's body. -/
 def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .literal x => .literal x
   | .var n => .var n
+  | .global n => .var ("$const:" ++ n)
   | .tuple xs => .tuple (xs.map (Expr.lower env))
   | .construct n ts c xs =>
       .construct (Instance.symbol ⟨n, (ts.getD []).map (Ty.subst env)⟩) c (xs.map (Expr.lower env))

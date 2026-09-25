@@ -1,4 +1,4 @@
-import Aiur.Generic.Aliases
+import Aiur.Generic.Consts
 
 namespace Aiur.Generic
 
@@ -95,6 +95,7 @@ private def inferPattern (p : Program α) (rigid : List String) : Nat → Patter
       | .literal x => agree .field expected; return (.literal x, [])
       | .wildcard => return (.wildcard, [])
       | .bind n => return (.bind n, [(n, expected)])
+      | .global n => throw s!"unexpanded const reference '::{n}'"
       | .load pat =>
           let target ← fresh
           agree (.ptr target) expected
@@ -137,6 +138,7 @@ private def infer (p : Program α) (rigid : List String) :
       | .var n =>
           let some t := locals.lookup n | throw s!"unbound variable '{n}'"
           pure (t, .var n)
+      | .global n => throw s!"unexpanded const reference '::{n}'"
       | .tuple xs => do
           let ts ← xs.mapM fun _ => fresh
           if let some expected := expected then agree (.tuple ts) expected
@@ -220,6 +222,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
+  | .global n => throw s!"unexpanded const reference '::{n}'"
   | .load p => return .load (← finishPattern s p)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
   | .construct t c ps => return .construct (← finishType s t) c (← ps.mapM (finishPattern s))
@@ -229,6 +232,7 @@ termination_by p => sizeOf p
 private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
   | .literal x => pure (.literal x)
   | .var n => pure (.var n)
+  | .global n => throw s!"unexpanded const reference '::{n}'"
   | .tuple xs => return .tuple (← xs.mapM (finishExpr s))
   | .construct n ts c xs => return .construct n (some (← (ts.getD []).mapM (finishType s))) c (← xs.mapM (finishExpr s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor template"
@@ -257,6 +261,7 @@ def elaborateExpr (p : Program α) (rigid : List String) (locals : List (String 
 /-- Infer omitted arguments once, treating declared parameters as rigid nominal
 types. This deliberately does not apply the specialization recursion rule. -/
 def elaborate (p : Program α) : Except String (Program α) := do
+  let p ← expandConsts p
   let p ← expandAliases p
   if let some n := findDuplicate (p.functions.map (·.name) ++ p.maps.map (·.name)) [] then
     throw s!"duplicate function/map '{n}'"
@@ -273,6 +278,13 @@ def elaborate (p : Program α) : Except String (Program α) := do
     let name := (Instance.mk d.name (d.typeParams.map Ty.param)).symbol
     let decls ← collectEnums p d.typeParams 1024 [] [name]
     (checkDeclarations decls).mapError toString
+  for d in p.consts do
+    -- Templates need not fix omitted constructor type arguments before a use
+    -- supplies context, but every template must admit a consistent type.
+    let _ ← (do
+      let target ← fresh
+      let _ ← inferPattern p [] 1024 d.value target
+      pure () : Infer Unit).run {}
   let functions ← p.functions.mapM fun fn => do
     checkIdentifier fn.name
     checkParams fn.typeParams
@@ -287,6 +299,6 @@ def elaborate (p : Program α) : Except String (Program α) := do
   for m in p.maps do
     checkIdentifier m.name
     (m.params.map Prod.snd ++ [m.result]).forM (checkType p [])
-  return { p with functions, tables }
+  return { p with functions, tables, consts := [] }
 
 end Aiur.Generic

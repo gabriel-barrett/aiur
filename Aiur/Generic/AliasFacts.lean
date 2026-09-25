@@ -53,7 +53,7 @@ theorem expandPattern_map (aliases) (f : α → β) (pat : Pattern α) :
         (ps.mapM (expandPattern aliases)).map (List.map (Pattern.map f)) :=
     traverse_map ps _ _ _ _ (fun q hq => expandPattern_map aliases f q)
   cases pat with
-  | literal | wildcard | bind => simp [Pattern.map, expandPattern, map_pure]
+  | literal | wildcard | bind | global => simp [Pattern.map, expandPattern, map_pure]
   | load p =>
       simp only [Pattern.map, expandPattern, sub p (by simp_wf)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Pattern.map]
@@ -97,7 +97,7 @@ theorem checkExprTypes_map (enums aliases rigid) (f : α → β) (expr : Expr α
         xs.mapM (checkExprTypes enums aliases rigid) :=
     traverse_same xs _ _ _ (fun x hx => checkExprTypes_map enums aliases rigid f x)
   cases expr with
-  | literal | var => simp [Expr.map, checkExprTypes]
+  | literal | var | global => simp [Expr.map, checkExprTypes]
   | tuple xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, checkExprTypes]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
@@ -129,7 +129,7 @@ theorem expandExpr_map (aliases) (f : α → β) (expr : Expr α) :
         (xs.mapM (expandExpr aliases)).map (List.map (Expr.map f)) :=
     traverse_map xs _ _ _ _ (fun x hx => expandExpr_map aliases f x)
   cases expr with
-  | literal | var => simp [Expr.map, expandExpr, map_pure]
+  | literal | var | global => simp [Expr.map, expandExpr, map_pure]
   | tuple xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, expandExpr]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
@@ -186,6 +186,11 @@ theorem expandTable_map (enums raw aliases) (f : α → β) (table : Table α) :
   simp only [expandTable, checked, expanded]
   simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map]
 
+theorem expandConst_map (enums raw aliases) (f : α → β) (d : ConstDecl α) :
+    expandConst enums raw aliases (d.map f) = (expandConst enums raw aliases d).map (ConstDecl.map f) := by
+  simp only [expandConst, ConstDecl.map, checkPatternTypes_map, expandPattern_map]
+  simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, ConstDecl.map]
+
 theorem expandProgram_map (aliases) (f : α → β) (p : Program α) :
     expandProgram aliases (p.map f) = (expandProgram aliases p).map (Program.map f) := by
   have functions := traverse_map p.functions
@@ -196,7 +201,10 @@ theorem expandProgram_map (aliases) (f : α → β) (p : Program α) :
     (fun t => { t with rows := t.rows.map (Expr.map f) }) (fun t => { t with rows := t.rows.map (Expr.map f) })
     (expandTable p.enums p.aliases aliases) (expandTable p.enums p.aliases aliases)
     (fun t _ => expandTable_map p.enums p.aliases aliases f t)
-  simp only [expandProgram, Program.map, functions, tables]
+  have consts := traverse_map p.consts (ConstDecl.map f) (ConstDecl.map f)
+    (expandConst p.enums p.aliases aliases) (expandConst p.enums p.aliases aliases)
+    (fun d _ => expandConst_map p.enums p.aliases aliases f d)
+  simp only [expandProgram, Program.map, functions, tables, consts]
   simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Program.map]
 
 end Aliases

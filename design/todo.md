@@ -80,13 +80,15 @@ not an outstanding TODO.
 
 ## Frontend and program organization
 
+- [x] Add [const templates](consts.md) with early expansion, cycle checks, fully
+  specified value/pattern bodies, and capitalization-independent name resolution.
 - [ ] Add local type annotations and expression type annotations.
 - [ ] Add ordinary `expr; rest` statements and trailing semicolons, lowering to
   `let _ = expr; rest` and a final `()` where appropriate.
 - [ ] Add debugging output and useful call traces. Specify which debug operands
   are evaluated; printing itself must not affect circuit claims.
-- [ ] Support qualified global names and checked composition of programs,
-  including enum, function, table, and map declarations.
+- [ ] Extend rooted const references to module-qualified global names and checked
+  composition of programs, including enum, const, function, table, and map declarations.
 - [x] Select public entrypoints externally, independently of the toplevel syntax.
   Only non-generic functions qualify; compiled artifacts retain the whitelist
   and the existing pointer-free input-type restriction. See [generics](generics.md).
