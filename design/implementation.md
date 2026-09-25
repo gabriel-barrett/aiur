@@ -17,16 +17,22 @@
 - `Aiur/Generic/PatternLowering.lean`, `PatternChecks.lean`, and `PatternFacts.lean`:
   nested pointer patterns, duplicate-condition validation before lowering,
   fresh temporary bindings, and equivalence between read/test plans and core
-  relational evaluation. Direct interpretation and specialization share this pass.
-- `Aiur/Generic/Runtime.lean` and `Engine.lean`: checked source, dynamic instance
-  resolution, heap execution, relational evaluation, and successful-run correctness.
+  relational evaluation. This lowering is confined to the circuit path.
+- `Aiur/Generic/Runtime.lean`, `SourceSemantics.lean`, and `SourceEvalFacts.lean`:
+  checked source, dynamic resolution without body rewriting, native heap execution,
+  relational evaluation, and successful-run correctness.
+- `Aiur/Generic/SourceSimulation.lean` and `SourceRules.lean`: finite-source
+  specialization equivalence and native repetition/pointer-pattern laws.
+- `Aiur/Generic/CoreRuntime.lean` and `Engine.lean`: the separate reference runtime
+  for lowered expressions, retaining its existing successful-run theorem.
 - `Aiur/Generic/Lower.lean` and `Specialize.lean`: body substitution, concrete
   enum collection, external entry selection, instance collection, recursion checks,
   and an executable structural certificate for the resulting core program.
 - `Aiur/Generic/Simulation.lean`, `ValueTyping.lean`, and `Correctness.lean`:
   runtime simulation, agreement of enum validation, and bidirectional specialization
-  correctness. `Generic/Circuit.lean` composes these with tree, memoized, and
-  integer-checker proofs and provides the compiled entrypoint wrapper.
+  correctness. `Generic/Circuit.lean` retains the core tree, memoized, and
+  integer-checker compositions and provides the compiled entrypoint wrapper.
+  The native source-to-core bridge is [pending](source-semantics.md#proof-boundary).
 
 - `Aiur/AST.lean`: recursive field, tuple, enum, and pointer types, values, patterns, expressions, explicitly typed
   signatures, constant tables, map references, and field specialization.
@@ -241,6 +247,6 @@ the compiler.
 
 `AiurTests/Arrays.lean` checks homogeneous and nested arrays, literal bounds,
 repeat/slice effects, patterns, constants, generics, static tables, hints,
-zero-length pointer restrictions, and circuit column/message counts. Both
-interpreters and the lowering theorems are exercised. `Examples/Arrays.lean`
+zero-length pointer restrictions, and circuit column/message counts. The generic-source, finite-source, and lowered-core
+interpreters are checked independently. `Examples/Arrays.lean`
 shows the source syntax, execution, specialization, and compilation.

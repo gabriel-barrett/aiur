@@ -60,94 +60,94 @@ theorem Compiled.checkMemo_iff {q : Specialized s entries} (c : Compiled q)
       cases h : c.system.checkMemo rom root rows <;>
         simp [Compiled.checkMemo, entry, selected, h, Except.mapError, bind, Except.bind]
 
-theorem Specialized.heap_complete (q : Specialized s entries)
+theorem Specialized.core_heap_complete (q : Specialized s entries)
     (selected : name ∈ entries) {system : Aiur.Circuit.System F}
     (compiled : Aiur.Circuit.compile q.program = .ok system)
-    (evaluated : Engine.EvalFn s.world name args [] value heap) (encode : Nat → F)
+    (evaluated : Engine.EvalFn s.coreWorld name args [] value heap) (encode : Nat → F)
     (distinct : ∀ i j, i < heap.length → j < heap.length → encode i = encode j → i = j) :
     Aiur.Circuit.EncodedEntryDerives system name (entryValues args) (value.mapAddress encode) := by
   have root := q.valid.2.2.2.2.2.2.2 name selected
-  exact compiler_heap_complete compiled root.2.2 ((q.evalFn_iff root.1).mp evaluated) encode distinct
+  exact compiler_heap_complete compiled root.2.2 ((q.coreEvalFn_iff root.1).mp evaluated) encode distinct
 
-theorem Specialized.run_complete [Fintype F] (q : Specialized s entries)
+theorem Specialized.core_run_complete [Fintype F] (q : Specialized s entries)
     (selected : name ∈ entries) {system : Aiur.Circuit.System F}
     (compiled : Aiur.Circuit.compile q.program = .ok system)
-    {hints : s.HintProvider}
-    (executed : s.run name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
+    {hints : s.CoreHintProvider}
+    (executed : s.coreRun name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
     ∃ encode : Nat → F, Aiur.Circuit.EncodedEntryDerives system name (entryValues args) (value.mapAddress encode) := by
   obtain ⟨encode, distinct⟩ := heap_address_embedding heap capacity
-  exact ⟨encode, q.heap_complete selected compiled (Source.run_spec executed).2 encode distinct⟩
+  exact ⟨encode, q.core_heap_complete selected compiled (Source.coreRun_spec executed).2 encode distinct⟩
 
-theorem Specialized.memo_run_complete [Fintype F] (q : Specialized s entries)
+theorem Specialized.core_memo_run_complete [Fintype F] (q : Specialized s entries)
     (selected : name ∈ entries) {system : Aiur.Circuit.System F}
     (compiled : Aiur.Circuit.compile q.program = .ok system)
-    {hints : s.HintProvider}
-    (executed : s.run name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
+    {hints : s.CoreHintProvider}
+    (executed : s.coreRun name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
     ∃ encode : Nat → F, Aiur.Circuit.EncodedMemoEntryDerives system name (entryValues args) (value.mapAddress encode) := by
-  obtain ⟨encode, tree⟩ := q.run_complete selected compiled executed capacity
+  obtain ⟨encode, tree⟩ := q.core_run_complete selected compiled executed capacity
   exact ⟨encode, tree.memo⟩
 
-theorem Specialized.heap_sound (q : Specialized s entries) (selected : name ∈ entries)
+theorem Specialized.core_heap_sound (q : Specialized s entries) (selected : name ∈ entries)
     {system : Aiur.Circuit.System F} (compiled : Aiur.Circuit.compile q.program = .ok system)
     {rom : WireROM F} (valid : rom.Valid)
     {args : List (SourceValue F)} {result : Value F} {wires : List (WireValue F)} {output : WireValue F}
     (derived : Aiur.Circuit.CircuitEvaluates system rom name wires output)
     (arguments : DecodesValues q.program.enums wires (entryValues args))
     (decoded : output.decode q.program.enums = some result) :
-    ∃ value heap, Engine.EvalFn s.world name args [] value heap ∧
+    ∃ value heap, Engine.EvalFn s.coreWorld name args [] value heap ∧
       Represents (rom.decode q.program.enums) heap value result := by
   have root := q.valid.2.2.2.2.2.2.2 name selected
   obtain ⟨value, heap, evaluated, related⟩ := compiler_heap_sound compiled valid root.2.2 derived arguments decoded
-  exact ⟨value, heap, (q.evalFn_iff root.1).mpr evaluated, related⟩
+  exact ⟨value, heap, (q.coreEvalFn_iff root.1).mpr evaluated, related⟩
 
-theorem Specialized.memo_acyclic_heap_sound (q : Specialized s entries) (selected : name ∈ entries)
+theorem Specialized.core_memo_acyclic_heap_sound (q : Specialized s entries) (selected : name ∈ entries)
     {system : Aiur.Circuit.System F} (compiled : Aiur.Circuit.compile q.program = .ok system)
     {rom : WireROM F} (valid : rom.Valid)
     {args : List (SourceValue F)} {result : Value F} {wires : List (WireValue F)} {output : WireValue F}
     (graph : Aiur.Circuit.MemoDerivation system rom ⟨name, wires, output⟩) (acyclic : graph.Acyclic)
     (arguments : DecodesValues q.program.enums wires (entryValues args))
     (decoded : output.decode q.program.enums = some result) :
-    ∃ value heap, Engine.EvalFn s.world name args [] value heap ∧
+    ∃ value heap, Engine.EvalFn s.coreWorld name args [] value heap ∧
       Represents (rom.decode q.program.enums) heap value result :=
-  q.heap_sound selected compiled valid (graph.derives_of_acyclic acyclic) arguments decoded
+  q.core_heap_sound selected compiled valid (graph.derives_of_acyclic acyclic) arguments decoded
 
-theorem Specialized.checker_run_complete [Fintype F] (q : Specialized s entries)
+theorem Specialized.core_checker_run_complete [Fintype F] (q : Specialized s entries)
     (selected : name ∈ entries) {system : Aiur.Circuit.System F}
     (compiled : Aiur.Circuit.compile q.program = .ok system) (wellFormed : system.WellFormed)
-    {hints : s.HintProvider}
-    (executed : s.run name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
+    {hints : s.CoreHintProvider}
+    (executed : s.coreRun name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
     ∃ (encode : Nat → F), ∃ wires output rom rows,
       DecodesValues system.enums wires (entryValues args) ∧
       output.decode system.enums = some (value.mapAddress encode) ∧
       system.check rom ⟨name, wires, output⟩ rows = .ok () := by
-  obtain ⟨encode, wires, output, arguments, decoded, accepted⟩ := q.run_complete selected compiled executed capacity
+  obtain ⟨encode, wires, output, arguments, decoded, accepted⟩ := q.core_run_complete selected compiled executed capacity
   obtain ⟨rom, rows, checked⟩ := (system.check_entry_iff wellFormed).mpr accepted
   exact ⟨encode, wires, output, rom, rows, arguments, decoded, checked⟩
 
-theorem Specialized.checkerMemo_run_complete [Fintype F] (q : Specialized s entries)
+theorem Specialized.core_checkerMemo_run_complete [Fintype F] (q : Specialized s entries)
     (selected : name ∈ entries) {system : Aiur.Circuit.System F}
     (compiled : Aiur.Circuit.compile q.program = .ok system) (wellFormed : system.WellFormed)
-    {hints : s.HintProvider}
-    (executed : s.run name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
+    {hints : s.CoreHintProvider}
+    (executed : s.coreRun name args fuel hints = .ok (value, heap)) (capacity : heap.length ≤ Fintype.card F) :
     ∃ (encode : Nat → F), ∃ wires output rom rows,
       DecodesValues system.enums wires (entryValues args) ∧
       output.decode system.enums = some (value.mapAddress encode) ∧
       system.checkMemo rom ⟨name, wires, output⟩ rows = .ok () := by
-  obtain ⟨encode, wires, output, arguments, decoded, accepted⟩ := q.memo_run_complete selected compiled executed capacity
+  obtain ⟨encode, wires, output, arguments, decoded, accepted⟩ := q.core_memo_run_complete selected compiled executed capacity
   obtain ⟨rom, rows, checked⟩ := (system.checkMemo_entry_iff wellFormed).mpr accepted
   exact ⟨encode, wires, output, rom, rows, arguments, decoded, checked⟩
 
-theorem Specialized.checker_heap_sound (q : Specialized s entries) (selected : name ∈ entries)
+theorem Specialized.core_checker_heap_sound (q : Specialized s entries) (selected : name ∈ entries)
     {system : Aiur.Circuit.System F} (compiled : Aiur.Circuit.compile q.program = .ok system)
     {rom : WireROM F} {args : List (SourceValue F)} {result : Value F}
     {wires : List (WireValue F)} {output : WireValue F} {rows : List (Aiur.Circuit.Row F)}
     (checked : system.check rom ⟨name, wires, output⟩ rows = .ok ())
     (arguments : DecodesValues q.program.enums wires (entryValues args))
     (decoded : output.decode q.program.enums = some result) :
-    ∃ value heap, Engine.EvalFn s.world name args [] value heap ∧
+    ∃ value heap, Engine.EvalFn s.coreWorld name args [] value heap ∧
       Represents (rom.decode q.program.enums) heap value result := by
   have root := q.valid.2.2.2.2.2.2.2 name selected
   obtain ⟨value, heap, evaluated, related⟩ := Aiur.checker_heap_sound compiled checked root.2.2 arguments decoded
-  exact ⟨value, heap, (q.evalFn_iff root.1).mpr evaluated, related⟩
+  exact ⟨value, heap, (q.coreEvalFn_iff root.1).mpr evaluated, related⟩
 
 end Aiur.Generic

@@ -62,8 +62,8 @@ be selected.
 
 `Generic.Pattern.load` is a source constructor. The concrete core continues to
 use heap-independent patterns and ordinary load expressions. Function-body
-lowering, shared by direct generic execution and specialization, performs the
-desugaring:
+lowering on the circuit path performs the desugaring. Direct source execution
+uses recursive, heap-dependent pattern matching instead:
 
 - Top-level `let &p = value; body` becomes `let p = *value; body`, recursively.
 - Patterns without loads keep their existing core representation.
@@ -87,17 +87,20 @@ constraints remain polynomial equations equal to zero.
 
 ## Formalization and validation
 
-The source pattern semantics is this desugaring; it does not add a heap-dependent
-constructor to the core `Pattern.bindings` operation. `PatternLowering.Attempt`
-specifies the finite sequence of tests and reads before choosing a continuation.
-The proved `letSteps_iff` and `matchSteps_iff` relate that specification in both
-directions to core relational evaluation. `lowerLet_load` proves the exact AST
-identity above, and `load_bind_iff` states its evaluation rule: evaluate the
-pointer once, load its cell, then run the body with the contents bound.
+`SourceSemantics.matchPattern` defines source matching directly, including
+nested loads and ordered failure. `SourceRules.let_load_iff` proves the source
+law `let &p = x; body` iff `let p = *x; body`. Executor correctness and source
+specialization equivalence use these native rules.
 
-The existing executor correspondence, generic specialization equivalence, tree
-soundness/completeness, memoized completeness and acyclic soundness apply to the
-resulting core expressions. No proof admissions or new axioms are added.
+`PatternLowering.Attempt` separately specifies the generated sequence of tests
+and reads. `letSteps_iff` and `matchSteps_iff` relate plan execution to core
+relational evaluation. `lowerLet_load` proves the corresponding core AST
+identity, and `load_bind_iff` characterizes the compiled simple load binding.
+
+The general proof connecting recursive source matching to those generated plans
+is pending. Existing circuit tree/memoized theorems remain proved for the core;
+see [the semantic boundary](source-semantics.md#proof-boundary). None of these
+checked theorems uses proof admissions or new axioms.
 
 `AiurTests/PointerPatterns.lean` covers nested reads, aliases, generic parameters,
 unit/singleton tuples, first-match overlaps, failed lets and partial matches,

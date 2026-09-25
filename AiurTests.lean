@@ -18,6 +18,7 @@ import AiurTests.Aliases
 import AiurTests.PointerPatterns
 import AiurTests.Consts
 import AiurTests.Arrays
+import AiurTests.SourceEvaluation
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 

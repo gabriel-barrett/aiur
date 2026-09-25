@@ -92,16 +92,18 @@ resolves globally, and capitalization does not affect resolution. See
 Arrays use homogeneous types `[A; n]`, literals `[a, b, c]`, and repetition
 `[value; n]` (evaluate once, then copy). Indexing `a[2]` and slicing `a[1..3]`
 require literal bounds checked before execution. Array patterns destructure
-with `[a, b]`; consts can use forms such as `const cell = &[0];`. Arrays lower
-to tuples and fixed projections without dynamic indexing circuitry. See
+with `[a, b]`; consts can use forms such as `const cell = &[0];`. Source evaluation keeps arrays and their operations explicit. On the circuit
+path they lower to tuples and fixed projections without dynamic indexing circuitry. See
 [arrays](design/arrays.md) and [the example](Examples/Arrays.lean).
 
 `source.run` evaluates directly without collecting a finite set of instances.
 `Generic.specialize` selects non-generic entry functions externally and rejects
 recursive paths that change a function's type arguments. The resulting wrapper
 keeps that public interface; `specialized.compile` produces a circuit artifact
-with the same entrypoint checks. Specialization is proved equivalent to source
-evaluation on the selected entries, with circuit and accumulator proof reuse.
+with the same entrypoint checks. Source evaluation is proved equivalent before
+and after finite instance selection. The full bridge from this native source
+predicate to the lowered circuit core remains pending; see the
+[semantic boundary and proof status](design/source-semantics.md).
 See [the design](design/generics.md) and [the example](Examples/Generics.lean).
 
 ## Syntax and evaluation

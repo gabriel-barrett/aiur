@@ -11,6 +11,8 @@ design, and keep proposals and unanswered questions explicitly separate.
 
 - [Language](language.md): initial scope, operations, pattern matching, and open
   semantic questions.
+- [Source semantics](source-semantics.md): native evaluation, preparation order,
+  the circuit compilation boundary, and the remaining lowering proof.
 - [Generics](generics.md): inferred type arguments, generic functions and enums,
   external entry selection, direct evaluation, and proved specialization.
 - [Type aliases](type-aliases.md): transparent parameterized aliases, expansion
@@ -20,7 +22,7 @@ design, and keep proposals and unanswered questions explicitly separate.
 - [Tuples](tuples.md): nested values and patterns, explicit signatures, structured
   circuit interfaces, first-match equations, and proof boundaries.
 - [Arrays](arrays.md): homogeneous fixed-size values, repetition, patterns,
-  static indexing and slicing, and proved lowering to tuples.
+  static indexing and slicing, and late circuit lowering.
 - [Pointers and ROM](pointers.md): typed opaque pointers, a prover-chosen
   heterogeneous table, allocation bounds, and source/circuit correspondence.
 - [Pointer patterns](pointer-patterns.md): `&pattern` as a load, nested ordered

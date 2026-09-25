@@ -2,6 +2,7 @@ import Aiur.Generic.Runtime
 import Aiur.Generic.Equality
 import Aiur.Generic.ValueTyping
 import Aiur.Generic.Simulation
+import Aiur.Generic.SourceSimulation
 
 namespace Aiur.Generic
 
@@ -24,11 +25,22 @@ deriving instance DecidableEq for Aiur.Table
 instance [DecidableEq F] (s : Source F) (p : Aiur.Program F) (entries : List String) :
     Decidable (Valid s p entries) := by unfold Valid; infer_instance
 
+/-- Every source call in every selected instance is in the finite cache.
+This check sees source arrays and pointer patterns; it does not lower a body. -/
+def SourceClosed [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Prop :=
+  ∀ n ∈ callableNames p, ((s.program.sourceFunction? n).all fun fn =>
+    SourceSemantics.inScope (callableNames p) (fun _ => true) fn.types fn.body) = true
+
+instance [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Decidable (SourceClosed s p) := by
+  unfold SourceClosed
+  infer_instance
+
 /-- The artifact retains its public entrypoint whitelist. Reachable helpers
 are deliberately not made public merely by being present in `program`. -/
 structure Specialized [DecidableEq F] (s : Source F) (entries : List String) where
   program : Aiur.Program F
   valid : Valid s program entries
+  sourceClosed : SourceClosed s program
 
 structure Limits where
   instances : Nat := 1024
@@ -89,7 +101,9 @@ def specialize [DecidableEq F] (s : Source F) (entries : List String) (limits : 
   -- Recheck after instantiation: enum layouts, pointer-free inputs, maps, and
   -- ordinary typing all belong to the existing core checker.
   (typecheck p).mapError toString
-  if valid : Valid s p entries then return ⟨p, valid⟩
+  if valid : Valid s p entries then
+    if closed : SourceClosed s p then return ⟨p, valid, closed⟩
+    else throw "specialization failed its source dependency check"
   else throw "specialization failed its structural certificate check"
 
 def Specialized.checkEntry [DecidableEq F] {s : Source F} {entries : List String}
@@ -104,10 +118,32 @@ theorem Specialized.checkEntry_iff [DecidableEq F] {s : Source F} {entries : Lis
     simp [Specialized.checkEntry, selected, entry, Except.mapError]
   · simp [Specialized.checkEntry, selected]
 
-def Specialized.run [Field F] [DecidableEq F] {s : Source F} {entries : List String}
+def Specialized.coreRun [Field F] [DecidableEq F] {s : Source F} {entries : List String}
     (q : Specialized s entries) (name : String) (args : List (SourceValue F)) (fuel : Nat := 1000)
     (hints : HintProvider F q.program.enums := HintProvider.unavailable) : Except String (SourceValue F × Heap F) := do
   q.checkEntry name
   (Aiur.run q.program name args fuel hints).mapError reprStr
+
+/-- A finite cache of source bodies paired with their concrete type environments.
+Array operations and pointer patterns remain present in these bodies. -/
+def Specialized.instances [DecidableEq F] {s : Source F} {entries : List String}
+    (q : Specialized s entries) : List (String × Option (SourceFunction F)) :=
+  (callableNames q.program).map fun n => (n, s.program.sourceFunction? n)
+
+def Specialized.world [DecidableEq F] {s : Source F} {entries : List String}
+    (q : Specialized s entries) : SourceSemantics.World F :=
+  let cache := q.instances
+  sourceWorld s fun n => (cache.find? (·.1 == n)).bind Prod.snd
+
+def Specialized.run [Field F] [DecidableEq F] {s : Source F} {entries : List String}
+    (q : Specialized s entries) (name : String) (args : List (SourceValue F)) (fuel : Nat := 1000)
+    (hints : s.HintProvider := SourceSemantics.unavailable) : Except String (SourceValue F × Heap F) := do
+  q.checkEntry name
+  let (types, locals, body) ← (q.world.prepare name args).mapError reprStr
+  (SourceSemantics.evalExprWith q.world hints types locals fuel body []).mapError reprStr
+
+def Specialized.EvalCall [Field F] [DecidableEq F] {s : Source F} {entries : List String}
+    (q : Specialized s entries) (name : String) (args : List (SourceValue F)) (result : SourceValue F) : Prop :=
+  q.checkEntry name = .ok () ∧ ∃ heap, SourceSemantics.EvalFn q.world name args [] result heap
 
 end Aiur.Generic

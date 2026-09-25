@@ -132,8 +132,10 @@ templates. These results have no admitted proof steps or new axioms.
 
 Const semantics is early expansion into the existing source language. Direct
 execution and specialization consume that same expanded source, so their
-existing equivalence, evaluator correspondence, and circuit theorems continue
-to apply. Const pointer patterns use the existing proved read/test lowering.
+source equivalence and evaluator correspondence apply. Circuit theorems remain
+checked for the lowered core. Const pointer patterns are interpreted directly
+before compilation; their complete lowering proof is part of the
+[pending source-to-core bridge](source-semantics.md#proof-boundary).
 
 `AiurTests/Consts.lean` covers name resolution, capitalization, shadowing,
 forward references, shared dependencies, unused cycles and invalid templates,

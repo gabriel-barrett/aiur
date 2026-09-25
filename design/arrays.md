@@ -73,14 +73,14 @@ an array; `.0` continues to require a tuple.
 
 ## Patterns, consts, and typing
 
-`[p1, p2, ...]` matches an array of exactly that length. `[pattern; n]` expands
-to `n` copies of the pattern. It is useful for `[0; n]` and `[_; n]`; copying
+`[p1, p2, ...]` matches an array of exactly that length. `[pattern; n]` matches
+each of the `n` elements with the same pattern; it remains explicit in the source AST. It is useful for `[0; n]` and `[_; n]`; copying
 a binder more than once is rejected by the usual duplicate-binding check.
 Rest patterns such as `[first, ..]` are not included yet.
 
 Array patterns work in lets, ordered match arms, and irrefutable function
 parameters. Refutable lets can fail. Nested pointer patterns keep their
-existing ordered-load behavior. Repeated patterns are normalized before
+existing ordered-load behavior. Repeated patterns are compared using normalized conditions during
 duplicate-condition checking, so `[0; 2]` and `[0, 0]` are duplicates.
 Field-literal collisions are checked again after choosing the field, as before.
 
@@ -110,9 +110,9 @@ zero-length element layout would disappear during lowering.
 
 ## Lowering, circuits, and proofs
 
-Arrays remain explicit in the source AST during const expansion, alias
-expansion, and generic inference. Instantiating a function body lowers them to
-the existing core shared by direct evaluation and specialization:
+Arrays remain explicit through const/alias expansion, inference, direct execution,
+and the source evaluation predicate. The circuit path lowers selected concrete
+instances to the existing monomorphic core:
 
 - `[A; n]` becomes the tuple of `n` copies of the lowered type `A`.
 - Array literals and patterns become tuples and tuple patterns.
@@ -125,7 +125,8 @@ the existing core shared by direct evaluation and specialization:
 Generated bindings scope only generated references; they cannot capture names
 in the operand. Repeated constant table rows are constructed directly as
 constants, without running the executor. Runtime values and hint providers
-use the lowered tuple representation. A zero-length array has zero data words.
+share the existing structured sequence representation for tuples and arrays;
+this does not lower or flatten the source expression. A zero-length array has zero data words.
 Enums in array elements retain their tags and canonical padding.
 
 Circuit access selects and rearranges existing field expressions. It creates
@@ -138,8 +139,11 @@ circuit cost; the proof-oriented executor uses lists for tuple storage.
 relational rules `repeatValue_iff` and `sliceValue_iff`. These rules preserve
 the single evaluation and exact final heap, including empty results and
 nondeterministic operands. Alias and const expansion's literal-conversion
-theorems cover the new forms. The existing executor, specialization,
-tree/memoized, and integer-checker proofs apply to the same lowered core.
+theorems cover the new forms. `SourceSemantics` and `SourceEvalFacts` now
+define and verify native source execution, while `SourceSimulation` proves
+source specialization equivalence. Tree/memoized and integer-checker proofs
+remain checked for the lowered core. The full source-to-core equivalence is
+pending; see [the proof boundary](source-semantics.md#proof-boundary).
 There are no proof admissions or new axioms.
 
 An implementation guard rejects individual lengths exceeding 65,536 before
@@ -149,6 +153,6 @@ separate future extensions.
 
 `AiurTests/Arrays.lean` covers homogeneous typing, static bounds, nested shapes,
 repetition effects, const/pointer patterns, aliases/generics, tables/maps,
-hint validation, zero-length pointer restrictions, field conversion, both
+hint validation, zero-length pointer restrictions, field conversion, source, specialized-source, and lowered-core
 interpreters, and circuit column/message counts. `Examples/Arrays.lean` is a
 runnable example.

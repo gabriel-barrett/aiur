@@ -86,6 +86,11 @@ def runSpecialized (name : String) (args : List (SourceValue Rat) := []) := do
   let q ← Generic.specialize s [name]
   q.run name args
 
+def runCore (name : String) (args : List (SourceValue Rat) := []) := do
+  let s ← Generic.prepare (source.toField Rat)
+  let q ← Generic.specialize s [name]
+  q.coreRun name args
+
 def checks : List (String × Except String (SourceValue Rat × Heap Rat)) := [
   ("all_slices", .ok (.tuple [
     .tuple [1, 2], .tuple [3, 4], .tuple [1, 2, 3, 4], .tuple [2, 3],
@@ -112,7 +117,7 @@ def checks : List (String × Except String (SourceValue Rat × Heap Rat)) := [
   ("zero_hint", .error (reprStr (EvalError.hint .unavailable)))
 ]
 
-#guard checks.all fun (name, expected) => runSource name == expected && runSpecialized name == expected
+#guard checks.all fun (name, expected) => runSource name == expected && runSpecialized name == expected && runCore name == expected
 #guard runSource "ordered" [.tuple [0, 0]] == .ok (10, [])
 #guard runSource "ordered" [.tuple [3, 0]] == .ok (23, [])
 #guard runSpecialized "ordered" [.tuple [3, 4]] == .ok (7, [])
@@ -267,9 +272,9 @@ fn repeated(a: Field) -> [Field; 4] { [a; 4] }
 
 def run : IO Unit := do
   for (name, expected) in checks do
-    for actual in [runSource name, runSpecialized name] do
+    for actual in [runSource name, runSpecialized name, runCore name] do
       unless actual = expected do
         throw (IO.userError s!"array {name}: expected {repr expected}, got {repr actual}")
-  IO.println s!"Passed {2 * checks.length} array execution checks."
+  IO.println s!"Passed {3 * checks.length} array execution checks."
 
 end AiurArrayTests

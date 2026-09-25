@@ -19,8 +19,8 @@ def resolveEnum (p : Program α) (key : Instance) : Except String Aiur.EnumDecl 
   }
 
 /-- Inference has filled in every call/constructor's type arguments before
-substitution and pointer-pattern desugaring. Instantiation does not visit any
-callee's body. -/
+circuit lowering. Source evaluation uses the original body with a type
+environment and never calls this translation. -/
 def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .literal x => .literal x
   | .var n => .var n
@@ -62,8 +62,8 @@ def resolveFunction (p : Program α) (key : Instance) : Except String (Aiur.Func
     body := fn.body.lower env
   }
 
-/-- Both execution and specialization use this lookup, including decoding of
-the canonical name. No finite specialization is needed to resolve one call. -/
+/-- Lookup in the compiler language, decoding the canonical instance name and
+lowering its body. Source execution uses `Program.sourceFunction?` instead. -/
 def Program.function? (p : Program α) (name : String) : Option (Aiur.Function α) :=
   (Instance.ofSymbol name >>= resolveFunction p).toOption
 

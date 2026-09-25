@@ -1,5 +1,5 @@
 import Aiur.Generic.Elaborate
-import Aiur.Generic.Engine
+import Aiur.Generic.SourceEvalFacts
 import Aiur.Generic.PatternChecks
 
 namespace Aiur.Generic
@@ -55,18 +55,6 @@ structure Source (F : Type) [DecidableEq F] where
   tables : Aiur.Program F
   tablesChecked : typecheck tables = .ok ()
 
-def prepareFunction (enums : String → Option Aiur.EnumDecl) (fn : Aiur.Function F)
-    (args : List (SourceValue F)) : Except EvalError (Environment F Nat × Aiur.Expr F) :=
-  if fn.params.map Prod.snd = args.map Value.type ∧ (args.map (wellFormed enums)).all id = true then
-    .ok ((fn.params.map Prod.fst).zip args, fn.body)
-  else .error (.malformedValue (.tuple (args.map Value.type)))
-
-def Source.world [DecidableEq F] (s : Source F) : Engine.World F where
-  prepare name args := match s.program.function? name with
-    | some fn => prepareFunction s.program.enum? fn args
-    | none => return ([], (← lookupMap s.tables name args).toExpr)
-  typed t v := hasType s.program.enum? t v
-
 def prepare [DecidableEq F] (p : Program F) : Except String (Source F) := do
   let p ← elaborate p
   for fn in p.functions do checkLoadPatterns p.enums fn.name fn.body
@@ -80,11 +68,51 @@ def Source.checkEntry [DecidableEq F] (s : Source F) (name : String) : Except St
   let some fn := s.program.findFunction? name | throw s!"unknown entrypoint '{name}'"
   if !fn.typeParams.isEmpty then throw s!"entrypoint '{name}' must be non-generic"
   (fn.params.map Prod.snd).forM (checkPointerFree s.program s!"entrypoint '{name}'" 1024 [])
-  let fn ← resolveFunction s.program ⟨name, []⟩
+  let fn : Aiur.Function F := {
+    name, params := fn.params.map fun (n, t) => (n, t.toCore)
+    result := fn.result.toCore, body := .tuple [] }
   let enums ← collectEnums s.program [] 1024 [] ((fn.params.map Prod.snd).flatMap coreTypeNames)
   (Aiur.checkEntry ({ functions := [fn], enums } : Aiur.Program F) name).mapError (fun e => reprStr e)
 
-abbrev Source.HintProvider [DecidableEq F] (s : Source F) := Engine.HintProvider s.world
+/-- A closed function instance retains the source body and its type environment.
+This is a runtime closure for a first-order function, not a function value in Aiur. -/
+structure SourceFunction (F : Type) where
+  types : SourceSemantics.Types
+  params : List (String × Aiur.Ty)
+  body : Expr F
+
+def Program.sourceFunction? (p : Program F) (name : String) : Option (SourceFunction F) := do
+  let key ← (Instance.ofSymbol name).toOption
+  let fn ← p.findFunction? key.name
+  let types ← (arguments fn.typeParams key.types).toOption
+  return { types, params := fn.params.map fun (n, t) => (n, (t.subst types).toCore), body := fn.body }
+
+def SourceFunction.prepare (enums : String → Option Aiur.EnumDecl) (fn : SourceFunction F)
+    (args : List (SourceValue F)) : Except EvalError (SourceSemantics.Types × Environment F Nat × Expr F) :=
+  if fn.params.map Prod.snd = args.map Value.type ∧ (args.map (wellFormed enums)).all id = true then
+    .ok (fn.types, (fn.params.map Prod.fst).zip args, fn.body)
+  else .error (.malformedValue (.tuple (args.map Value.type)))
+
+def constantExpr : Constant F → Expr F
+  | .field x => .literal x
+  | .tuple xs => .tuple (xs.map constantExpr)
+  | .construct n c xs => .construct n (some []) c (xs.map constantExpr)
+  | .ptr _ a => Empty.elim a
+termination_by v => sizeOf v
+
+/-- Ordinary calls resolve the original body without rewriting it. The finite
+specialized runtime uses this same operation with a cached function lookup. -/
+def sourceWorld [DecidableEq F] (s : Source F)
+    (functions : String → Option (SourceFunction F)) : SourceSemantics.World F where
+  prepare name args := match functions name with
+    | some fn => fn.prepare s.program.enum? args
+    | none => return ([], [], constantExpr (← lookupMap s.tables name args))
+  typed t v := hasType s.program.enum? t v
+
+def Source.world [DecidableEq F] (s : Source F) : SourceSemantics.World F :=
+  sourceWorld s s.program.sourceFunction?
+
+abbrev Source.HintProvider [DecidableEq F] (s : Source F) := SourceSemantics.HintProvider s.world
 
 def Source.checkedHints [DecidableEq F] (s : Source F)
     (provider : SourceValue F → Aiur.Ty → Except HintError (Constant F)) : s.HintProvider := fun key t => do
@@ -94,32 +122,32 @@ def Source.checkedHints [DecidableEq F] (s : Source F)
 
 def Source.run [Field F] [DecidableEq F] (s : Source F) (name : String)
     (args : List (SourceValue F)) (fuel : Nat := 1000)
-    (hints : s.HintProvider := Engine.unavailable) : Except String (SourceValue F × Heap F) := do
+    (hints : s.HintProvider := SourceSemantics.unavailable) : Except String (SourceValue F × Heap F) := do
   s.checkEntry name
-  let (locals, body) ← (s.world.prepare name args).mapError reprStr
-  (Engine.evalExprWith s.world hints locals fuel body []).mapError reprStr
+  let (types, locals, body) ← (s.world.prepare name args).mapError reprStr
+  (SourceSemantics.evalExprWith s.world hints types locals fuel body []).mapError reprStr
 
 def Source.EvalCall [Field F] [DecidableEq F] (s : Source F) (name : String)
     (args : List (SourceValue F)) (result : SourceValue F) : Prop :=
-  s.checkEntry name = .ok () ∧ ∃ heap, Engine.EvalFn s.world name args [] result heap
+  s.checkEntry name = .ok () ∧ ∃ heap, SourceSemantics.EvalFn s.world name args [] result heap
 
-/-- A hint provider is operational only. Every successful direct execution
-has a provider-independent relational evaluation, including the final heap. -/
+/-- Successful execution implies the independent, fuel-free source relation.
+The statement does not mention specialization or expression lowering. -/
 theorem Source.run_spec [Field F] [DecidableEq F] {s : Source F}
     {hints : s.HintProvider} {name args fuel result heap}
     (run : s.run name args fuel hints = .ok (result, heap)) :
-    s.checkEntry name = .ok () ∧ Engine.EvalFn s.world name args [] result heap := by
+    s.checkEntry name = .ok () ∧ SourceSemantics.EvalFn s.world name args [] result heap := by
   cases entry : s.checkEntry name with
   | error e => simp [Source.run, entry, bind, Except.bind] at run
   | ok u =>
       cases u
       cases prepared : s.world.prepare name args with
       | error e => simp [Source.run, entry, prepared, Except.mapError, bind, Except.bind] at run
-      | ok pair =>
-          rcases pair with ⟨locals, body⟩
-          have executed : Engine.evalExprWith s.world hints locals fuel body [] = .ok (result, heap) := by
-            cases h : Engine.evalExprWith s.world hints locals fuel body [] <;>
+      | ok triple =>
+          rcases triple with ⟨types, locals, body⟩
+          have executed : SourceSemantics.evalExprWith s.world hints types locals fuel body [] = .ok (result, heap) := by
+            cases h : SourceSemantics.evalExprWith s.world hints types locals fuel body [] <;>
               simpa [Source.run, entry, prepared, h, Except.mapError, bind, Except.bind] using run
-          exact ⟨rfl, .intro prepared (Engine.evalExpr_spec executed)⟩
+          exact ⟨rfl, .intro prepared (SourceSemantics.evalExpr_spec executed)⟩
 
 end Aiur.Generic
