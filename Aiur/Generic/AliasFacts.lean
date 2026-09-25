@@ -37,9 +37,9 @@ theorem checkPatternTypes_map (enums aliases rigid) (f : α → β) (pat : Patte
         ps.mapM (checkPatternTypes enums aliases rigid) :=
     traverse_same ps _ _ _ (fun q hq => checkPatternTypes_map enums aliases rigid f q)
   cases pat <;> simp only [Pattern.map, checkPatternTypes]
-  all_goals try rw [children _ (by intros; simp_all only [Pattern.tuple.sizeOf_spec,
+  all_goals try rw [children _ (by intros; simp_all only [Pattern.tuple.sizeOf_spec, Pattern.array.sizeOf_spec,
     Pattern.construct.sizeOf_spec, Pattern.constructAs.sizeOf_spec]; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
-  all_goals exact sub _ (by simp_wf)
+  all_goals exact sub _ (by simp_wf <;> omega)
 termination_by sizeOf pat
 decreasing_by all_goals first | exact h q hq | exact hsize
 
@@ -54,12 +54,12 @@ theorem expandPattern_map (aliases) (f : α → β) (pat : Pattern α) :
     traverse_map ps _ _ _ _ (fun q hq => expandPattern_map aliases f q)
   cases pat with
   | literal | wildcard | bind | global => simp [Pattern.map, expandPattern, map_pure]
-  | load p =>
-      simp only [Pattern.map, expandPattern, sub p (by simp_wf)]
+  | load p | «repeat» p _ =>
+      simp only [Pattern.map, expandPattern, sub p (by simp_wf <;> omega)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Pattern.map]
-  | tuple ps =>
+  | tuple ps | array ps =>
       simp only [Pattern.map, expandPattern]
-      rw [children ps (by intros; simp only [Pattern.tuple.sizeOf_spec]; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
+      rw [children ps (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       cases ps.mapM (expandPattern aliases) <;>
         simp [Except.map, bind, Except.bind, pure, Except.pure, Pattern.map]
   | construct t c ps =>
@@ -69,6 +69,7 @@ theorem expandPattern_map (aliases) (f : α → β) (pat : Pattern α) :
       cases t with
       | field => cases expandType aliases .field <;> simp [pure, Except.pure, Except.map, bind, Except.bind, Pattern.map]
       | tuple ts => cases expandType aliases (.tuple ts) <;> simp [pure, Except.pure, Except.map, bind, Except.bind, Pattern.map]
+      | array t n => cases expandType aliases (.array t n) <;> simp [pure, Except.pure, Except.map, bind, Except.bind, Pattern.map]
       | ptr t => cases expandType aliases (.ptr t) <;> simp [pure, Except.pure, Except.map, bind, Except.bind, Pattern.map]
       | param n => cases expandType aliases (.param n) <;> simp [pure, Except.pure, Except.map, bind, Except.bind, Pattern.map]
       | named n ts =>
@@ -98,10 +99,10 @@ theorem checkExprTypes_map (enums aliases rigid) (f : α → β) (expr : Expr α
     traverse_same xs _ _ _ (fun x hx => checkExprTypes_map enums aliases rigid f x)
   cases expr with
   | literal | var | global => simp [Expr.map, checkExprTypes]
-  | tuple xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
+  | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, checkExprTypes]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
-  | project x _ | store x | load x | hint _ x | neg x =>
+  | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
       simp only [Expr.map, checkExprTypes, sub x (by simp_wf <;> omega)]
   | letValue _ x b | binary _ x b =>
       simp only [Expr.map, checkExprTypes, checkPatternTypes_map,
@@ -130,7 +131,7 @@ theorem expandExpr_map (aliases) (f : α → β) (expr : Expr α) :
     traverse_map xs _ _ _ _ (fun x hx => expandExpr_map aliases f x)
   cases expr with
   | literal | var | global => simp [Expr.map, expandExpr, map_pure]
-  | tuple xs | constructAs _ _ _ xs | call _ _ xs =>
+  | tuple xs | array xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, expandExpr]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
@@ -145,7 +146,7 @@ theorem expandExpr_map (aliases) (f : α → β) (expr : Expr α) :
       | some d =>
           cases resolved : constructorType aliases d ts <;>
             simp only [found, resolved, pure, Except.pure, Except.map, bind, Except.bind, Expr.map]
-  | project x _ | store x | load x | hint _ x | neg x =>
+  | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
       simp only [Expr.map, expandExpr, sub x (by simp_wf <;> omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
   | letValue _ x b | binary _ x b =>

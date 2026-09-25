@@ -30,14 +30,32 @@ syntax (name := genericConstructorPatternArgs) ident "::<" sepBy1(aiur_type, ","
 declare_syntax_cat aiur_const (behavior := symbol)
 syntax (name := constDefinition) &"const" ident "=" aiur_expr ";" : aiur_const
 syntax (name := constDecl) aiur_const : aiur_decl
+syntax (name := arrayType) "[" aiur_type ";" num "]" : aiur_type
+syntax (name := arrayExpr) "[" sepBy(aiur_expr, ",", ",", allowTrailingSep) "]" : aiur_expr
+syntax (name := repeatExpr) "[" aiur_expr ";" num "]" : aiur_expr
+syntax (name := arrayPattern) "[" sepBy(aiur_pattern, ",", ",", allowTrailingSep) "]" : aiur_pattern
+syntax (name := repeatPattern) "[" aiur_pattern ";" num "]" : aiur_pattern
+syntax:80 (name := indexExpr) aiur_expr:80 "[" num "]" : aiur_expr
+syntax:80 (name := sliceExpr) aiur_expr:80 "[" num ".." num "]" : aiur_expr
+syntax:80 (name := sliceFromExpr) aiur_expr:80 "[" num ".." "]" : aiur_expr
+syntax:80 (name := sliceToExpr) aiur_expr:80 "[" ".." num "]" : aiur_expr
+syntax:80 (name := sliceAllExpr) aiur_expr:80 "[" ".." "]" : aiur_expr
+syntax:80 (name := sliceInclusiveExpr) aiur_expr:80 "[" num "..=" num "]" : aiur_expr
+syntax:80 (name := sliceToInclusiveExpr) aiur_expr:80 "[" "..=" num "]" : aiur_expr
 
 private def readName (s : Syntax) : Except String String :=
   match s.getId with
   | .str .anonymous n => .ok n
   | _ => .error "expected a simple identifier"
 
+private def readLength (s : Syntax) : Except String Nat := do
+  let some n := s.isNatLit? | throw "array lengths must be natural-number literals"
+  checkArrayLength n
+  return n
+
 private partial def type (params : List String) (s : Syntax) : Except String Ty := do
   if s.getKind == ``pointerType then return .ptr (← type params s[1])
+  else if s.getKind == ``arrayType then return .array (← type params s[1]) (← readLength s[3])
   else if s.getKind == ``namedType then
     let n ← readName s[0]
     return if n == "Field" then .field else if params.contains n then .param n else .named n []
@@ -54,6 +72,8 @@ private partial def type (params : List String) (s : Syntax) : Except String Ty 
 private partial def pattern (params : List String) (s : Syntax) : Except String (Pattern Nat) := do
   if s.getKind == ``loadPattern then return .load (← pattern params s[1])
   else if s.getKind == ``globalPattern then return .global (← readName s[1])
+  else if s.getKind == ``arrayPattern then return .array (← s[1].getSepArgs.toList.mapM (pattern params))
+  else if s.getKind == ``repeatPattern then return .repeat (← pattern params s[1]) (← readLength s[3])
   else if s.getKind == ``literalPattern then return .literal (s[0].isNatLit?.getD 0)
   else if s.getKind == ``wildcardPattern then return .wildcard
   else if s.getKind == ``bindPattern then return .bind (← readName s[0])
@@ -76,6 +96,18 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
   else if k == ``literal then return .literal (s[0].isNatLit?.getD 0)
   else if k == ``variableExpr then return .var (← readName s[0])
   else if k == ``globalExpr then return .global (← readName s[1])
+  else if k == ``arrayExpr then return .array (← s[1].getSepArgs.toList.mapM (expr params))
+  else if k == ``repeatExpr then return .repeat (← expr params s[1]) (← readLength s[3])
+  else if k == ``indexExpr then return .index (← expr params s[0]) (s[2].isNatLit?.getD 0)
+  else if k == ``sliceExpr || k == ``sliceInclusiveExpr then
+    let stop := s[4].isNatLit?.getD 0
+    return .slice (← expr params s[0]) (s[2].isNatLit?.getD 0)
+      (some (if k == ``sliceInclusiveExpr then stop + 1 else stop))
+  else if k == ``sliceFromExpr then return .slice (← expr params s[0]) (s[2].isNatLit?.getD 0) none
+  else if k == ``sliceToExpr || k == ``sliceToInclusiveExpr then
+    let stop := s[3].isNatLit?.getD 0
+    return .slice (← expr params s[0]) 0 (some (if k == ``sliceToInclusiveExpr then stop + 1 else stop))
+  else if k == ``sliceAllExpr then return .slice (← expr params s[0]) 0 none
   else if k == ``unitExpr then return .tuple []
   else if k == ``tupleExpr then return .tuple ((← expr params s[1]) :: (← s[3].getSepArgs.toList.mapM (expr params)))
   else if k == ``constructorExpr || k == ``constructorCall then

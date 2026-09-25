@@ -1,4 +1,5 @@
 import Aiur.Generic.PatternLowering
+import Aiur.Generic.ArrayLowering
 import Aiur.Typecheck
 
 namespace Aiur.Generic
@@ -24,7 +25,11 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .literal x => .literal x
   | .var n => .var n
   | .global n => .var ("$const:" ++ n)
-  | .tuple xs => .tuple (xs.map (Expr.lower env))
+  | .tuple xs | .array xs => .tuple (xs.map (Expr.lower env))
+  | .repeat x n => ArrayLowering.repeatValue (x.lower env) n
+  | .index x i => .project (x.lower env) i
+  | .slice x start (some stop) => ArrayLowering.sliceValue (x.lower env) start stop
+  | .slice _ _ none => .var "$unelaboratedSlice"
   | .construct n ts c xs =>
       .construct (Instance.symbol ⟨n, (ts.getD []).map (Ty.subst env)⟩) c (xs.map (Expr.lower env))
   | .constructAs _ t c xs =>

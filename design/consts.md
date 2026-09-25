@@ -22,8 +22,11 @@ fn main() -> Field {
 The source frontend is `Generic.Program Nat` with `aiur%` or `aiur_generic%`.
 No capitalization convention affects meaning. A declaration body is a value
 whose structure can also be used as a pattern: literals, arbitrary nested tuples,
-qualified enum constructors, pointer construction with `&`, and const references.
-Both `()` and `(x,)` retain their existing meanings. Arrays remain deferred.
+arrays and repetition, qualified enum constructors, pointer construction with
+`&`, and const references. Both `()` and `(x,)` retain their existing meanings.
+For arrays, `const cell = &[0];` and `const zeros = [0; 4];` are supported.
+Repeated values evaluate once; repeated patterns match each element's contents.
+See [arrays](arrays.md) for the evaluation and zero-length cases.
 
 Const bodies contain no binders or wildcards. Calls, hints, arithmetic, loads,
 projections, matches, and lets are excluded from those bodies. There is no

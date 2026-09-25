@@ -15,13 +15,17 @@ def checkParams (params : List String) : Except String Unit := do
     checkIdentifier n
     if n == "Field" then throw "Field is a reserved type name"
 
+/-- Arrays are unrolled into finite tuples; reject unreasonable requests before allocation. -/
+def checkArrayLength (length : Nat) : Except String Unit :=
+  if length > 65536 then throw "array length limit exceeded (65536)" else pure ()
+
 namespace Aliases
 
 /-- Names in a type expression, including nominal enum arguments, but without
 visiting enum definitions. Used to order alias declarations, not instances. -/
 def dependencies : Ty → List String
   | .field | .param _ => []
-  | .ptr t => dependencies t
+  | .ptr t | .array t _ => dependencies t
   | .tuple ts => ts.flatMap dependencies
   | .named n ts => n :: ts.flatMap dependencies
 termination_by t => sizeOf t
@@ -30,6 +34,7 @@ def checkSurfaceType (enums : List EnumDecl) (aliases : List AliasDecl) (params 
   | .field => pure ()
   | .param n => if params.contains n then pure () else throw s!"unbound type parameter '{n}'"
   | .ptr t => checkSurfaceType enums aliases params t
+  | .array t n => do checkArrayLength n; checkSurfaceType enums aliases params t
   | .tuple ts => do
       for t in ts do checkSurfaceType enums aliases params t
   | .named n ts => do
@@ -48,6 +53,7 @@ def expandType (aliases : List AliasDecl) : Ty → Except String Ty
   | .field => pure .field
   | .param n => pure (.param n)
   | .ptr t => return .ptr (← expandType aliases t)
+  | .array t n => return .array (← expandType aliases t) n
   | .tuple ts => return .tuple (← ts.mapM (expandType aliases))
   | .named n ts => do
       let ts ← ts.mapM (expandType aliases)
@@ -105,6 +111,8 @@ def expandPattern (aliases : List AliasDecl) : Pattern α → Except String (Pat
   | .global n => pure (.global n)
   | .load p => return .load (← expandPattern aliases p)
   | .tuple ps => return .tuple (← ps.mapM (expandPattern aliases))
+  | .array ps => return .array (← ps.mapM (expandPattern aliases))
+  | .repeat p n => return .repeat (← expandPattern aliases p) n
   | .construct t c ps => do
       let ps ← ps.mapM (expandPattern aliases)
       if let .named n ts := t then
@@ -121,6 +129,10 @@ def expandExpr (aliases : List AliasDecl) : Expr α → Except String (Expr α)
   | .var n => pure (.var n)
   | .global n => pure (.global n)
   | .tuple xs => return .tuple (← xs.mapM (expandExpr aliases))
+  | .array xs => return .array (← xs.mapM (expandExpr aliases))
+  | .repeat x n => return .repeat (← expandExpr aliases x) n
+  | .index x i => return .index (← expandExpr aliases x) i
+  | .slice x start stop => return .slice (← expandExpr aliases x) start stop
   | .construct n ts c xs => do
       let xs ← xs.mapM (expandExpr aliases)
       if let some d := aliases.find? (·.name == n) then
@@ -157,8 +169,8 @@ def checkPatternHead (enums : List EnumDecl) (aliases : List AliasDecl) (rigid :
 
 def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Pattern α → Except String Unit
   | .literal _ | .wildcard | .bind _ | .global _ => pure ()
-  | .load p => checkPatternTypes enums aliases rigid p
-  | .tuple ps => do
+  | .load p | .repeat p _ => checkPatternTypes enums aliases rigid p
+  | .tuple ps | .array ps => do
       let _ ← ps.mapM (checkPatternTypes enums aliases rigid)
       pure ()
   | .construct t _ ps => do
@@ -173,7 +185,7 @@ termination_by pat => sizeOf pat
 
 def checkExprTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Expr α → Except String Unit
   | .literal _ | .var _ | .global _ => pure ()
-  | .tuple xs => do
+  | .tuple xs | .array xs => do
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
       pure ()
   | .construct _ ts _ xs | .call _ ts xs => do
@@ -184,7 +196,7 @@ def checkExprTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : L
       checkSurfaceType enums aliases (params ++ rigid) t
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
       pure ()
-  | .project x _ | .store x | .load x | .neg x => checkExprTypes enums aliases rigid x
+  | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .neg x => checkExprTypes enums aliases rigid x
   | .hint t x => do checkSurfaceType enums aliases rigid t; checkExprTypes enums aliases rigid x
   | .letValue pat x b => do
       checkPatternTypes enums aliases rigid pat

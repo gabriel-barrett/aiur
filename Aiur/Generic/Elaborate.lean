@@ -5,6 +5,7 @@ namespace Aiur.Generic
 def checkType (p : Program α) (params : List String) : Ty → Except String Unit
   | .field => pure ()
   | .ptr t => checkType p params t
+  | .array t n => do checkArrayLength n; checkType p params t
   | .tuple ts => do
       for t in ts do checkType p params t
   | .param n => if params.contains n then pure () else throw s!"unbound type parameter '{n}'"
@@ -13,6 +14,41 @@ def checkType (p : Program α) (params : List String) : Ty → Except String Uni
       let _ ← arguments decl.typeParams ts
       for t in ts do checkType p params t
 termination_by t => sizeOf t
+
+/-- Preserve the source rule that recursive type cycles cross a pointer, even
+when a zero-length array would erase the cycle from the concrete layout. -/
+def checkInlineType (p : Program α) : Nat → List Instance → Ty → Except String Unit
+  | 0, _, _ => throw "inline type check depth exceeded"
+  | fuel + 1, path, t => match t with
+    | .field | .param _ | .ptr _ => pure ()
+    | .array t _ => checkInlineType p fuel path t
+    | .tuple ts => ts.forM (checkInlineType p fuel path)
+    | .named n ts => do
+        let key := Instance.mk n ts
+        if path.contains key then throw s!"inline recursive type '{n}' requires a pointer"
+        if (ts.map Ty.nodes).sum > 4096 then throw "enum instance type-size limit exceeded"
+        let some decl := p.findEnum? n | throw s!"unknown enum '{n}'"
+        let env ← arguments decl.typeParams ts
+        for ctor in decl.constructors do
+          for t in ctor.fields do checkInlineType p fuel (key :: path) (t.subst env)
+
+/-- Inspect source types before zero-length arrays erase their element layout.
+All constructor payloads are checked, independently of inhabited values. -/
+def checkPointerFree (p : Program α) (context : String) : Nat → List Instance → Ty → Except String Unit
+  | 0, _, _ => throw "pointer-free type check depth exceeded"
+  | fuel + 1, seen, t => match t with
+    | .field => pure ()
+    | .ptr _ => throw s!"pointer type is not allowed in {context}"
+    | .param _ => throw s!"{context} requires a concrete pointer-free type"
+    | .array t _ => checkPointerFree p context fuel seen t
+    | .tuple ts => ts.forM (checkPointerFree p context fuel seen)
+    | .named n ts => do
+        let key := Instance.mk n ts
+        if seen.contains key then return
+        let some decl := p.findEnum? n | throw s!"unknown enum '{n}'"
+        let env ← arguments decl.typeParams ts
+        for ctor in decl.constructors do
+          for t in ctor.fields do checkPointerFree p context fuel (key :: seen) (t.subst env)
 
 private structure Inference where
   next : Nat := 0
@@ -58,6 +94,9 @@ private def unify : Nat → Ty → Ty → Infer Unit
           if n.startsWith "$infer" then bindMeta n t
           else throw s!"type mismatch: {repr a} and {repr b}"
       | .ptr a, .ptr b => unify fuel a b
+      | .array a n, .array b m =>
+          if n != m then throw s!"array length mismatch: {n} and {m}"
+          unify fuel a b
       | .tuple xs, .tuple ys | .named _ xs, .named _ ys =>
           match a, b with
           | .named n _, .named m _ => if n != m then throw s!"different nominal types '{n}' and '{m}'"
@@ -106,6 +145,18 @@ private def inferPattern (p : Program α) (rigid : List String) : Nat → Patter
           agree (.tuple ts) expected
           let pairs ← (ps.zip ts).mapM fun (pat, t) => inferPattern p rigid fuel pat t
           return (.tuple (pairs.map Prod.fst), pairs.flatMap Prod.snd)
+      | .array ps =>
+          liftM (checkArrayLength ps.length)
+          let t ← fresh
+          agree (.array t ps.length) expected
+          let pairs ← ps.mapM fun pat => inferPattern p rigid fuel pat t
+          return (.array (pairs.map Prod.fst), pairs.flatMap Prod.snd)
+      | .repeat pat n =>
+          liftM (checkArrayLength n)
+          let t ← fresh
+          agree (.array t n) expected
+          let (pat, bindings) ← inferPattern p rigid fuel pat t
+          return (.array (List.replicate n pat), (List.replicate n bindings).flatten)
       | .construct (.named n supplied) ctor ps =>
           let some decl := p.findEnum? n | throw s!"unknown enum '{n}'"
           let ts ← typeArgs p rigid decl.typeParams (if supplied.isEmpty then none else some supplied)
@@ -144,6 +195,29 @@ private def infer (p : Program α) (rigid : List String) :
           if let some expected := expected then agree (.tuple ts) expected
           let pairs ← (xs.zip ts).mapM fun (x, t) => infer p rigid fuel locals x (some t)
           pure (.tuple ts, .tuple (pairs.map Prod.snd))
+      | .array xs => do
+          liftM (checkArrayLength xs.length)
+          let t ← fresh
+          if let some expected := expected then agree (.array t xs.length) expected
+          let pairs ← xs.mapM fun x => infer p rigid fuel locals x (some t)
+          pure (.array t xs.length, .array (pairs.map Prod.snd))
+      | .repeat x n => do
+          liftM (checkArrayLength n)
+          let t ← fresh
+          if let some expected := expected then agree (.array t n) expected
+          let (_, x) ← infer p rigid fuel locals x (some t)
+          pure (.array t n, .repeat x n)
+      | .index x i => do
+          let (t, x) ← infer p rigid fuel locals x none
+          let .array t n ← zonk t | throw "indexing requires a known array type"
+          if i >= n then throw s!"array index {i} out of bounds for length {n}"
+          pure (t, .index x i)
+      | .slice x start stop => do
+          let (t, x) ← infer p rigid fuel locals x none
+          let .array t n ← zonk t | throw "slicing requires a known array type"
+          let stop := stop.getD n
+          if start > stop || stop > n then throw s!"array slice {start}..{stop} out of bounds for length {n}"
+          pure (.array t (stop - start), .slice x start (some stop))
       | .construct n supplied ctor xs => do
           let some decl := p.findEnum? n | throw s!"unknown enum '{n}'"
           let ts ← typeArgs p rigid decl.typeParams supplied
@@ -182,6 +256,7 @@ private def infer (p : Program α) (rigid : List String) :
       | .hint t k => do
           if !t.concrete then throw "hint result types must be concrete, including in generic functions"
           liftM (checkType p [] t)
+          liftM (checkPointerFree p "hint result" 1024 [] t)
           let decls ← liftM (collectEnums p [] 1024 [] (coreTypeNames t.toCore))
           let _ ← liftM ((checkHintType decls "generic function" t.toCore).mapError toString)
           let (_, k) ← infer p rigid fuel locals k none
@@ -225,6 +300,8 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .global n => throw s!"unexpanded const reference '::{n}'"
   | .load p => return .load (← finishPattern s p)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
+  | .array ps => return .array (← ps.mapM (finishPattern s))
+  | .repeat _ _ => throw "unelaborated repeated pattern"
   | .construct t c ps => return .construct (← finishType s t) c (← ps.mapM (finishPattern s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor pattern template"
 termination_by p => sizeOf p
@@ -234,6 +311,10 @@ private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
   | .var n => pure (.var n)
   | .global n => throw s!"unexpanded const reference '::{n}'"
   | .tuple xs => return .tuple (← xs.mapM (finishExpr s))
+  | .array xs => return .array (← xs.mapM (finishExpr s))
+  | .repeat x n => return .repeat (← finishExpr s x) n
+  | .index x i => return .index (← finishExpr s x) i
+  | .slice x start stop => return .slice (← finishExpr s x) start stop
   | .construct n ts c xs => return .construct n (some (← (ts.getD []).mapM (finishType s))) c (← xs.mapM (finishExpr s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor template"
   | .project x i => return .project (← finishExpr s x) i
@@ -276,6 +357,7 @@ def elaborate (p : Program α) : Except String (Program α) := do
       checkIdentifier c.name
       c.fields.forM (checkType p d.typeParams)
     let name := (Instance.mk d.name (d.typeParams.map Ty.param)).symbol
+    checkInlineType p 1024 [] (.named d.name (d.typeParams.map Ty.param))
     let decls ← collectEnums p d.typeParams 1024 [] [name]
     (checkDeclarations decls).mapError toString
   for d in p.consts do
@@ -294,11 +376,17 @@ def elaborate (p : Program α) : Except String (Program α) := do
     return { fn with body }
   let tables ← p.tables.mapM fun t => do
     checkType p [] t.rowType
+    checkPointerFree p s!"table '{t.name}'" 1024 [] t.rowType
     let rows ← t.rows.mapM fun row => elaborateExpr p [] [] row t.rowType
     return { t with rows }
   for m in p.maps do
     checkIdentifier m.name
     (m.params.map Prod.snd ++ [m.result]).forM (checkType p [])
+    (m.params.map Prod.snd ++ [m.result]).forM (checkPointerFree p s!"map '{m.name}'" 1024 [])
+    let some input := p.tables.find? (·.name == m.input) | throw s!"unknown table '{m.input}'"
+    let some output := p.tables.find? (·.name == m.output) | throw s!"unknown table '{m.output}'"
+    if input.rowType != .tuple (m.params.map Prod.snd) then throw s!"input table type mismatch for map '{m.name}'"
+    if output.rowType != m.result then throw s!"output table type mismatch for map '{m.name}'"
   return { p with functions, tables, consts := [] }
 
 end Aiur.Generic

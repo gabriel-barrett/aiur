@@ -23,9 +23,22 @@ def constantOfExpr : Aiur.Expr α → Except String (Constant α)
   | _ => throw "table rows must be constant literals, tuples, or constructors"
 termination_by e => sizeOf e
 
+/-- Static array repeats copy a checked constant. No execution, allocation, or
+hinting is performed while constructing precommitted table rows. -/
+def constantOfSource : Expr α → Except String (Constant α)
+  | .literal x => pure (.field x)
+  | .tuple xs | .array xs => return .tuple (← xs.mapM constantOfSource)
+  | .repeat x n => do
+      checkArrayLength n
+      return .tuple (List.replicate n (← constantOfSource x))
+  | .construct n ts c xs =>
+      return .construct (Instance.symbol ⟨n, ts.getD []⟩) c (← xs.mapM constantOfSource)
+  | _ => throw "table rows must be constant literals, tuples, arrays, or constructors"
+termination_by e => sizeOf e
+
 def staticProgram (p : Program α) : Except String (Aiur.Program α) := do
   let tables ← p.tables.mapM fun t => do
-    let rows ← t.rows.mapM (fun e => constantOfExpr (e.lower []))
+    let rows ← t.rows.mapM constantOfSource
     return { name := t.name, rowType := t.rowType.toCore, rows : Aiur.Table α }
   let maps := p.maps.map fun m => {
     name := m.name, params := m.params.map fun (n, t) => (n, t.toCore)
@@ -66,6 +79,7 @@ def prepare [DecidableEq F] (p : Program F) : Except String (Source F) := do
 def Source.checkEntry [DecidableEq F] (s : Source F) (name : String) : Except String Unit := do
   let some fn := s.program.findFunction? name | throw s!"unknown entrypoint '{name}'"
   if !fn.typeParams.isEmpty then throw s!"entrypoint '{name}' must be non-generic"
+  (fn.params.map Prod.snd).forM (checkPointerFree s.program s!"entrypoint '{name}'" 1024 [])
   let fn ← resolveFunction s.program ⟨name, []⟩
   let enums ← collectEnums s.program [] 1024 [] ((fn.params.map Prod.snd).flatMap coreTypeNames)
   (Aiur.checkEntry ({ functions := [fn], enums } : Aiur.Program F) name).mapError (fun e => reprStr e)

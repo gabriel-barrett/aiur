@@ -22,14 +22,13 @@ not an outstanding TODO.
 
 ## Language extensions from the ix comparison
 
-- [ ] **Fixed-size arrays.** Add homogeneous `[A; n]` types, array literals and
-  patterns, constant indexing, slicing, and functional updates. Include repeated
-  literals such as `[x; n]` and bounded compile-time `fold` as frontend conveniences.
-  ix indices and lengths are static; this item does not introduce dynamic indexing,
-  mutable memory, or runtime loops. Investigate lowering arrays to tuples and
-  projections while preserving single evaluation of operands and source typing.
-  See ix's [syntax](../../ix/Ix/Aiur/Meta.lean) and
-  [array lowering](../../ix/Ix/Aiur/Compiler/Lower.lean).
+- [x] **Fixed-size arrays.** Homogeneous `[A; n]` types, literals, repetition,
+  patterns, and static indexing/slicing lower to tuples and fixed projections.
+  Repetition and slicing evaluate their operands once, with proved relational
+  rules. See [arrays](arrays.md).
+- [ ] **Further array conveniences.** Functional updates, bounded compile-time
+  folds, rest patterns, and symbolic lengths/const generics. Dynamic indexing,
+  mutable memory, and runtime loops remain separate from these conveniences.
 
 - [x] **Type aliases.** Named and parameterized aliases expand before generic
   inference while literals are still natural numbers. Forward references,

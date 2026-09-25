@@ -10,6 +10,7 @@ namespace Aiur.Generic
 inductive Ty where
   | field
   | tuple (items : List Ty)
+  | array (element : Ty) (length : Nat)
   | ptr (target : Ty)
   | param (name : String)
   | named (name : String) (args : List Ty)
@@ -18,6 +19,7 @@ inductive Ty where
 def Ty.subst (env : List (String × Ty)) : Ty → Ty
   | .field => .field
   | .tuple items => .tuple (items.map (Ty.subst env))
+  | .array t n => .array (t.subst env) n
   | .ptr target => .ptr (target.subst env)
   | .param name => (env.lookup name).getD (.param name)
   | .named name args => .named name (args.map (Ty.subst env))
@@ -26,7 +28,7 @@ termination_by type => sizeOf type
 def Ty.parameters : Ty → List String
   | .field => []
   | .tuple items | .named _ items => items.flatMap Ty.parameters
-  | .ptr target => target.parameters
+  | .ptr target | .array target _ => target.parameters
   | .param name => [name]
 termination_by type => sizeOf type
 
@@ -36,6 +38,7 @@ def Ty.concrete (type : Ty) : Bool := type.parameters.isEmpty
 def Ty.nodes : Ty → Nat
   | .field | .param _ => 1
   | .ptr t => 1 + t.nodes
+  | .array t n => 1 + (n + 1) * t.nodes
   | .tuple ts | .named _ ts => 1 + (ts.map Ty.nodes).sum
 termination_by t => sizeOf t
 
@@ -58,6 +61,7 @@ def Instance.ofSymbol (name : String) : Except String Instance :=
 def Ty.toCore : Ty → Aiur.Ty
   | .field => .field
   | .tuple items => .tuple (items.map Ty.toCore)
+  | .array t n => .tuple (List.replicate n t.toCore)
   | .ptr target => .ptr target.toCore
   | .param name => .enum ("$param:" ++ name)
   | .named name args => .enum (Instance.symbol ⟨name, args⟩)
@@ -72,6 +76,8 @@ inductive Pattern (α : Type) where
   /-- Load the matched pointer, then match its contents. -/
   | load (pattern : Pattern α)
   | tuple (items : List (Pattern α))
+  | array (items : List (Pattern α))
+  | repeat (item : Pattern α) (length : Nat)
   | construct (type : Ty) (constructor : String) (args : List (Pattern α))
   /-- An expanded constructor qualifier; `params` bind inference slots in `type`.
   Elaboration replaces this with an ordinary nominal constructor pattern. -/
@@ -84,6 +90,12 @@ inductive Expr (α : Type) where
   /-- A rooted source reference, independent of local variable bindings. -/
   | global (name : String)
   | tuple (items : List (Expr α))
+  | array (items : List (Expr α))
+  /-- Evaluate the element once, then copy its value, including when length is zero. -/
+  | repeat (value : Expr α) (length : Nat)
+  | index (value : Expr α) (index : Nat)
+  /-- Half-open bounds. Inference replaces an omitted end by the array length. -/
+  | slice (value : Expr α) (start : Nat) (stop : Option Nat)
   | construct (name : String) (types : Option (List Ty)) (constructor : String) (args : List (Expr α))
   /-- Alias-free constructor template, consumed by generic inference. -/
   | constructAs (params : List String) (type : Ty) (constructor : String) (args : List (Expr α))
@@ -162,20 +174,23 @@ def Pattern.bindingNames : Pattern α → List String
   | .literal _ | .wildcard | .global _ => []
   | .bind n => [n]
   | .load p => p.bindingNames
-  | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap Pattern.bindingNames
+  | .repeat p n => (List.replicate n p.bindingNames).flatten
+  | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap Pattern.bindingNames
 termination_by p => sizeOf p
 
 def Pattern.hasLoads : Pattern α → Bool
   | .literal _ | .wildcard | .bind _ | .global _ => false
   | .load _ => true
-  | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => (ps.map Pattern.hasLoads).any id
+  | .repeat p n => n != 0 && p.hasLoads
+  | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => (ps.map Pattern.hasLoads).any id
 termination_by p => sizeOf p
 
 def Pattern.irrefutable (enums : List EnumDecl) : Pattern α → Bool
   | .literal _ | .global _ => false
   | .wildcard | .bind _ => true
   | .load p => p.irrefutable enums
-  | .tuple ps => (ps.map (Pattern.irrefutable enums)).all id
+  | .tuple ps | .array ps => (ps.map (Pattern.irrefutable enums)).all id
+  | .repeat p n => n == 0 || p.irrefutable enums
   | .construct (.named n _) c ps | .constructAs _ (.named n _) c ps =>
       (enums.find? (·.name == n)).any (fun d => d.constructors.length == 1 && d.constructors.any (·.name == c)) &&
         (ps.map (Pattern.irrefutable enums)).all id
@@ -188,7 +203,8 @@ def Pattern.condition : Pattern α → Pattern α
   | .global n => .global n
   | .wildcard | .bind _ => .wildcard
   | .load p => .load p.condition
-  | .tuple ps => .tuple (ps.map Pattern.condition)
+  | .tuple ps | .array ps => .tuple (ps.map Pattern.condition)
+  | .repeat p n => .tuple (List.replicate n p.condition)
   | .construct t c ps => .construct t c (ps.map Pattern.condition)
   | .constructAs params t c ps => .constructAs params t c (ps.map Pattern.condition)
 termination_by p => sizeOf p
@@ -200,6 +216,8 @@ def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .global n => .global n
   | .load p => .load (p.map f)
   | .tuple xs => .tuple (xs.map (Pattern.map f))
+  | .array xs => .array (xs.map (Pattern.map f))
+  | .repeat p n => .repeat (p.map f) n
   | .construct t c xs => .construct t c (xs.map (Pattern.map f))
   | .constructAs ps t c xs => .constructAs ps t c (xs.map (Pattern.map f))
 termination_by p => sizeOf p
@@ -209,6 +227,10 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .var n => .var n
   | .global n => .global n
   | .tuple xs => .tuple (xs.map (Expr.map f))
+  | .array xs => .array (xs.map (Expr.map f))
+  | .repeat x n => .repeat (x.map f) n
+  | .index x i => .index (x.map f) i
+  | .slice x start stop => .slice (x.map f) start stop
   | .construct n ts c xs => .construct n ts c (xs.map (Expr.map f))
   | .constructAs ps t c xs => .constructAs ps t c (xs.map (Expr.map f))
   | .project x i => .project (x.map f) i

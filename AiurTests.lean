@@ -17,6 +17,7 @@ import AiurTests.Generics
 import AiurTests.Aliases
 import AiurTests.PointerPatterns
 import AiurTests.Consts
+import AiurTests.Arrays
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -184,3 +185,4 @@ def main : IO Unit := do
   AiurAliasTests.run
   AiurPointerPatternTests.run
   AiurConstTests.run
+  AiurArrayTests.run
