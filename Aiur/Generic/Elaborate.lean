@@ -95,6 +95,11 @@ private def inferPattern (p : Program α) (rigid : List String) : Nat → Patter
       | .literal x => agree .field expected; return (.literal x, [])
       | .wildcard => return (.wildcard, [])
       | .bind n => return (.bind n, [(n, expected)])
+      | .load pat =>
+          let target ← fresh
+          agree (.ptr target) expected
+          let (pat, bindings) ← inferPattern p rigid fuel pat target
+          return (.load pat, bindings)
       | .tuple ps =>
           let ts ← ps.mapM fun _ => fresh
           agree (.tuple ts) expected
@@ -215,6 +220,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
+  | .load p => return .load (← finishPattern s p)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
   | .construct t c ps => return .construct (← finishType s t) c (← ps.mapM (finishPattern s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor pattern template"

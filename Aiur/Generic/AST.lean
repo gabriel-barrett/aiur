@@ -67,6 +67,8 @@ inductive Pattern (α : Type) where
   | literal (value : α)
   | wildcard
   | bind (name : String)
+  /-- Load the matched pointer, then match its contents. -/
+  | load (pattern : Pattern α)
   | tuple (items : List (Pattern α))
   | construct (type : Ty) (constructor : String) (args : List (Pattern α))
   /-- An expanded constructor qualifier; `params` bind inference slots in `type`.
@@ -143,10 +145,45 @@ structure Program (α : Type) where
 def Program.findFunction? (p : Program α) (name : String) := p.functions.find? (·.name == name)
 def Program.findEnum? (p : Program α) (name : String) := p.enums.find? (·.name == name)
 
+def Pattern.bindingNames : Pattern α → List String
+  | .literal _ | .wildcard => []
+  | .bind n => [n]
+  | .load p => p.bindingNames
+  | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap Pattern.bindingNames
+termination_by p => sizeOf p
+
+def Pattern.hasLoads : Pattern α → Bool
+  | .literal _ | .wildcard | .bind _ => false
+  | .load _ => true
+  | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => (ps.map Pattern.hasLoads).any id
+termination_by p => sizeOf p
+
+def Pattern.irrefutable (enums : List EnumDecl) : Pattern α → Bool
+  | .literal _ => false
+  | .wildcard | .bind _ => true
+  | .load p => p.irrefutable enums
+  | .tuple ps => (ps.map (Pattern.irrefutable enums)).all id
+  | .construct (.named n _) c ps | .constructAs _ (.named n _) c ps =>
+      (enums.find? (·.name == n)).any (fun d => d.constructors.length == 1 && d.constructors.any (·.name == c)) &&
+        (ps.map (Pattern.irrefutable enums)).all id
+  | .construct _ _ _ | .constructAs _ _ _ _ => false
+termination_by p => sizeOf p
+
+/-- Binder spelling does not change a pattern's matching condition. -/
+def Pattern.condition : Pattern α → Pattern α
+  | .literal x => .literal x
+  | .wildcard | .bind _ => .wildcard
+  | .load p => .load p.condition
+  | .tuple ps => .tuple (ps.map Pattern.condition)
+  | .construct t c ps => .construct t c (ps.map Pattern.condition)
+  | .constructAs params t c ps => .constructAs params t c (ps.map Pattern.condition)
+termination_by p => sizeOf p
+
 def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .literal x => .literal (f x)
   | .wildcard => .wildcard
   | .bind n => .bind n
+  | .load p => .load (p.map f)
   | .tuple xs => .tuple (xs.map (Pattern.map f))
   | .construct t c xs => .construct t c (xs.map (Pattern.map f))
   | .constructAs ps t c xs => .constructAs ps t c (xs.map (Pattern.map f))

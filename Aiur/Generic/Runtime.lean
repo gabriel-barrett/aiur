@@ -1,5 +1,6 @@
 import Aiur.Generic.Elaborate
 import Aiur.Generic.Engine
+import Aiur.Generic.PatternChecks
 
 namespace Aiur.Generic
 
@@ -55,6 +56,7 @@ def Source.world [DecidableEq F] (s : Source F) : Engine.World F where
 
 def prepare [DecidableEq F] (p : Program F) : Except String (Source F) := do
   let p ← elaborate p
+  for fn in p.functions do checkLoadPatterns p.enums fn.name fn.body
   let tables ← staticProgram p
   if checked : typecheck tables = .ok () then return ⟨p, tables, checked⟩
   else match typecheck tables with

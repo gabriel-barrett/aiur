@@ -29,8 +29,11 @@ Public entry parameter types must contain no pointers, recursively through
 tuples and every constructor of every reachable enum.
 Internal calls share the heap and may receive pointers. The source has no
 pointer equality, arithmetic, casts, numeric pointer patterns, null pointer,
-mutation, or deallocation. Bindings and wildcards may accept an entire pointer;
-a tuple or literal pattern requires loading its contents first. Unsafe pointer
+mutation, or deallocation. Bindings and wildcards may accept an entire pointer.
+In the source frontend, `&pattern` loads and matches its contents: `let &a = p`
+means `let a = *p`. Nested forms, including `&(a, &b)` and qualified constructors,
+lower to ordinary loads and tests; see [pointer patterns](pointer-patterns.md).
+Unsafe pointer
 operations and recursion-depth constraints remain deferred.
 
 The [input type restriction](input-types.md) is checked from the selected entry's

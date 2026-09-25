@@ -72,6 +72,11 @@ into that one body, and evaluates it. It does not first specialize the whole
 call graph. It threads the same fresh-allocation heap as the existing executor
 and retains fuel exhaustion and hint-provider errors.
 
+That shared body-lowering step also expands [pointer patterns](pointer-patterns.md)
+into ordinary loads and tests. Thus generic parameter patterns such as
+`fn read<T>(&x: &T) -> T { x }` use the same semantics before and after
+specialization.
+
 `Engine.EvalExpr`, `Engine.EvalArgs`, and `Engine.EvalFn` give the corresponding
 fuel-free relations over a runtime that resolves function and enum definitions
 on demand. `Source.EvalCall` adds public entry checking and an initially empty
