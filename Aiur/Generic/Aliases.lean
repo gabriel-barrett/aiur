@@ -102,6 +102,7 @@ def expandPattern (aliases : List AliasDecl) : Pattern α → Except String (Pat
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
+  | .load p => return .load (← expandPattern aliases p)
   | .tuple ps => return .tuple (← ps.mapM (expandPattern aliases))
   | .construct t c ps => do
       let ps ← ps.mapM (expandPattern aliases)
@@ -154,6 +155,7 @@ def checkPatternHead (enums : List EnumDecl) (aliases : List AliasDecl) (rigid :
 
 def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Pattern α → Except String Unit
   | .literal _ | .wildcard | .bind _ => pure ()
+  | .load p => checkPatternTypes enums aliases rigid p
   | .tuple ps => do
       let _ ← ps.mapM (checkPatternTypes enums aliases rigid)
       pure ()

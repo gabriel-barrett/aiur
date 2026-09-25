@@ -20,6 +20,7 @@ syntax (name := aliasDefinition) &"type" ident "=" aiur_type ";" : aiur_alias
 syntax (name := genericAlias) &"type" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
   "=" aiur_type ";" : aiur_alias
 syntax (name := aliasDecl) aiur_alias : aiur_decl
+syntax:75 (name := loadPattern) "&" aiur_pattern:75 : aiur_pattern
 
 private def readName (s : Syntax) : Except String String :=
   match s.getId with
@@ -42,7 +43,8 @@ private partial def type (params : List String) (s : Syntax) : Except String Ty 
   else throw "expected an Aiur type"
 
 private partial def pattern (s : Syntax) : Except String (Pattern Nat) := do
-  if s.getKind == ``literalPattern then return .literal (s[0].isNatLit?.getD 0)
+  if s.getKind == ``loadPattern then return .load (← pattern s[1])
+  else if s.getKind == ``literalPattern then return .literal (s[0].isNatLit?.getD 0)
   else if s.getKind == ``wildcardPattern then return .wildcard
   else if s.getKind == ``bindPattern then return .bind (← readName s[0])
   else if s.getKind == ``constructorPattern then return .construct (.named (← readName s[0]) []) (← readName s[2]) []
@@ -89,16 +91,6 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
     return .matchValue (← expr params s[1]) (← s[3].getSepArgs.toList.mapM fun arm => return (← pattern arm[0], ← expr params arm[2]))
   else throw s!"unsupported expression: {k}"
 
-private def irrefutable (enums : List EnumDecl) : Pattern Nat → Bool
-  | .literal _ => false
-  | .wildcard | .bind _ => true
-  | .tuple ps => (ps.map (irrefutable enums)).all id
-  | .construct (.named n _) c ps | .constructAs _ (.named n _) c ps =>
-      (enums.find? (·.name == n)).any (fun d => d.constructors.length == 1 && d.constructors.any (·.name == c)) &&
-        (ps.map (irrefutable enums)).all id
-  | .construct _ _ _ | .constructAs _ _ _ _ => false
-termination_by p => sizeOf p
-
 private def lowerEnum (s : Syntax) : Except String EnumDecl := do
   let generic := s.getKind == ``genericEnum
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
@@ -118,12 +110,6 @@ private def lowerAlias (s : Syntax) : Except String AliasDecl := do
     target := ← type ps s[if generic then 6 else 3]
   }
 
-private def bindingNames : Pattern α → List String
-  | .literal _ | .wildcard => []
-  | .bind n => [n]
-  | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap bindingNames
-termination_by p => sizeOf p
-
 private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl) (s : Syntax) : Except String (Function Nat) := do
   let generic := s.getKind == ``genericFunction
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
@@ -133,8 +119,8 @@ private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl) (s 
   let mut boundNames := []
   for (param, i) in s[3 + offset].getSepArgs.toList.zipIdx do
     let pat ← pattern param[0]
-    boundNames := boundNames ++ bindingNames pat
-    if !irrefutable enums (← Aliases.expandPattern aliases pat) then throw "parameter patterns must be irrefutable"
+    boundNames := boundNames ++ pat.bindingNames
+    if !(← Aliases.expandPattern aliases pat).irrefutable enums then throw "parameter patterns must be irrefutable"
     let t ← type ps param[2]
     match pat with
     | .bind n => inputs := inputs ++ [(n, t)]
@@ -155,6 +141,8 @@ def ofString (env : Lean.Environment) (source : String) : Except String (Program
   let source := String.ofList (normalizeWhitespace (← maskComments source.toList 0 false))
   -- Split nested generic closers before Lean's lexer treats `>>` as an operator.
   let source := source.replace ">" "> "
+  -- Lean has an `&&` token; Aiur reads consecutive pointer prefixes instead.
+  let source := source.replace "&" "& "
   let s ← Parser.runParserCategory env `aiur_program source "<aiur>"
   let ds := s[0].getArgs.toList
   let enums ← (ds.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])

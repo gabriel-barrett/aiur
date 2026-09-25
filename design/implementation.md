@@ -7,6 +7,10 @@
 - `Aiur/Generic/Aliases.lean` and `AliasFacts.lean`: checked alias dependency
   expansion before inference, constructor templates, and a proof that expansion
   commutes with literal conversion. The frontend runs this pass on `Program Nat`.
+- `Aiur/Generic/PatternLowering.lean`, `PatternChecks.lean`, and `PatternFacts.lean`:
+  nested pointer patterns, duplicate-condition validation before lowering,
+  fresh temporary bindings, and equivalence between read/test plans and core
+  relational evaluation. Direct interpretation and specialization share this pass.
 - `Aiur/Generic/Runtime.lean` and `Engine.lean`: checked source, dynamic instance
   resolution, heap execution, relational evaluation, and successful-run correctness.
 - `Aiur/Generic/Lower.lean` and `Specialize.lean`: body substitution, concrete
@@ -124,6 +128,8 @@ refutable patterns; the frontend still requires irrefutable parameter patterns.
 The checker does not establish termination, exhaustiveness, successful let
 matching, or nonzero denominators.
 Field-specific pattern duplicates and constructor-tag collisions are checked by compilation.
+Pointer-pattern duplicates are checked earlier, during source preparation after
+literal conversion, before lowering distributes them across ordinary matches.
 Table row types and all map parameter/result types must contain no pointers,
 including in unused enum variants and empty tables. Rows contain only constants.
 Maps require matching input
@@ -212,3 +218,10 @@ lemma has an axiom guard alongside the existing end-to-end guards.
 and pointer-recursive enums, direct growing-type recursion, conservative rejection
 of specialization, cache-order independence, maps, hints, root selection, and
 circuit composition. See [generics](generics.md) and `Examples/Generics.lean`.
+
+`AiurTests/PointerPatterns.lean` checks nested `&pattern` loads, generic parameter
+destructuring, first-match overlaps, inactive reads, failure and scope behavior,
+single evaluation, aliases, field collisions, and circuit compilation. Axiom
+guards cover the load-binding rule and the read/test plan equivalences.
+`Examples/PointerPatterns.lean` shows direct execution, specialization, and
+compilation of a pointer-recursive list.

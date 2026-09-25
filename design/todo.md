@@ -47,11 +47,10 @@ not an outstanding TODO.
   behavior and the existing policy on duplicate conditions after field
   specialization. See ix's [pattern definitions](../../ix/Ix/Aiur/Stages/Source.lean).
 
-- [ ] **Dereferencing patterns.** Support matching a pointer's contents inside a
-  pattern. Lower to explicit loads and ordinary matching, preserving evaluation
-  order and branch activity. This must not expose or compare addresses. ix
-  lowers these patterns to loads in its
-  [match compiler](../../ix/Ix/Aiur/Compiler/Match.lean).
+- [x] **Dereferencing patterns.** `&pattern` loads and matches contents in lets,
+  ordered match arms, and irrefutable parameters. Nested patterns lower to
+  explicit loads and ordinary tests, preserving scope and branch activity
+  without observing addresses. See [pointer patterns](pointer-patterns.md).
 
 - [x] **Refutable let patterns.** Lets accept all well-typed patterns and fail
   with `patternMismatch` on a mismatch. The existing AST, evaluation rules, and

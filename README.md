@@ -17,6 +17,7 @@ lake env lean Examples/Tables.lean
 lake env lean Examples/RefutableLets.lean
 lake env lean Examples/Generics.lean
 lake env lean Examples/Aliases.lean
+lake env lean Examples/PointerPatterns.lean
 ```
 
 ## Use from Lean
@@ -105,6 +106,10 @@ work in `match`, `let`, and function parameters. A `let` evaluates its value onc
 and fails with `patternMismatch` if the pattern does not match; for example,
 `let (0, x) = pair; x` requires the first component to be zero. Parameter patterns
 must be irrefutable. See [Examples/RefutableLets.lean](Examples/RefutableLets.lean).
+The source frontend (`Generic.Program Nat`) also accepts `&pattern` to load
+and destructure a pointer: `let &a = p` means `let a = *p`. This nests in tuples
+and enum payloads and works in match arms and irrefutable parameters. See
+[Examples/PointerPatterns.lean](Examples/PointerPatterns.lean).
 Matches use the first matching arm, including overlapping tuple patterns.
 Bindings may shadow outer names, but cannot repeat within one pattern or across
 parameters. Trailing commas and Rust-style comments are supported.

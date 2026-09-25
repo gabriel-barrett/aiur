@@ -19,6 +19,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   circuit interfaces, first-match equations, and proof boundaries.
 - [Pointers and ROM](pointers.md): typed opaque pointers, a prover-chosen
   heterogeneous table, allocation bounds, and source/circuit correspondence.
+- [Pointer patterns](pointer-patterns.md): `&pattern` as a load, nested ordered
+  matching, scope hygiene, and lowering to existing ROM operations.
 - [Enums](enums.md): payloads, recursion through pointers, semantic values,
   canonical circuit layouts, root validity, and proved correspondence.
 - [Tables and maps](tables.md): shared precommitted traces, typed constants,

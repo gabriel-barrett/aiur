@@ -75,16 +75,19 @@ This succeeds only for `Reply::Found((0, value))`. An impossible binding such as
 circuit constraint. Literal tests use the chosen field after specialization.
 The checker still checks the continuation, even when the binding cannot match.
 
-Parameter patterns must be irrefutable: bindings, wildcards, tuples of
-irrefutable patterns, or a sole enum constructor with irrefutable payload
-patterns. A name may occur only once within a pattern or the complete parameter
+Parameter patterns must be irrefutable: bindings, wildcards, `&` of an
+irrefutable pattern, tuples of irrefutable patterns, or a sole enum constructor
+with irrefutable payload patterns. A name may occur only once within a pattern or the complete parameter
 list. `let` bindings may shadow outer variables and are visible in their
 continuation. Match bindings are visible only in their arm.
 
 ## Matching
 
-A pattern is a field literal, `_`, a binding name, a tuple of patterns, or a
-qualified constructor with payload patterns.
+A pattern is a field literal, `_`, a binding name, a tuple of patterns, a
+qualified constructor with payload patterns, or `&pattern` to load a pointer
+and match its contents. `let &a = p` is equivalent to `let a = *p`. Pointer
+patterns can nest and work in all pattern positions; see
+[pointer patterns](pointer-patterns.md) for their ordered reads and lowering.
 Patterns must have the scrutinee's shape. Literals test leaves; wildcards and
 names accept entire subtrees. Tuple and constructor payload patterns match componentwise.
 

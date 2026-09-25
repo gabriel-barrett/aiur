@@ -1,4 +1,4 @@
-import Aiur.Generic.AST
+import Aiur.Generic.PatternLowering
 import Aiur.Typecheck
 
 namespace Aiur.Generic
@@ -17,18 +17,9 @@ def resolveEnum (p : Program α) (key : Instance) : Except String Aiur.EnumDecl 
       { name := ctor.name, fields := ctor.fields.map (fun t => (t.subst env).toCore) }
   }
 
-def Pattern.lower (env : List (String × Ty)) : Pattern α → Aiur.Pattern α
-  | .literal x => .literal x
-  | .wildcard => .wildcard
-  | .bind n => .bind n
-  | .tuple ps => .tuple (ps.map (Pattern.lower env))
-  | .construct t c ps | .constructAs _ t c ps =>
-      let name := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
-      .construct name c (ps.map (Pattern.lower env))
-termination_by p => sizeOf p
-
-/-- Inference has filled in every call/constructor's type arguments before this
-pure substitution. Instantiation does not visit any callee's body. -/
+/-- Inference has filled in every call/constructor's type arguments before
+substitution and pointer-pattern desugaring. Instantiation does not visit any
+callee's body. -/
 def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .literal x => .literal x
   | .var n => .var n
@@ -39,7 +30,7 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
       let name := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
       .construct name c (xs.map (Expr.lower env))
   | .project x i => .project (x.lower env) i
-  | .letValue p x b => .letValue (p.lower env) (x.lower env) (b.lower env)
+  | .letValue p x b => PatternLowering.lowerLet env p (x.lower env) (b.lower env)
   | .store x => .store (x.lower env)
   | .load x => .load (x.lower env)
   | .hint t k => .hint (t.subst env).toCore (k.lower env)
@@ -48,7 +39,7 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .call n ts xs =>
       .call (Instance.symbol ⟨n, (ts.getD []).map (Ty.subst env)⟩) (xs.map (Expr.lower env))
   | .matchValue x arms =>
-      .matchValue (x.lower env) (arms.map fun arm => (arm.1.lower env, arm.2.lower env))
+      PatternLowering.lowerMatch env (x.lower env) (arms.map fun arm => (arm.1, arm.2.lower env))
 termination_by e => sizeOf e
 decreasing_by
   all_goals simp_wf
