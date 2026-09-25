@@ -12,7 +12,8 @@ def Pattern.toCore? (env : List (String × Ty)) : Pattern α → Option (Aiur.Pa
   | .bind n => some (.bind n)
   | .global _ => none
   | .load _ => none
-  | .tuple ps => return .tuple (← ps.mapM (Pattern.toCore? env))
+  | .tuple ps | .array ps => return .tuple (← ps.mapM (Pattern.toCore? env))
+  | .repeat p n => return .tuple (List.replicate n (← p.toCore? env))
   | .construct t c ps | .constructAs _ t c ps => do
       let .enum n := (t.subst env).toCore | none
       return .construct n c (← ps.mapM (Pattern.toCore? env))
@@ -72,8 +73,15 @@ def plan (env : List (String × Ty)) (stem : String) :
       let name ← fresh stem
       let next ← plan env stem p name
       return { next with steps := .load name input :: next.steps }
-  | .tuple ps, input => do
+  | .tuple ps, input | .array ps, input => do
       let parts ← ps.mapM fun p => do
+        let name ← fresh stem
+        return (name, ← plan env stem p name)
+      return {
+        steps := .test (.tuple (parts.map (fun part => .bind part.1))) input :: parts.flatMap (·.2.steps)
+        bindings := parts.flatMap (·.2.bindings) }
+  | .repeat p n, input => do
+      let parts ← (List.range n).mapM fun _ => do
         let name ← fresh stem
         return (name, ← plan env stem p name)
       return {
@@ -90,7 +98,7 @@ def plan (env : List (String × Ty)) (stem : String) :
 termination_by p _ => sizeOf p
 decreasing_by
   all_goals simp_wf
-  all_goals have := List.sizeOf_lt_of_mem ‹_ ∈ _›
+  all_goals try have := List.sizeOf_lt_of_mem ‹_ ∈ _›
   all_goals omega
 
 def bindUsers (bindings : List (String × String)) (body : Aiur.Expr α) : Aiur.Expr α :=

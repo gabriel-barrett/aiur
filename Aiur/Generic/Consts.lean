@@ -15,17 +15,19 @@ def ofExpr : Expr α → Except String (Pattern α)
   | .var n | .global n => pure (.global n)
   | .store x => return .load (← ofExpr x)
   | .tuple xs => return .tuple (← xs.mapM ofExpr)
+  | .array xs => return .array (← xs.mapM ofExpr)
+  | .repeat x n => return .repeat (← ofExpr x) n
   | .construct n ts c xs => return .construct (.named n (ts.getD [])) c (← xs.mapM ofExpr)
   | .constructAs params t c xs => return .constructAs params t c (← xs.mapM ofExpr)
-  | _ => throw "const bodies require literals, tuples, constructors, stores, or const references"
+  | _ => throw "const bodies require literals, tuples, arrays, constructors, stores, or const references"
 termination_by e => sizeOf e
 
 def checkBody : Pattern α → Except String Unit
   | .literal _ | .global _ => pure ()
   | .wildcard => throw "const bodies must specify complete values; wildcards are not allowed"
   | .bind n => throw s!"const bodies cannot bind '{n}'; use '::{n}' for a global reference"
-  | .load p => checkBody p
-  | .tuple ps | .construct _ _ ps | .constructAs _ _ _ ps => do
+  | .load p | .repeat p _ => checkBody p
+  | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => do
       let _ ← ps.mapM checkBody
       pure ()
 termination_by p => sizeOf p
@@ -39,6 +41,8 @@ def substitute (lookup : String → Except String (Pattern α)) : Pattern α →
   | .global n => lookup n
   | .load p => return .load (← substitute lookup p)
   | .tuple ps => return .tuple (← ps.mapM (substitute lookup))
+  | .array ps => return .array (← ps.mapM (substitute lookup))
+  | .repeat p n => return .repeat (← substitute lookup p) n
   | .construct t c ps => return .construct t c (← ps.mapM (substitute lookup))
   | .constructAs params t c ps => return .constructAs params t c (← ps.mapM (substitute lookup))
 termination_by p => sizeOf p
@@ -85,6 +89,8 @@ def toExpr : Pattern α → Except String (Expr α)
   | .literal x => pure (.literal x)
   | .load p => return .store (← toExpr p)
   | .tuple ps => return .tuple (← ps.mapM toExpr)
+  | .array ps => return .array (← ps.mapM toExpr)
+  | .repeat p n => return .repeat (← toExpr p) n
   | .construct (.named n ts) c ps =>
       return .construct n (if ts.isEmpty then none else some ts) c (← ps.mapM toExpr)
   | .constructAs params t c ps => return .constructAs params t c (← ps.mapM toExpr)
@@ -106,6 +112,10 @@ def expandExpr (decls : List (ConstDecl α)) (locals : List String) : Expr α �
       else expression decls n
   | .global n => expression decls n
   | .tuple xs => return .tuple (← xs.mapM (expandExpr decls locals))
+  | .array xs => return .array (← xs.mapM (expandExpr decls locals))
+  | .repeat x n => return .repeat (← expandExpr decls locals x) n
+  | .index x i => return .index (← expandExpr decls locals x) i
+  | .slice x start stop => return .slice (← expandExpr decls locals x) start stop
   | .construct n ts c xs => return .construct n ts c (← xs.mapM (expandExpr decls locals))
   | .constructAs params t c xs => return .constructAs params t c (← xs.mapM (expandExpr decls locals))
   | .project x i => return .project (← expandExpr decls locals x) i

@@ -7,10 +7,10 @@ enum declarations, type aliases, consts, function definitions, tables, and maps.
 
 ## Values and signatures
 
-Types are `Field`, nominal enums, pointers `&A`, and finite tuples of types, nested to any depth. Tuples may have
+Types are `Field`, nominal enums, pointers `&A`, homogeneous arrays `[A; n]`, and finite tuples of types, nested to any depth. Tuples may have
 any arity. `()` is unit; `(x,)` is a singleton tuple; `(x)` is grouping. Tuple
 shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
-arrays, structs, or higher-order values. Generic functions and nominal enums
+structs or higher-order values. Generic functions and nominal enums
 accept type parameters; see [generics](generics.md).
 Transparent [type aliases](type-aliases.md) use `type Scalar = Field;` or
 `type Pair<T> = (T, T);`. They expand before generic inference, while literals
@@ -29,7 +29,7 @@ fn sum((x, (y, z)): (Field, (Field, Field))) -> Field {
 ```
 
 Functions take any number of arguments and return one value, which may be a
-tuple, enum, or pointer. All signatures are available while checking every body. Forward calls and
+tuple, array, enum, or pointer. All signatures are available while checking every body. Forward calls and
 mutual recursion work with tuple arguments and results. Functions are called by
 name and cannot themselves be passed or returned as values. Maps use the same
 call syntax and callable namespace, with their signatures available alongside
@@ -53,9 +53,15 @@ positions, so `const a = b;` can reference another const. Capitalization has no
 semantic role. See [consts](consts.md) for the allowed forms and cycle checks.
 
 Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
-store `&x`, load `*p`, tuple and qualified enum construction, zero-based projection (`p.0`, `p.1.0`), blocks, `let`, and
+store `&x`, load `*p`, tuple/array and qualified enum construction, zero-based projection (`p.0`, `p.1.0`), static array access (`a[0]`, `a[1..3]`), blocks, `let`, and
 `match`. Arithmetic requires field operands. There is no implicit componentwise
 arithmetic or tuple flattening.
+
+Arrays use `[a, b, c]` or `[value; n]`, which evaluates `value` once and copies
+the result, even when `n` is zero. Static slices return arrays and evaluate their
+operand once. Lengths, indices, and range bounds are natural-number literals;
+out-of-bounds and dynamic accesses are rejected. Arrays retain a distinct,
+homogeneous source type and lower to tuples. See [arrays](arrays.md).
 
 ```rust
 fn combine(p: (Field, (Field, Field))) -> (Field, Field) {
@@ -84,14 +90,14 @@ circuit constraint. Literal tests use the chosen field after specialization.
 The checker still checks the continuation, even when the binding cannot match.
 
 Parameter patterns must be irrefutable: bindings, wildcards, `&` of an
-irrefutable pattern, tuples of irrefutable patterns, or a sole enum constructor
+irrefutable pattern, tuples/arrays of irrefutable patterns, or a sole enum constructor
 with irrefutable payload patterns. A name may occur only once within a pattern or the complete parameter
 list. `let` bindings may shadow outer variables and are visible in their
 continuation. Match bindings are visible only in their arm.
 
 ## Matching
 
-A pattern is a field literal, `_`, a binding name, a tuple of patterns, a
+A pattern is a field literal, `_`, a binding name, a tuple or array of patterns, a
 qualified constructor with payload patterns, or `&pattern` to load a pointer
 and match its contents. `let &a = p` is equivalent to `let a = *p`. Pointer
 patterns can nest and work in all pattern positions; see
@@ -118,11 +124,11 @@ still typechecked. Partial matches are allowed and fail if no arm matches.
 
 ## Evaluation and circuits
 
-Evaluation is eager in operands, tuple components, constructor arguments, call arguments, and `let`
+Evaluation is eager in operands, tuple/array components, constructor arguments, call arguments, and `let`
 values. Only the selected match body runs. Discarding or projecting a tuple does
 not skip its components. Division by zero and exhausted fuel are explicit errors.
 Every entry parameter's complete type must contain no pointers, including in
-any enum constructor or nested tuple. Entry selection checks this static property
+any enum constructor, nested tuple, or array element type (even at length zero). Entry selection checks this static property
 before reading argument values; ordinary argument validation still checks shape
 and constructor validity. Internal calls may receive pointers. The inductive
 evaluation predicate describes finite successful evaluation without fuel.

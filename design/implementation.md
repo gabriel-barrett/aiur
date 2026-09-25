@@ -10,6 +10,10 @@
 - `Aiur/Generic/Consts.lean` and `ConstFacts.lean`: fully specified value/pattern
   templates, checked dependencies, lexical name resolution and substitution
   before alias expansion and generic inference, with field-independence proofs.
+- `Aiur/Generic/ArrayLowering.lean` and `ArrayFacts.lean`: fixed-size homogeneous
+  arrays lowered to tuples, single-evaluation repetition and static slicing,
+  and bidirectional relational rules preserving values and heaps. Source
+  inference checks element types and literal bounds before lowering.
 - `Aiur/Generic/PatternLowering.lean`, `PatternChecks.lean`, and `PatternFacts.lean`:
   nested pointer patterns, duplicate-condition validation before lowering,
   fresh temporary bindings, and equivalence between read/test plans and core
@@ -234,3 +238,9 @@ forward references and cycles, fresh stores and pointer matches, tables, generic
 constructors, field collisions, and circuit compilation. An axiom guard covers
 the field-conversion theorem. `Examples/Consts.lean` shows both interpreters and
 the compiler.
+
+`AiurTests/Arrays.lean` checks homogeneous and nested arrays, literal bounds,
+repeat/slice effects, patterns, constants, generics, static tables, hints,
+zero-length pointer restrictions, and circuit column/message counts. Both
+interpreters and the lowering theorems are exercised. `Examples/Arrays.lean`
+shows the source syntax, execution, specialization, and compilation.

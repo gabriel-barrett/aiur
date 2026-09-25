@@ -1,7 +1,7 @@
 # Aiur
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
-field arithmetic, nested tuples, generic functions, nominal enums, type aliases, typed ROM
+field arithmetic, nested tuples and fixed-size arrays, generic functions, nominal enums, type aliases, typed ROM
 pointers, mutual recursion, pattern matching, static tables and maps, and compilation
 to chips with polynomial equations and abstract call messages.
 
@@ -19,6 +19,7 @@ lake env lean Examples/Generics.lean
 lake env lean Examples/Aliases.lean
 lake env lean Examples/PointerPatterns.lean
 lake env lean Examples/Consts.lean
+lake env lean Examples/Arrays.lean
 ```
 
 ## Use from Lean
@@ -88,6 +89,13 @@ always binds; in values, bare names prefer locals, then globals. `::name` always
 resolves globally, and capitalization does not affect resolution. See
 [consts](design/consts.md) and [the example](Examples/Consts.lean).
 
+Arrays use homogeneous types `[A; n]`, literals `[a, b, c]`, and repetition
+`[value; n]` (evaluate once, then copy). Indexing `a[2]` and slicing `a[1..3]`
+require literal bounds checked before execution. Array patterns destructure
+with `[a, b]`; consts can use forms such as `const cell = &[0];`. Arrays lower
+to tuples and fixed projections without dynamic indexing circuitry. See
+[arrays](design/arrays.md) and [the example](Examples/Arrays.lean).
+
 `source.run` evaluates directly without collecting a finite set of instances.
 `Generic.specialize` selects non-generic entry functions externally and rejects
 recursive paths that change a function's type arguments. The resulting wrapper
@@ -99,7 +107,8 @@ See [the design](design/generics.md) and [the example](Examples/Generics.lean).
 ## Syntax and evaluation
 
 Every function parameter and result type must be explicit. Types are `Field`,
-tuples of any finite arity and nesting, nominal enums, and pointers `&A`. `()` is
+tuples of any finite arity and nesting, nominal enums, and pointers `&A`; the
+generic source frontend also supports fixed-size arrays `[A; n]`. `()` is
 unit, `(x,)` is a singleton tuple, and `(x)` groups an expression. Tuple projection is zero-based: `p.0`, `p.1.0`.
 Arithmetic operates only on field elements.
 

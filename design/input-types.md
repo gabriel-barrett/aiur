@@ -18,6 +18,8 @@ A declaration-aware predicate determines whether a type is pointer-free:
 - `Field` is permitted.
 - A tuple is permitted when every component type is permitted; this includes
   unit and singleton tuples.
+- An array is permitted when its element type is permitted, including at length
+  zero. The source checker examines this before erasing arrays to tuples.
 - An enum is permitted when every payload type of every constructor is
   permitted. Follow nominal references through the program's declarations.
 - Every pointer type `&A` is rejected.

@@ -232,6 +232,8 @@ def maskComments : List Char → Nat → Bool → Except String (List Char)
 /-- Keep adjacent arithmetic operators from being interpreted as Lean comments. -/
 def normalizeWhitespace : List Char → List Char
   | [] => []
+  | '.' :: '.' :: '=' :: rest => ' ' :: '.' :: '.' :: '=' :: ' ' :: normalizeWhitespace rest
+  | '.' :: '.' :: rest => ' ' :: '.' :: '.' :: ' ' :: normalizeWhitespace rest
   | char :: rest =>
       let normalized := if char == '\t' || char == '\r' then ' ' else char
       -- Keep chained tuple indices such as `p.1.0` from becoming a decimal token.
