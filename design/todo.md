@@ -70,13 +70,6 @@ not an outstanding TODO.
   supported types for structured assertions without introducing pointer equality.
   See ix's [assertion checking](../../ix/Ix/Aiur/Compiler/Check.lean).
 
-- [ ] **External I/O.** Design channel-based input/output buffers and keyed data
-  spans, including reads, writes, bounds, and duplicate-key behavior. This needs
-  an explicit evaluation state and a circuit acceptance model for the external
-  data. It is separate from static precommitted maps and the prover-chosen ROM.
-  See ix's [I/O state](../../ix/Ix/Aiur/Semantics/BytecodeFfi.lean) and
-  [operations](../../ix/Ix/Aiur/Interpret.lean).
-
 ## Frontend and program organization
 
 - [x] Add [const templates](consts.md) with retained references, cycle checks, fully
@@ -151,8 +144,14 @@ arithmetic, and casts belong to a possible future unsafe extension. They are not
 part of the safe language backlog or its current soundness guarantee.
 
 Typed nondeterministic values and stateless keyed executor providers are
-[implemented](hints.md). Provider state and dedicated internal or external hint
-functions remain deferred. Maps retain unique inputs and deterministic lookup.
+[implemented](hints.md). External I/O is not a language or formalization TODO:
+typed nondeterministic values already supply the required witness choices.
+Providers, buffers, provider state, and dedicated internal or external hint
+functions concern execution alone. Their implementation may evolve without
+adding I/O state or channel rules to the evaluation predicate or circuit model.
+Provider state and dedicated hint functions remain deferred executor work.
+Ordinary Aiur computation of hint keys still has its existing semantics.
+Maps retain unique inputs and deterministic lookup.
 Recursion-depth parameters and constraints remain deferred; acyclic memoized
 soundness continues to require neither totality nor a depth bound. The frontend
 remains field agnostic, function signatures stay explicit, and singleton tuples
