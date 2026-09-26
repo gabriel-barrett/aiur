@@ -59,6 +59,7 @@ theorem lowering_sound [Field F] [DecidableEq F]
   obtain ⟨unit, checks, _⟩ := Option.map_eq_some_iff.mp checked
   cases unit
   cases expr with
+  | control => simp [Expr.lowerSafe] at safe
   | literal x => rw [Expr.lower] at evaluated; cases evaluated; exact .literal
   | var name => rw [Expr.lower] at evaluated; cases evaluated with | var found => exact .var found
   | global => simp [Expr.lowerSafe] at safe

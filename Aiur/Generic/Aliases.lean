@@ -125,6 +125,7 @@ def expandPattern (aliases : List AliasDecl) : Pattern α → Except String (Pat
 termination_by p => sizeOf p
 
 def expandExpr (aliases : List AliasDecl) : Expr α → Except String (Expr α)
+  | .control kind body => return .control kind (← expandExpr aliases body)
   | .literal x => pure (.literal x)
   | .var n => pure (.var n)
   | .global n t => pure (.global n t)
@@ -196,7 +197,7 @@ def checkExprTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : L
       checkSurfaceType enums aliases (params ++ rigid) t
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
       pure ()
-  | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .neg x => checkExprTypes enums aliases rigid x
+  | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .neg x => checkExprTypes enums aliases rigid x
   | .hint t x => do checkSurfaceType enums aliases rigid t; checkExprTypes enums aliases rigid x
   | .letValue pat x b => do
       checkPatternTypes enums aliases rigid pat

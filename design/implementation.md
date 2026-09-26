@@ -257,3 +257,14 @@ repeat/slice effects, patterns, constants, generics, static tables, hints,
 zero-length pointer restrictions, and circuit column/message counts. The generic-source, finite-source, and lowered-core
 interpreters are checked independently. `Examples/Arrays.lean`
 shows the source syntax, execution, specialization, and compilation.
+
+## Lexical control flow
+
+`Generic.ControlEval` executes named blocks, breaks, and returns directly on
+source syntax; `ControlEvalSpec` proves its relation to normal and abrupt
+source evaluation. `ControlLower` translates exits only on the compiler path,
+after const/type preparation. `ControlLoweringFacts` and its scope, pattern,
+continuation, and evaluation-rule helper modules prove that translation correct.
+The existing native specialization and integer-checker theorems include it.
+`AiurTests/Control.lean` covers the three execution paths and concrete accepted
+and rejected unit/weighted rows. See [the design](control-flow.md).

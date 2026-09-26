@@ -14,6 +14,7 @@ inductive EvalError where
   | arityMismatch (function : String) (expected actual : Nat)
   | argumentTypeMismatch (function : String) (expected actual : Ty)
   | unboundVariable (name : String)
+  | unhandledExit (target : String)
   | expectedField
   | expectedTuple
   | expectedPointer

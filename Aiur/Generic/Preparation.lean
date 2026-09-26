@@ -1,5 +1,6 @@
 import Aiur.Generic.Runtime
 import Aiur.Generic.LoweringChecks
+import Aiur.Generic.ControlLower
 
 /-! Compiler preparation begins after the source semantics boundary. It
 instantiates type metadata and unfolds checked const references using the same
@@ -33,6 +34,7 @@ decreasing_by
 
 def expression (p : Program F) (depth : Nat) (types : SourceSemantics.Types) :
     Expr F → Except String (Expr F)
+  | .control kind body => return .control kind (← expression p depth types body)
   | .literal x => pure (.literal x)
   | .var name => pure (.var name)
   | .global name annotation => do
@@ -76,7 +78,8 @@ decreasing_by
 def function (p : Program F) (key : Instance) : Except String (Aiur.Function F) := do
   let some fn := p.findFunction? key.name | throw s!"unknown function '{key.name}'"
   let types ← arguments fn.typeParams key.types
-  let body ← expression p (p.consts.length + 1) types fn.body
+  let prepared ← expression p (p.consts.length + 1) types fn.body
+  let body ← ControlLower.function prepared (fn.params.map Prod.fst)
   if !decide (body.lowerSafe []) then throw "lowering failed its syntax and temporary-scope checks"
   return {
     name := key.symbol

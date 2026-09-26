@@ -214,10 +214,10 @@ theorem Specialized.run_spec [Field F] [DecidableEq F] {s : Source F} {entries :
       | error e => simp [Specialized.run, entry, prepared, Except.mapError, bind, Except.bind] at run
       | ok triple =>
           rcases triple with ⟨types, locals, body⟩
-          have executed : SourceSemantics.evalExprWith q.world hints types locals fuel body [] = .ok (result, heap) := by
-            cases h : SourceSemantics.evalExprWith q.world hints types locals fuel body [] <;>
+          have executed : SourceSemantics.evalFunctionWith q.world hints types locals fuel body [] = .ok (result, heap) := by
+            cases h : SourceSemantics.evalFunctionWith q.world hints types locals fuel body [] <;>
               simpa [Specialized.run, entry, prepared, h, Except.mapError, bind, Except.bind] using run
-          exact ⟨rfl, .intro prepared (SourceSemantics.evalExpr_spec executed)⟩
+          exact ⟨rfl, SourceSemantics.evalFunction_spec prepared executed⟩
 
 theorem Specialized.evalCall_of_run [Field F] [DecidableEq F] {s : Source F} {entries : List String}
     {q : Specialized s entries} {hints : s.HintProvider} {name args fuel result heap}

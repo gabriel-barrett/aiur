@@ -134,6 +134,7 @@ def expandExpr (decls : List (ConstDecl α)) (locals : List String) : Expr α �
       if locals.contains n || !(decls.any (·.name == n)) then pure (.var n)
       else expression decls n
   | .global n _ => expression decls n
+  | .control kind body => return .control kind (← expandExpr decls locals body)
   | .tuple xs => return .tuple (← xs.mapM (expandExpr decls locals))
   | .array xs => return .array (← xs.mapM (expandExpr decls locals))
   | .repeat x n => return .repeat (← expandExpr decls locals x) n

@@ -84,6 +84,18 @@ inductive Pattern (α : Type) where
   | constructAs (params : List String) (type : Ty) (constructor : String) (args : List (Pattern α))
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
+/-- Targets are lexical. A function call always establishes a fresh function
+boundary; labels never refer into a caller. -/
+inductive ExitTarget where
+  | function
+  | block (label : String)
+  deriving Repr, BEq, DecidableEq, ReflBEq, LawfulBEq, Inhabited, Lean.ToExpr
+
+inductive Control where
+  | block (label : String)
+  | exit (target : ExitTarget)
+  deriving Repr, BEq, DecidableEq, Inhabited, Lean.ToExpr
+
 inductive Expr (α : Type) where
   | literal (value : α)
   | var (name : String)
@@ -108,6 +120,8 @@ inductive Expr (α : Type) where
   | binary (op : BinOp) (left right : Expr α)
   | call (name : String) (types : Option (List Ty)) (args : List (Expr α))
   | matchValue (scrutinee : Expr α) (arms : List (Pattern α × Expr α))
+  /-- Named blocks and exits remain explicit through checking and evaluation. -/
+  | control (kind : Control) (body : Expr α)
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 structure Function (α : Type) where
@@ -242,6 +256,7 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .binary op x y => .binary op (x.map f) (y.map f)
   | .call n ts xs => .call n ts (xs.map (Expr.map f))
   | .matchValue x arms => .matchValue (x.map f) (arms.map fun arm => (arm.1.map f, arm.2.map f))
+  | .control kind body => .control kind (body.map f)
 termination_by e => sizeOf e
 decreasing_by
   all_goals simp_wf

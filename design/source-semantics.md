@@ -1,7 +1,7 @@
 # Source semantics and the compilation boundary
 
 The evaluation predicate defines the language on `Generic.Expr`, with explicit
-arrays, repetition, static indexing/slicing, and pointer patterns. It must not
+arrays, repetition, static indexing/slicing, pointer patterns, and lexical exits. It must not
 be defined by evaluating an expression after circuit lowering. Adding a source
 construct requires its own evaluation rule and a correctness argument for its
 compilation.
@@ -30,7 +30,10 @@ Entry checking examines signatures and no longer lowers the body.
 
 `SourceSemantics.evalExprWith` evaluates the checked source AST directly.
 `SourceSemantics.EvalExpr`, `EvalArgs`, and `EvalFn` are independent fuel-free
-relations over that AST. Generic calls resolve the original function and bind
+relations over that AST. `EvalExit` and `EvalArgsExit` describe propagated breaks
+and returns; `EvalFn` catches function returns. `evalOutcomeWith` executes these
+control outcomes directly, and `evalFunctionWith` handles a function boundary.
+See [control flow](control-flow.md). Generic calls resolve the original function and bind
 type parameters in a separate environment; they do not rewrite its body.
 
 A const value reference looks up its declaration at the inferred use type and
@@ -68,7 +71,7 @@ syntactic calls, including inactive arms.
 
 `Specialized.evalFn_iff` and `evalCall_iff` prove preservation and reflection
 between unrestricted generic source evaluation and this finite source runtime.
-The proof covers arrays, pointer patterns, nondeterministic hints, and exact
+The proof covers arrays, pointer patterns, lexical exits, nondeterministic hints, and exact
 heaps, with no totality assumption. `Specialized.run_spec` proves successful
 execution against its source relation.
 
@@ -79,7 +82,9 @@ reference execution of that core. It is useful for independent regression tests.
 `Preparation.expression` instantiates type metadata and unfolds const references
 for each concrete function instance using the source evaluator's declaration
 lookup. It does not rerun inference on an inlined body. This compiler operation
-is separate from source checking and execution.
+is separate from source checking and execution. It is followed by
+`ControlLower.function`, which translates lexical exits to ordinary let/match
+continuations with a proved correspondence for normal and abrupt evaluation.
 
 Circuit layouts remain flat field-word sequences (`WireValue.words`): tuples and
 arrays concatenate component layouts; enums use tags, payload words, and canonical

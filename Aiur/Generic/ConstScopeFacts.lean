@@ -69,7 +69,9 @@ theorem Closed.openChangeLocals [Field F] [DecidableEq F] {world : World F} {cal
     (other : Environment F Nat) : OpenSource.EvalExpr world calls types other expr before result after := by
   induction evaluated using OpenSource.EvalExpr.rec
     (motive_2 := fun ts ls es b vs a _ =>
-      (∀ e ∈ es, Closed e) → ∀ other, OpenSource.EvalArgs world calls ts other es b vs a) generalizing other with
+      (∀ e ∈ es, Closed e) → ∀ other, OpenSource.EvalArgs world calls ts other es b vs a)
+    (motive_3 := fun _ _ _ _ _ _ _ _ => True)
+    (motive_4 := fun _ _ _ _ _ _ _ _ => True) generalizing other with
   | literal => exact .literal
   | global lookup interpreted ev _ => exact .global lookup interpreted ev
   | tuple _ ih => cases closed with | tuple h => exact .tuple (ih h other)
@@ -82,7 +84,7 @@ theorem Closed.openChangeLocals [Field F] [DecidableEq F] {world : World F} {cal
   | cons _ _ ih1 ih2 =>
       rename_i h other
       exact .cons (ih1 (h _ (by simp)) other) (ih2 (fun e he => h e (by simp [he])) other)
-  | _ => cases closed
+  | _ => first | cases closed | trivial
 
 theorem Closed.openLocals_iff [Field F] [DecidableEq F] {world : World F} {calls : CallRelation F}
     {expr : Expr F} (closed : Closed expr) :

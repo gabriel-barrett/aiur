@@ -104,59 +104,14 @@ abbrev HintProvider (world : World F) := SourceValue F → (type : Aiur.Ty) →
 
 def unavailable : HintProvider world := fun _ _ => .error .unavailable
 
-def evalExprWith [Field F] [DecidableEq F] (world : World F) (hints : HintProvider world)
-    (types : Types) (locals : Environment F Nat) : Nat → Expr F → Evaluation F (SourceValue F)
-  | 0, _ => throw .outOfFuel
-  | fuel + 1, expr => do
-      match expr with
-      | .literal x => return .field x
-      | .var name =>
-          let some (_, value) := locals.find? (·.1 == name) | throw (.unboundVariable name)
-          return value
-      | .global name annotation => do
-          let some type := annotation | throw (.unboundVariable ("::" ++ name))
-          let pattern ← liftM (world.constant name (type.subst types))
-          let body ← liftM ((Consts.toExpr pattern).mapError (fun _ => EvalError.unboundVariable ("::" ++ name)))
-          evalExprWith world hints [] [] fuel body
-      | .tuple items | .array items => return .tuple (← items.mapM (evalExprWith world hints types locals fuel))
-      | .repeat value n => return .tuple (List.replicate n (← evalExprWith world hints types locals fuel value))
-      | .index value i | .project value i => liftM (projectValue (← evalExprWith world hints types locals fuel value) i)
-      | .slice value start stop => liftM (sliceValue (← evalExprWith world hints types locals fuel value) start stop)
-      | .construct name args ctor items =>
-          return .construct (instanceName types name args) ctor (← items.mapM (evalExprWith world hints types locals fuel))
-      | .constructAs _ t ctor items =>
-          return .construct (constructorName types t) ctor (← items.mapM (evalExprWith world hints types locals fuel))
-      | .letValue pattern value body =>
-          let value ← evalExprWith world hints types locals fuel value
-          let some bindings ← liftM (world.matchPattern types (← get) pattern value) | throw .patternMismatch
-          evalExprWith world hints types (bindings ++ locals) fuel body
-      | .store value =>
-          let value ← evalExprWith world hints types locals fuel value
-          let heap ← get
-          set (heap ++ [value])
-          return .ptr value.type heap.length
-      | .load pointer =>
-          let pointer ← evalExprWith world hints types locals fuel pointer
-          liftM (loadValue (← get) pointer)
-      | .hint t key =>
-          let key ← evalExprWith world hints types locals fuel key
-          let value ← liftM ((hints key (t.subst types).toCore).mapError EvalError.hint)
-          return value.val.toValue
-      | .neg value => liftM (evalNeg (← evalExprWith world hints types locals fuel value))
-      | .binary op left right =>
-          liftM (evalBinOp op (← evalExprWith world hints types locals fuel left) (← evalExprWith world hints types locals fuel right))
-      | .call name args inputs =>
-          let values ← inputs.mapM (evalExprWith world hints types locals fuel)
-          let (calleeTypes, bindings, body) ← liftM (world.prepare (instanceName types name args) values)
-          evalExprWith world hints calleeTypes bindings fuel body
-      | .matchValue scrutinee arms =>
-          let value ← evalExprWith world hints types locals fuel scrutinee
-          let some (bindings, body) ← liftM (selectArm world types (← get) value arms) | throw .noMatchingArm
-          evalExprWith world hints types (bindings ++ locals) fuel body
 
 mutual
   inductive EvalExpr [Field F] [DecidableEq F] (world : World F) :
       Types → Environment F Nat → Expr F → Heap F → SourceValue F → Heap F → Prop where
+    | block (body : EvalExpr world types locals expr before result after) :
+        EvalExpr world types locals (.control (.block label) expr) before result after
+    | blockExit (body : EvalExit world types locals expr before (.block label) result after) :
+        EvalExpr world types locals (.control (.block label) expr) before result after
     | literal : EvalExpr world types locals (.literal value) heap (.field value) heap
     | var (lookup : locals.find? (·.1 == name) = some (name, value)) :
         EvalExpr world types locals (.var name) heap value heap
@@ -223,6 +178,76 @@ mutual
     | intro (prepared : world.prepare name args = .ok (types, locals, expr))
         (body : EvalExpr world types locals expr before result after) :
         EvalFn world name args before result after
+    | returned (prepared : world.prepare name args = .ok (types, locals, expr))
+        (body : EvalExit world types locals expr before .function result after) :
+        EvalFn world name args before result after
+
+  /-- Abrupt evaluation preserves the heap prefix already executed. It carries
+  a lexical target and is caught only by that block or the current function. -/
+  inductive EvalExit [Field F] [DecidableEq F] (world : World F) :
+      Types → Environment F Nat → Expr F → Heap F → ExitTarget → SourceValue F → Heap F → Prop where
+    | exit (value : EvalExpr world types locals expr before result after) :
+        EvalExit world types locals (.control (.exit target) expr) before target result after
+    | exitPayload (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.control (.exit outer) expr) before target result after
+    | fromBlock (different : target ≠ .block label)
+        (body : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.control (.block label) expr) before target result after
+    | fromGlobal (lookup : world.constant name (type.subst types) = .ok pattern)
+        (interpreted : Consts.toExpr pattern = .ok body)
+        (value : EvalExit world [] [] body before target result after) :
+        EvalExit world types locals (.global name (some type)) before target result after
+    | fromTuple (items : EvalArgsExit world types locals exprs before target result after) :
+        EvalExit world types locals (.tuple exprs) before target result after
+    | fromArray (items : EvalArgsExit world types locals exprs before target result after) :
+        EvalExit world types locals (.array exprs) before target result after
+    | fromRepeat (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.repeat expr length) before target result after
+    | fromIndex (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.index expr index) before target result after
+    | fromSlice (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.slice expr start stop) before target result after
+    | fromConstruct (items : EvalArgsExit world types locals exprs before target result after) :
+        EvalExit world types locals (.construct name args ctor exprs) before target result after
+    | fromConstructAs (items : EvalArgsExit world types locals exprs before target result after) :
+        EvalExit world types locals (.constructAs params t ctor exprs) before target result after
+    | fromProject (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.project expr index) before target result after
+    | fromLetValue (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.letValue pattern expr rest) before target result after
+    | letBody (value : EvalExpr world types locals expr before input middle)
+        (matched : world.matchPattern types middle pattern input = .ok (some bindings))
+        (body : EvalExit world types (bindings ++ locals) rest middle target result after) :
+        EvalExit world types locals (.letValue pattern expr rest) before target result after
+    | fromStore (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.store expr) before target result after
+    | fromLoad (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.load expr) before target result after
+    | fromHint (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.hint t expr) before target result after
+    | fromNeg (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.neg expr) before target result after
+    | binaryLeft (value : EvalExit world types locals left before target result after) :
+        EvalExit world types locals (.binary op left right) before target result after
+    | binaryRight (left : EvalExpr world types locals lhs before input middle)
+        (right : EvalExit world types locals rhs middle target result after) :
+        EvalExit world types locals (.binary op lhs rhs) before target result after
+    | fromCall (arguments : EvalArgsExit world types locals args before target result after) :
+        EvalExit world types locals (.call name typeArgs args) before target result after
+    | fromMatchValue (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.matchValue expr arms) before target result after
+    | matchBody (value : EvalExpr world types locals expr before input middle)
+        (selected : selectArm world types middle input arms = .ok (some (bindings, body)))
+        (branch : EvalExit world types (bindings ++ locals) body middle target result after) :
+        EvalExit world types locals (.matchValue expr arms) before target result after
+
+  inductive EvalArgsExit [Field F] [DecidableEq F] (world : World F) :
+      Types → Environment F Nat → List (Expr F) → Heap F → ExitTarget → SourceValue F → Heap F → Prop where
+    | head (value : EvalExit world types locals expr before target result after) :
+        EvalArgsExit world types locals (expr :: rest) before target result after
+    | tail (head : EvalExpr world types locals expr before value middle)
+        (tail : EvalArgsExit world types locals rest middle target result after) :
+        EvalArgsExit world types locals (expr :: rest) before target result after
 end
 
 end Aiur.Generic.SourceSemantics
