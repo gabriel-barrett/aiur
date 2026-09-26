@@ -134,7 +134,12 @@ private def inferPattern (p : Program α) (rigid : List String) : Nat → Patter
       | .literal x => agree .field expected; return (.literal x, [])
       | .wildcard => return (.wildcard, [])
       | .bind n => return (.bind n, [(n, expected)])
-      | .global n => throw s!"unexpanded const reference '::{n}'"
+      | .global n annotation =>
+          if let some t := annotation then agree t expected
+          let body ← liftM (Consts.lookup p.consts n)
+          let (_, bindings) ← inferPattern p rigid fuel body expected
+          if !bindings.isEmpty then throw s!"const '::{n}' contains a binder"
+          return (.global n (some expected), [])
       | .load pat =>
           let target ← fresh
           agree (.ptr target) expected
@@ -187,9 +192,16 @@ private def infer (p : Program α) (rigid : List String) :
       let (t, e) ← match e with
       | .literal x => pure (.field, .literal x)
       | .var n =>
-          let some t := locals.lookup n | throw s!"unbound variable '{n}'"
-          pure (t, .var n)
-      | .global n => throw s!"unexpanded const reference '::{n}'"
+          match locals.lookup n with
+          | some t => pure (t, .var n)
+          | none => infer p rigid fuel [] (.global n) expected
+      | .global n annotation => do
+          let t ← match expected with | some t => pure t | none => fresh
+          if let some a := annotation then agree a t
+          let body ← liftM (Consts.lookup p.consts n)
+          let (_, bindings) ← inferPattern p rigid fuel body t
+          if !bindings.isEmpty then throw s!"const '::{n}' contains a binder"
+          pure (t, .global n (some t))
       | .tuple xs => do
           let ts ← xs.mapM fun _ => fresh
           if let some expected := expected then agree (.tuple ts) expected
@@ -297,7 +309,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
-  | .global n => throw s!"unexpanded const reference '::{n}'"
+  | .global n t => return .global n (← t.mapM (finishType s))
   | .load p => return .load (← finishPattern s p)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
   | .array ps => return .array (← ps.mapM (finishPattern s))
@@ -309,7 +321,7 @@ termination_by p => sizeOf p
 private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
   | .literal x => pure (.literal x)
   | .var n => pure (.var n)
-  | .global n => throw s!"unexpanded const reference '::{n}'"
+  | .global n t => return .global n (← t.mapM (finishType s))
   | .tuple xs => return .tuple (← xs.mapM (finishExpr s))
   | .array xs => return .array (← xs.mapM (finishExpr s))
   | .repeat x n => return .repeat (← finishExpr s x) n
@@ -339,10 +351,51 @@ def elaborateExpr (p : Program α) (rigid : List String) (locals : List (String 
   let ((_, e), state) ← infer p rigid 4096 locals e (some expected) {}
   finishExpr state e
 
-/-- Infer omitted arguments once, treating declared parameters as rigid nominal
-types. This deliberately does not apply the specialization recursion rule. -/
+/-- Check one const body at its use type, retaining any nested references.
+This supplies type information for context-dependent constructors such as
+`Option::None`; it never inlines a referenced const. -/
+def elaborateConst (p : Program α) (name : String) (expected : Ty) : Except String (Pattern α) := do
+  let body ← Consts.lookup p.consts name
+  let ((body, _), state) ← inferPattern p expected.parameters 4096 body expected {}
+  finishPattern state body
+
+/-- Syntactic call dependencies retain every branch, including redundant ones.
+Consts cannot contain calls, so a reference introduces no function dependency. -/
+def sourceCalls (types : List (String × Ty)) : Expr α → List Instance
+  | .call name supplied args =>
+      ⟨name, (supplied.getD []).map (Ty.subst types)⟩ :: args.flatMap (sourceCalls types)
+  | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
+  | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => sourceCalls types x
+  | .letValue _ x b | .binary _ x b => sourceCalls types x ++ sourceCalls types b
+  | .matchValue x arms => sourceCalls types x ++ arms.flatMap (fun a => sourceCalls types a.2)
+  | _ => []
+termination_by e => sizeOf e
+decreasing_by
+  all_goals simp_wf
+  all_goals first | omega | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›; first | omega | cases ‹_ × _›; simp_all only [Prod.mk.sizeOf_spec]; omega
+
+/-- Whole-program conservative specialization admissibility. Ordinary recursion
+closes a path; a change of recursive type arguments is rejected even in an
+unused function. This is independent of termination of value evaluation. -/
+def checkGenericCycles (p : Program α) : Except String Unit := do
+  let rec visit : Nat → List Instance → Instance → Except String Unit
+    | 0, _, _ => throw "generic dependency depth exceeded"
+    | fuel + 1, path, key => do
+        let some fn := p.findFunction? key.name | return
+        if let some ancestor := path.find? (·.name == key.name) then
+          if ancestor != key then
+            throw s!"recursive call to '{key.name}' changes type arguments"
+          return
+        let types ← arguments fn.typeParams key.types
+        (sourceCalls types fn.body).forM (visit fuel (key :: path))
+  p.functions.forM fun fn =>
+    visit (p.functions.length + 1) [] ⟨fn.name, fn.typeParams.map Ty.param⟩
+
+/-- Check source expressions and infer their type metadata. Const references
+remain references; only type information is normalized. -/
 def elaborate (p : Program α) : Except String (Program α) := do
-  let p ← expandConsts p
+  Consts.checkAcyclic p
+  let aliases := p.aliases
   let p ← expandAliases p
   if let some n := findDuplicate (p.functions.map (·.name) ++ p.maps.map (·.name)) [] then
     throw s!"duplicate function/map '{n}'"
@@ -387,6 +440,29 @@ def elaborate (p : Program α) : Except String (Program α) := do
     let some output := p.tables.find? (·.name == m.output) | throw s!"unknown table '{m.output}'"
     if input.rowType != .tuple (m.params.map Prod.snd) then throw s!"input table type mismatch for map '{m.name}'"
     if output.rowType != m.result then throw s!"output table type mismatch for map '{m.name}'"
-  return { p with functions, tables, consts := [] }
+  let checked := { p with functions, tables, aliases }
+  checkGenericCycles checked
+  return checked
+
+/-- Compiler preparation may inline consts after the source semantics boundary.
+The source checker above does not use this transformation. -/
+def prepareTemplates (p : Program α) : Except String (Program α) := do
+  let p ← elaborate (← expandConsts p)
+  return { p with aliases := [], consts := [] }
+
+/-- Resolve pattern conditions for diagnostics and compiler preparation. The
+original match arms remain unchanged. -/
+def inspectPattern (p : Program α) : Nat → Pattern α → Except String (Pattern α)
+  | 0, _ => throw "pattern inspection depth exceeded"
+  | fuel + 1, pat => match pat with
+    | .global name (some type) => do inspectPattern p fuel (← elaborateConst p name type)
+    | .global name none => throw s!"missing type information for const '::{name}'"
+    | .load pat => return .load (← inspectPattern p fuel pat)
+    | .tuple ps => return .tuple (← ps.mapM (inspectPattern p fuel))
+    | .array ps => return .array (← ps.mapM (inspectPattern p fuel))
+    | .repeat pat n => return .repeat (← inspectPattern p fuel pat) n
+    | .construct t c ps => return .construct t c (← ps.mapM (inspectPattern p fuel))
+    | .constructAs ts t c ps => return .constructAs ts t c (← ps.mapM (inspectPattern p fuel))
+    | _ => pure pat
 
 end Aiur.Generic

@@ -45,9 +45,9 @@ fn generic<T>(x: Option<T>) -> Field { match x { ::empty => 41, _ => 43 } }
 fn generic_entry() -> Field { generic(Option::<Field>::None) }
 "
 
-#guard source.consts.isEmpty
-#guard source.aliases.isEmpty
-#guard (source.findFunction? "make").map (·.body) == some (.store (.tuple [.literal 0]))
+#guard source.consts.length == 10
+#guard source.aliases.length == 1
+#guard (source.findFunction? "make").map (·.body) == some (.global "ptr" (some (.ptr (.tuple [.field]))))
 
 def runSource (name : String) (args : List (SourceValue Rat) := []) := do
   let s ← Generic.prepare (source.toField Rat)

@@ -1,4 +1,4 @@
-import Aiur.Generic.AST
+import Aiur.Generic.Consts
 import Aiur.EvalCorrectness
 
 /-! Evaluation is defined on the checked source AST. Type arguments are carried
@@ -17,50 +17,79 @@ def constructorName (types : Types) (type : Ty) : String :=
   | .enum name => name
   | _ => "$invalid"
 
+structure World (F : Type) where
+  prepare : String → List (SourceValue F) → Except EvalError (Types × Environment F Nat × Expr F)
+  typed : Aiur.Ty → Constant F → Bool
+  /-- A single declaration lookup, with its use-site type information. -/
+  constant : String → Ty → Except EvalError (Pattern F) :=
+    fun name _ => .error (.unboundVariable ("::" ++ name))
+  /-- The checked acyclic declaration graph bounds reference traversal. -/
+  constDepth : Nat := 0
+
+/-- Ordered, short-circuiting matching of a sequence. No later read is made
+once an earlier pattern has failed. -/
+def matchListWith (matchOne : A → SourceValue F → Except EvalError (Option (Environment F Nat))) :
+    List A → List (SourceValue F) → Except EvalError (Option (Environment F Nat))
+  | [], [] => pure (some [])
+  | p :: ps, value :: values => do
+      let some bindings ← matchOne p value | return none
+      let some rest ← matchListWith matchOne ps values | return none
+      return some (bindings ++ rest)
+  | _, _ => pure none
+
 /-- Pattern matching only reads the heap. A failed test returns `none`; a bad
 load is an error, and cannot select a later arm. Bindings are installed only
 after the whole pattern succeeds. -/
-def matchPattern [DecidableEq F] (types : Types) (heap : Heap F) :
+def matchPatternWith [DecidableEq F] (constant : String → Ty → Except EvalError (Pattern F))
+    (depth : Nat) (types : Types) (heap : Heap F) :
     Pattern F → SourceValue F → Except EvalError (Option (Environment F Nat))
   | .literal x, value => pure ((Aiur.Pattern.literal x).bindings value)
   | .wildcard, _ => pure (some [])
   | .bind name, value => pure (some [(name, value)])
-  | .global name, _ => throw (.unboundVariable ("::" ++ name))
-  | .load pat, value => do matchPattern types heap pat (← loadValue heap value)
+  | .global name annotation, value => do
+      let some type := annotation | throw (.unboundVariable ("::" ++ name))
+      match depth with
+      | 0 => throw (.unboundVariable ("::" ++ name))
+      | depth + 1 =>
+          let body ← constant name (type.subst types)
+          matchPatternWith constant depth [] heap body value
+  | .load pat, value => do matchPatternWith constant depth types heap pat (← loadValue heap value)
   | .tuple ps, value | .array ps, value => do
       let .tuple values := value | return none
       if ps.length != values.length then return none
-      (ps.attach.zip values).foldlM (init := some []) fun bindings (pat, value) => do
-        let some bindings := bindings | return none
-        return (← matchPattern types heap pat.val value).map (bindings ++ ·)
+      matchListWith (fun pat value => matchPatternWith constant depth types heap pat.val value) ps.attach values
   | .repeat pat n, value => do
       let .tuple values := value | return none
       if values.length != n then return none
-      values.foldlM (init := some []) fun bindings value => do
-        let some bindings := bindings | return none
-        return (← matchPattern types heap pat value).map (bindings ++ ·)
+      matchListWith (fun (_ : Unit) value => matchPatternWith constant depth types heap pat value)
+        (List.replicate n ()) values
   | .construct t c ps, value | .constructAs _ t c ps, value => do
       let .construct name ctor values := value | return none
       if name != constructorName types t || ctor != c || ps.length != values.length then return none
-      (ps.attach.zip values).foldlM (init := some []) fun bindings (pat, value) => do
-        let some bindings := bindings | return none
-        return (← matchPattern types heap pat.val value).map (bindings ++ ·)
-termination_by pat _ => sizeOf pat
+      matchListWith (fun pat value => matchPatternWith constant depth types heap pat.val value) ps.attach values
+termination_by pat _ => (depth, sizeOf pat)
 decreasing_by
   all_goals simp_wf
   all_goals first | omega | skip
-  all_goals have := List.sizeOf_lt_of_mem pat.property
+  all_goals try have := List.sizeOf_lt_of_mem pat.property
   all_goals try simp_all only [Pattern.tuple.sizeOf_spec, Pattern.array.sizeOf_spec,
     Pattern.construct.sizeOf_spec, Pattern.constructAs.sizeOf_spec]
   all_goals omega
 
-def selectArm [DecidableEq F] (types : Types) (heap : Heap F) (value : SourceValue F) :
+def World.matchPattern [DecidableEq F] (world : World F) :=
+  matchPatternWith world.constant world.constDepth
+
+/-- Matching without global declarations, useful for standalone patterns. -/
+def matchPattern [DecidableEq F] :=
+  matchPatternWith (F := F) (fun name _ => .error (.unboundVariable ("::" ++ name))) 0
+
+def selectArm [DecidableEq F] (world : World F) (types : Types) (heap : Heap F) (value : SourceValue F) :
     List (Pattern F × Expr F) → Except EvalError (Option (Environment F Nat × Expr F))
   | [] => pure none
   | (pat, body) :: arms => do
-      match ← matchPattern types heap pat value with
+      match ← world.matchPattern types heap pat value with
       | some bindings => return some (bindings, body)
-      | none => selectArm types heap value arms
+      | none => selectArm world types heap value arms
 
 /-- Bounds are source naturals. Slicing makes a value and never allocates. -/
 def sliceValue (value : SourceValue F) (start : Nat) (stop : Option Nat) : Except EvalError (SourceValue F) := do
@@ -69,9 +98,6 @@ def sliceValue (value : SourceValue F) (start : Nat) (stop : Option Nat) : Excep
   if start > stop || stop > values.length then throw (.projectionBounds stop values.length)
   return .tuple ((values.drop start).take (stop - start))
 
-structure World (F : Type) where
-  prepare : String → List (SourceValue F) → Except EvalError (Types × Environment F Nat × Expr F)
-  typed : Aiur.Ty → Constant F → Bool
 
 abbrev HintProvider (world : World F) := SourceValue F → (type : Aiur.Ty) →
   Except HintError { value : Constant F // world.typed type value = true }
@@ -87,7 +113,11 @@ def evalExprWith [Field F] [DecidableEq F] (world : World F) (hints : HintProvid
       | .var name =>
           let some (_, value) := locals.find? (·.1 == name) | throw (.unboundVariable name)
           return value
-      | .global name => throw (.unboundVariable ("::" ++ name))
+      | .global name annotation => do
+          let some type := annotation | throw (.unboundVariable ("::" ++ name))
+          let pattern ← liftM (world.constant name (type.subst types))
+          let body ← liftM ((Consts.toExpr pattern).mapError (fun _ => EvalError.unboundVariable ("::" ++ name)))
+          evalExprWith world hints [] [] fuel body
       | .tuple items | .array items => return .tuple (← items.mapM (evalExprWith world hints types locals fuel))
       | .repeat value n => return .tuple (List.replicate n (← evalExprWith world hints types locals fuel value))
       | .index value i | .project value i => liftM (projectValue (← evalExprWith world hints types locals fuel value) i)
@@ -98,7 +128,7 @@ def evalExprWith [Field F] [DecidableEq F] (world : World F) (hints : HintProvid
           return .construct (constructorName types t) ctor (← items.mapM (evalExprWith world hints types locals fuel))
       | .letValue pattern value body =>
           let value ← evalExprWith world hints types locals fuel value
-          let some bindings ← liftM (matchPattern types (← get) pattern value) | throw .patternMismatch
+          let some bindings ← liftM (world.matchPattern types (← get) pattern value) | throw .patternMismatch
           evalExprWith world hints types (bindings ++ locals) fuel body
       | .store value =>
           let value ← evalExprWith world hints types locals fuel value
@@ -121,7 +151,7 @@ def evalExprWith [Field F] [DecidableEq F] (world : World F) (hints : HintProvid
           evalExprWith world hints calleeTypes bindings fuel body
       | .matchValue scrutinee arms =>
           let value ← evalExprWith world hints types locals fuel scrutinee
-          let some (bindings, body) ← liftM (selectArm types (← get) value arms) | throw .noMatchingArm
+          let some (bindings, body) ← liftM (selectArm world types (← get) value arms) | throw .noMatchingArm
           evalExprWith world hints types (bindings ++ locals) fuel body
 
 mutual
@@ -130,6 +160,11 @@ mutual
     | literal : EvalExpr world types locals (.literal value) heap (.field value) heap
     | var (lookup : locals.find? (·.1 == name) = some (name, value)) :
         EvalExpr world types locals (.var name) heap value heap
+    | global
+        (lookup : world.constant name (type.subst types) = .ok pattern)
+        (interpreted : Consts.toExpr pattern = .ok body)
+        (value : EvalExpr world [] [] body before result after) :
+        EvalExpr world types locals (.global name (some type)) before result after
     | tuple (items : EvalArgs world types locals exprs before values after) :
         EvalExpr world types locals (.tuple exprs) before (.tuple values) after
     | array (items : EvalArgs world types locals exprs before values after) :
@@ -150,7 +185,7 @@ mutual
         (projected : projectValue input index = .ok result) :
         EvalExpr world types locals (.project expr index) before result after
     | letValue (value : EvalExpr world types locals expr before input middle)
-        (matched : matchPattern types middle pattern input = .ok (some bindings))
+        (matched : world.matchPattern types middle pattern input = .ok (some bindings))
         (body : EvalExpr world types (bindings ++ locals) rest middle result after) :
         EvalExpr world types locals (.letValue pattern expr rest) before result after
     | store (value : EvalExpr world types locals expr before input middle) :
@@ -172,7 +207,7 @@ mutual
         (callee : EvalFn world (instanceName types name typeArgs) values middle result after) :
         EvalExpr world types locals (.call name typeArgs args) before result after
     | matchValue (value : EvalExpr world types locals expr before input middle)
-        (selected : selectArm types middle input arms = .ok (some (bindings, body)))
+        (selected : selectArm world types middle input arms = .ok (some (bindings, body)))
         (branch : EvalExpr world types (bindings ++ locals) body middle result after) :
         EvalExpr world types locals (.matchValue expr arms) before result after
 

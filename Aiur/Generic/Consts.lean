@@ -1,8 +1,8 @@
 import Aiur.Generic.Aliases
 
-/-! Consts are closed, fully specified syntax templates. Expansion happens
-before alias expansion and type inference, without evaluating any expression
-or choosing a field. Pointer syntax becomes allocation or matching by context. -/
+/-! Consts are closed value/pattern declarations. Source checking and execution
+retain references. The substitution functions in this file are compiler tools;
+pointer syntax denotes allocation or matching according to its position. -/
 
 namespace Aiur.Generic
 namespace Consts
@@ -12,7 +12,8 @@ must also make sense as patterns; calls, arithmetic, projections and loads do
 not. Bare names therefore become global references here. -/
 def ofExpr : Expr α → Except String (Pattern α)
   | .literal x => pure (.literal x)
-  | .var n | .global n => pure (.global n)
+  | .var n => pure (.global n)
+  | .global n t => pure (.global n t)
   | .store x => return .load (← ofExpr x)
   | .tuple xs => return .tuple (← xs.mapM ofExpr)
   | .array xs => return .array (← xs.mapM ofExpr)
@@ -23,7 +24,7 @@ def ofExpr : Expr α → Except String (Pattern α)
 termination_by e => sizeOf e
 
 def checkBody : Pattern α → Except String Unit
-  | .literal _ | .global _ => pure ()
+  | .literal _ | .global _ _ => pure ()
   | .wildcard => throw "const bodies must specify complete values; wildcards are not allowed"
   | .bind n => throw s!"const bodies cannot bind '{n}'; use '::{n}' for a global reference"
   | .load p | .repeat p _ => checkBody p
@@ -38,7 +39,7 @@ def substitute (lookup : String → Except String (Pattern α)) : Pattern α →
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
-  | .global n => lookup n
+  | .global n _ => lookup n
   | .load p => return .load (← substitute lookup p)
   | .tuple ps => return .tuple (← ps.mapM (substitute lookup))
   | .array ps => return .array (← ps.mapM (substitute lookup))
@@ -73,6 +74,28 @@ def checkDeclarations (p : Program α) : Except String Unit := do
   let _ ← p.consts.mapM (checkDeclaration (p.functions.map (·.name) ++ p.maps.map (·.name)))
   pure ()
 
+def dependencies : Pattern α → List String
+  | .global name _ => [name]
+  | .load p | .repeat p _ => dependencies p
+  | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps =>
+      ps.flatMap dependencies
+  | _ => []
+termination_by p => sizeOf p
+
+/-- Validate the reference graph without substituting any declaration body.
+Even an unused declaration, or a reference underneath `&` or `[...; 0]`, must
+have an acyclic dependency graph. -/
+def checkAcyclic (p : Program α) : Except String Unit := do
+  checkDeclarations p
+  let rec visit : Nat → List String → String → Except String Unit
+    | 0, _, _ => throw "const dependency depth exceeded"
+    | fuel + 1, path, name => do
+        if path.contains name then
+          throw s!"cyclic const: {String.intercalate " -> " (path.reverse ++ [name])}"
+        let body ← lookup p.consts name
+        (dependencies body).forM (visit fuel (name :: path))
+  p.consts.forM fun d => visit (p.consts.length + 1) [] d.name
+
 /-- Forward references work. Every declaration is checked and resolved,
 including unused declarations and cycles hidden underneath pointer syntax. -/
 def resolveDeclarations (p : Program α) : Except String (List (ConstDecl α)) := do
@@ -95,7 +118,7 @@ def toExpr : Pattern α → Except String (Expr α)
       return .construct n (if ts.isEmpty then none else some ts) c (← ps.mapM toExpr)
   | .constructAs params t c ps => return .constructAs params t c (← ps.mapM toExpr)
   | .construct _ _ _ => throw "const constructor requires a nominal enum type"
-  | .global n => throw s!"unexpanded const reference '::{n}'"
+  | .global n t => pure (.global n t)
   | .wildcard => throw "const bodies must specify complete values; wildcards are not allowed"
   | .bind n => throw s!"const bodies cannot bind '{n}'; use '::{n}' for a global reference"
 termination_by p => sizeOf p
@@ -110,7 +133,7 @@ def expandExpr (decls : List (ConstDecl α)) (locals : List String) : Expr α �
   | .var n =>
       if locals.contains n || !(decls.any (·.name == n)) then pure (.var n)
       else expression decls n
-  | .global n => expression decls n
+  | .global n _ => expression decls n
   | .tuple xs => return .tuple (← xs.mapM (expandExpr decls locals))
   | .array xs => return .array (← xs.mapM (expandExpr decls locals))
   | .repeat x n => return .repeat (← expandExpr decls locals x) n

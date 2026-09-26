@@ -6,11 +6,12 @@ open Aiur
 set_option maxRecDepth 10000
 set_option maxHeartbeats 2000000
 
--- Expansion and inference annotate source syntax without erasing its operations.
+-- Checking records type information without inlining source const references.
 def program : Generic.Program Nat := aiur% "
 type Four = [Field; 4];
 const zeros = [0; 4];
-fn repeated() -> Four { zeros }
+fn repeated() -> Four { [0; 4] }
+fn referenced() -> Four { zeros }
 fn pattern(a: Four) -> Field { match a { [0; 4] => 1, _ => 2 } }
 fn slice() -> [Field; 2] { [1, 2, 3, 4][1..3] }
 fn stored() -> [&Field; 0] { [&7; 0] }
@@ -18,7 +19,9 @@ fn read() -> Field { let &x = &9; x }
 fn key() -> Field { hint::<Field>(*(&3)) }
 "
 
-#guard program.aliases.isEmpty && program.consts.isEmpty
+#guard program.aliases.length == 1 && program.consts.length == 1
+#guard (program.findFunction? "referenced").map (·.body) ==
+  some (.global "zeros" (some (.array .field 4)))
 #guard (program.findFunction? "repeated").any fun f => match f.body with
   | .repeat (.literal 0) 4 => true
   | _ => false

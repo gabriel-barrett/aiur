@@ -13,7 +13,7 @@ shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
 structs or higher-order values. Generic functions and nominal enums
 accept type parameters; see [generics](generics.md).
 Transparent [type aliases](type-aliases.md) use `type Scalar = Field;` or
-`type Pair<T> = (T, T);`. They expand before generic inference, while literals
+`type Pair<T> = (T, T);`. Their type information normalizes during generic inference, while literals
 are still natural numbers. Aliases do not introduce nominal type identities.
 
 Every parameter and return type must be explicit, including `Field` and `()`:
@@ -44,7 +44,7 @@ of non-generic entry functions. `Nat` is a representation choice, not a source-l
 
 ## Expressions and binding
 
-`const name = value;` names a complete value/pattern template, expanded before
+`const name = value;` names a complete value/pattern declaration, retained through
 generic inference. For example, `const cell = &(0,);` allocates on each value
 use and loads and tests contents when used as a pattern. Bare names in patterns
 always bind; `::name` refers globally. In values, bare names prefer locals and

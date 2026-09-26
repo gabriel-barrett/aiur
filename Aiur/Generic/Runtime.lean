@@ -57,12 +57,18 @@ structure Source (F : Type) [DecidableEq F] where
 
 def prepare [DecidableEq F] (p : Program F) : Except String (Source F) := do
   let p ← elaborate p
-  for fn in p.functions do checkLoadPatterns p.enums fn.name fn.body
-  let tables ← staticProgram p
+  for fn in p.functions do checkLoadPatterns p fn.name fn.body
+  let staticSource ← prepareTemplates { p with functions := [] }
+  let tables ← staticProgram staticSource
   if checked : typecheck tables = .ok () then return ⟨p, tables, checked⟩
   else match typecheck tables with
     | .error e => throw (toString e)
     | .ok _ => throw "invalid static tables"
+
+/-- Compiler-only templates. Failure is propagated by `specialize`; the default
+is used solely by the total reference lookup API. -/
+def Source.compilerTemplate [DecidableEq F] (s : Source F) : Program F :=
+  (prepareTemplates s.program).toOption.getD { functions := [] }
 
 def Source.checkEntry [DecidableEq F] (s : Source F) (name : String) : Except String Unit := do
   let some fn := s.program.findFunction? name | throw s!"unknown entrypoint '{name}'"
@@ -108,6 +114,9 @@ def sourceWorld [DecidableEq F] (s : Source F)
     | some fn => fn.prepare s.program.enum? args
     | none => return ([], [], constantExpr (← lookupMap s.tables name args))
   typed t v := hasType s.program.enum? t v
+  constant name t := (elaborateConst s.program name t).mapError
+    (fun _ => EvalError.unboundVariable ("::" ++ name))
+  constDepth := s.program.consts.length + 1
 
 def Source.world [DecidableEq F] (s : Source F) : SourceSemantics.World F :=
   sourceWorld s s.program.sourceFunction?

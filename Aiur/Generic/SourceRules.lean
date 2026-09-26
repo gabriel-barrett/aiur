@@ -25,7 +25,7 @@ theorem let_load_iff :
   · intro h
     cases h with
     | letValue value matched body =>
-        simp only [matchPattern, except_bind_ok] at matched
+        simp only [World.matchPattern, matchPatternWith, except_bind_ok] at matched
         obtain ⟨input, loaded, matched⟩ := matched
         exact .letValue (.load value loaded) matched body
   · intro h
@@ -33,6 +33,6 @@ theorem let_load_iff :
     | letValue value matched body =>
         cases value with
         | load pointer loaded =>
-            exact .letValue pointer (by simp only [matchPattern, except_bind_ok]; exact ⟨_, loaded, matched⟩) body
+            exact .letValue pointer (by simp only [World.matchPattern, matchPatternWith, except_bind_ok]; exact ⟨_, loaded, matched⟩) body
 
 end Aiur.Generic.SourceSemantics

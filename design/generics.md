@@ -80,9 +80,11 @@ their provider is an executor mechanism. `Source.run_spec` proves that every
 successful run has a source evaluation with exactly its final heap. See the
 [semantic boundary](source-semantics.md) for preparation order and runtime values.
 
-Consequently a terminating run of a type-growing function can succeed even
-though that function cannot be specialized under the rule below. Execution
-does not impose the function specialization restriction.
+The evaluation rules themselves do not require termination or specialization.
+Source checking now enforces the conservative generic-recursion restriction on
+all declarations, including unused functions, before exposing a checked runtime.
+Thus a type-growing recursive source is rejected even if a particular call
+would terminate or its entrypoints would never reach that function.
 
 ## Entrypoints and finite specialization
 

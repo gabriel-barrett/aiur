@@ -13,7 +13,7 @@ not ask a validator to decide semantic equivalence. -/
 def Valid [DecidableEq F] (s : Source F) (p : Aiur.Program F) (entries : List String) : Prop :=
   typecheck p = .ok () ∧
   p.tables = s.tables.tables ∧ p.maps = s.tables.maps ∧
-  (∀ n ∈ callableNames p, s.program.function? n = p.findFunction? n) ∧
+  (∀ n ∈ callableNames p, s.compilerTemplate.function? n = p.findFunction? n) ∧
   (∀ d ∈ p.enums, s.program.enum? d.name = some d) ∧
   closedEnums p.enums ∧
   (∀ fn ∈ p.functions, (∀ param ∈ fn.params, knownType p.enums param.2 = true) ∧
@@ -90,8 +90,9 @@ private def checkRecursion (p : Aiur.Program F) : Except String Unit := do
 
 def specialize [DecidableEq F] (s : Source F) (entries : List String) (limits : Limits := {}) :
     Except String (Specialized s entries) := do
+  let _ ← prepareTemplates s.program
   for name in entries do s.checkEntry name
-  let (_, collected) ← (entries.forM (visit s.program (s.program.functions.length + 2) [])).run
+  let (_, collected) ← (entries.forM (visit s.compilerTemplate (s.program.functions.length + 2) [])).run
     { remaining := limits.instances }
   let names := collected.functions.flatMap fun fn =>
     ((fn.params.map Prod.snd ++ [fn.result]).flatMap coreTypeNames) ++ coreExprNames fn.body

@@ -108,7 +108,7 @@ def expandPattern (aliases : List AliasDecl) : Pattern α → Except String (Pat
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
-  | .global n => pure (.global n)
+  | .global n t => pure (.global n t)
   | .load p => return .load (← expandPattern aliases p)
   | .tuple ps => return .tuple (← ps.mapM (expandPattern aliases))
   | .array ps => return .array (← ps.mapM (expandPattern aliases))
@@ -127,7 +127,7 @@ termination_by p => sizeOf p
 def expandExpr (aliases : List AliasDecl) : Expr α → Except String (Expr α)
   | .literal x => pure (.literal x)
   | .var n => pure (.var n)
-  | .global n => pure (.global n)
+  | .global n t => pure (.global n t)
   | .tuple xs => return .tuple (← xs.mapM (expandExpr aliases))
   | .array xs => return .array (← xs.mapM (expandExpr aliases))
   | .repeat x n => return .repeat (← expandExpr aliases x) n
@@ -168,7 +168,7 @@ def checkPatternHead (enums : List EnumDecl) (aliases : List AliasDecl) (rigid :
   | _ => checkSurfaceType enums aliases rigid t
 
 def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Pattern α → Except String Unit
-  | .literal _ | .wildcard | .bind _ | .global _ => pure ()
+  | .literal _ | .wildcard | .bind _ | .global _ _ => pure ()
   | .load p | .repeat p _ => checkPatternTypes enums aliases rigid p
   | .tuple ps | .array ps => do
       let _ ← ps.mapM (checkPatternTypes enums aliases rigid)
@@ -184,7 +184,7 @@ def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid 
 termination_by pat => sizeOf pat
 
 def checkExprTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Expr α → Except String Unit
-  | .literal _ | .var _ | .global _ => pure ()
+  | .literal _ | .var _ | .global _ _ => pure ()
   | .tuple xs | .array xs => do
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
       pure ()

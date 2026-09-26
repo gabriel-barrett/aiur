@@ -30,8 +30,8 @@ not an outstanding TODO.
   folds, rest patterns, and symbolic lengths/const generics. Dynamic indexing,
   mutable memory, and runtime loops remain separate from these conveniences.
 
-- [x] **Type aliases.** Named and parameterized aliases expand before generic
-  inference while literals are still natural numbers. Forward references,
+- [x] **Type aliases.** Named and parameterized declarations are retained;
+  checking normalizes their type information while literals are natural numbers. Forward references,
   qualified constructors/patterns, cycle checks, and canonical specialization
   preserve the distinction between transparent aliases and nominal enums.
   See [type aliases](type-aliases.md).
@@ -79,7 +79,7 @@ not an outstanding TODO.
 
 ## Frontend and program organization
 
-- [x] Add [const templates](consts.md) with early expansion, cycle checks, fully
+- [x] Add [const templates](consts.md) with retained references, cycle checks, fully
   specified value/pattern bodies, and capitalization-independent name resolution.
 - [ ] Add local type annotations and expression type annotations.
 - [ ] Add ordinary `expr; rest` statements and trailing semicolons, lowering to
@@ -98,9 +98,10 @@ The corresponding ix facilities are in its
 
 ## Proof reuse and later infrastructure
 
-Define evaluation on the source AST. Expand consts and aliases before
-typechecking while literals are natural numbers; keep other transformations on
-the circuit path, after the semantic boundary. Reusing the core does not prove
+Define evaluation on the source AST. Retain const references and const/alias
+declarations through checking and field conversion. Normalize type information
+as needed; put code transformations on the circuit path after the semantic
+boundary. Reusing the core does not prove
 a transformation correct automatically. Keep the
 existing evaluator correspondence and tree/memoized correctness results checked
 without admitted proof steps.
