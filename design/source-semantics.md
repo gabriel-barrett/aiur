@@ -95,9 +95,14 @@ compiler/tree/memoized/integer-checker results remain checked under explicit
 `Specialized.core_*` names. `CoreRuntime.lean` isolates the old reference runtime
 from ordinary source execution.
 
-**The full source-to-core lowering equivalence remains to be proved.** The
-recursive expression and function bridge remains, including the static
-array-shape/bounds facts needed for slice reflection.
+**Source-to-core equivalence and both end-to-end directions are proved.**
+`Specialized.native_entry_iff` covers recursive function calls and preserves the
+exact value and heap for selected entrypoints. `native_evalCall_iff` states this
+as an equivalence of public claims. `checker_heap_complete` and
+`checkerMemo_heap_complete` reach the two integer row checkers from the original
+source predicate. `checker_heap_sound` returns to that predicate from accepted
+unit rows; `checkerMemo_acyclic_heap_sound` requires acyclicity of the graph
+recovered from weighted-row acceptance.
 `PreparationExpressionFacts.expression_preparation_iff` (in the
 `SourceSemantics` namespace) proves preservation and reflection of native
 evaluation across type instantiation and const unfolding, with identical values
@@ -122,11 +127,36 @@ proves independence from compiler temporaries outside an expression's names.
 `ArrayFacts.lean` already characterizes core repetition and slicing;
 `SliceFacts.lean` connects static projection lists to native slices, with the
 operand shape and bounds required for reflection;
-`PatternFacts.lean` characterizes core plan execution. These are component facts,
-not a proof of the complete translation. `SourceRules.lean` provides native
+`PatternFacts.lean` characterizes core plan execution. These component facts
+are composed by `LoweringCompleteness.lean` and `LoweringSoundness.lean` for the
+complete expression translation. `SourceRules.lean` provides native
 repetition and pointer-let laws without invoking that translation.
 
-Consequently the new source execution/specialization proofs and the existing
-core-to-circuit proofs are both checked, but their composition is pending. No
-semantic-equivalence hypothesis has been hidden in specialization's certificate,
-and no `sorry` or additional axiom stands in for that missing composition.
+`OpenSource` and `OpenCore` expose calls as premises for compositional proofs;
+their closing/opening theorems recover the existing evaluation predicates. They
+introduce no execution or compiler phase. `LoweringTypes.lean` checks source
+subexpressions in their user binding scopes and retains the array-shape/bounds
+condition even for empty slices. `PatternTypeFacts.lean` proves preservation of
+binding types and well-formedness through native pointer patterns.
+
+`NativeCompleteness.lean` closes the forward call premises by induction on the
+finite native evaluation. `NativeSoundness.lean` closes the reverse premises by
+induction on the finite core evaluation, propagating well-formed heaps and user
+bindings through each subexpression. Entry checks supply the initial invariants.
+No totality hypothesis is needed, including for mutually recursive functions.
+
+`NativeCircuit.lean` composes these results with the existing core proofs. Its
+completeness theorems require enough distinct field addresses for the final
+allocation heap and global system well-formedness. Soundness obtains ROM validity
+from checker acceptance and relates pointer-containing outputs through
+`Represents`; it requires neither an allocation bound nor equal pointer addresses.
+The public `Compiled.check_sound` and `Compiled.checkMemo_acyclic_sound` wrappers
+conclude `Source.EvalCall`. The memoized condition is explicitly on
+`Classical.choice (system.checkMemo_sound checked)`, the support graph obtained
+from accepted rows. `memo_acyclic_heap_sound` also accepts any explicitly supplied
+acyclic graph. Weighted acceptance alone still permits cyclic self-justification.
+
+No semantic-equivalence hypothesis is hidden in specialization's certificate.
+The final theorem axiom reports are checked in `AiurTests/SourceEvaluation.lean`:
+only `propext`, `Classical.choice`, and `Quot.sound` occur, with no proof admissions
+or additional axioms.

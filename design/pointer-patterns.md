@@ -97,10 +97,12 @@ and reads. `letSteps_iff` and `matchSteps_iff` relate plan execution to core
 relational evaluation. `lowerLet_load` proves the corresponding core AST
 identity, and `load_bind_iff` characterizes the compiled simple load binding.
 
-The general proof connecting recursive source matching to those generated plans
-is pending. Existing circuit tree/memoized theorems remain proved for the core;
-see [the semantic boundary](source-semantics.md#proof-boundary). None of these
-checked theorems uses proof admissions or new axioms.
+`PlanTree.match_iff` proves equivalence between recursive source matching and
+the generated plans, including failure and load errors. `lowerLet_iff` and
+`lowerMatch_iff` compose it with scoped continuations and first-match order.
+The complete source/core equivalence then connects these translations to the
+circuit and row-checker theorems; see [the semantic boundary](source-semantics.md#proof-boundary).
+None of these checked theorems uses proof admissions or new axioms.
 
 `AiurTests/PointerPatterns.lean` covers nested reads, aliases, generic parameters,
 unit/singleton tuples, first-match overlaps, failed lets and partial matches,

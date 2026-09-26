@@ -101,10 +101,21 @@ their hypotheses include the system's global namespace/layout well-formedness
 and the existing allocation-capacity bound. Multiplicity itself has no capacity
 bound and may exceed the circuit field's cardinality.
 
+`Generic/NativeCircuit.lean` carries these endpoints through compiler preparation
+to the independent predicate on the original generic source. Its
+`Specialized.checker_heap_complete` and `checkerMemo_heap_complete` start with
+that predicate; `checker_heap_sound` returns to it from accepted unit rows.
+`Compiled.check_sound` also discharges the public-entry selection condition.
+
 Weighted checking gives a memoized graph, not unconditional source evaluation.
 The existing `memo_acyclic_sound` and `memo_acyclic_heap_sound` apply when the
 chosen graph is acyclic. No source totality or recursion-depth constraint is
 introduced. See [memoization](memoization.md).
+
+`Specialized.checkerMemo_acyclic_heap_sound` and
+`Compiled.checkMemo_acyclic_sound` expose this condition for accepted weighted
+rows: the support graph chosen from `System.checkMemo_sound checked` must be
+acyclic. Acceptance itself still imposes no acyclicity condition.
 
 All proofs are kernel checked without admissions or added axioms. Classical
 reasoning is used to recover derivations; these existence proofs are not an

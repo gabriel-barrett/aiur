@@ -125,6 +125,39 @@ example [Field F] [DecidableEq F] {s : Generic.Source F}
 /-- info: 'Aiur.Generic.PatternLowering.lowerMatch_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Generic.PatternLowering.lowerMatch_iff
+/-- info: 'Aiur.Generic.Specialized.native_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Specialized.native_complete
+/-- info: 'Aiur.Generic.Specialized.checker_heap_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Specialized.checker_heap_complete
+/-- info: 'Aiur.Generic.Specialized.checkerMemo_heap_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Specialized.checkerMemo_heap_complete
+/-- info: 'Aiur.Generic.Specialized.native_entry_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Specialized.native_entry_iff
+/-- info: 'Aiur.Generic.Specialized.native_evalCall_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Specialized.native_evalCall_iff
+/-- info: 'Aiur.Generic.Specialized.checker_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Specialized.checker_heap_sound
+/-- info: 'Aiur.Generic.Specialized.checkerMemo_acyclic_heap_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Specialized.checkerMemo_acyclic_heap_sound
+/-- info: 'Aiur.Generic.Compiled.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Compiled.check_sound
+/-- info: 'Aiur.Generic.Compiled.checkMemo_acyclic_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Compiled.checkMemo_acyclic_sound
+
+-- Lowered empty projections alone would accept a scalar. The compiler's
+-- source-scope certificate still requires an array operand and valid bounds.
+#guard (Generic.Expr.slice (.literal (0 : Rat)) 0 (some 0)).checkLowerTypes { functions := [] } [] [] == none
+#guard (Generic.Expr.slice (.array ([] : List (Generic.Expr Rat))) 0 (some 0)).checkLowerTypes { functions := [] } [] [] == some (.tuple [])
+#guard (Generic.Expr.slice (.array ([] : List (Generic.Expr Rat))) 1 (some 1)).checkLowerTypes { functions := [] } [] [] == none
 
 -- Const expansion is a compiler operation with a proof on the independent
 -- native predicate, including the exact resulting heap.

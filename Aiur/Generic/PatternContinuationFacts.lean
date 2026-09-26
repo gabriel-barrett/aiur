@@ -1,6 +1,9 @@
 import Aiur.Generic.PatternTreeCompleteness
 
 namespace Aiur.Generic.PatternLowering
+
+variable {calls : CallRelation F}
+
 open SourceSemantics
 
 variable [DecidableEq F]
@@ -56,10 +59,10 @@ theorem PlanTree.let_iff (tree : PlanTree F) (input : String)
     (heap : Heap F) (value : SourceValue F) (locals : Environment F Nat)
     (found : locals.find? (·.1 == input) = some (input, value))
     (body : Aiur.Expr F) (fresh : ∀ n ∈ exprNames body, n ∉ tree.temps) :
-    Engine.EvalExpr world locals (letSteps (tree.toPlan input).steps
+    OpenCore.EvalExpr world calls locals (letSteps (tree.toPlan input).steps
       (bindUsers (tree.toPlan input).bindings body)) heap result after ↔
       ∃ bindings, matchPatternWith constant depth [] heap tree.erase value = .ok (some bindings) ∧
-        Engine.EvalExpr world (bindings ++ locals) body heap result after := by
+        OpenCore.EvalExpr world calls (bindings ++ locals) body heap result after := by
   rw [letSteps_iff]
   constructor
   · rintro ⟨final, attempted, bodyEval⟩
@@ -82,12 +85,12 @@ theorem PlanTree.match_iff (tree : PlanTree F) (input : String)
     (body : Aiur.Expr F) (failure : Option (Aiur.Expr F))
     (freshBody : ∀ n ∈ exprNames body, n ∉ tree.temps)
     (freshFailure : ∀ fallback, failure = some fallback → ∀ n ∈ exprNames fallback, n ∉ tree.temps) :
-    Engine.EvalExpr world locals (matchSteps (tree.toPlan input).steps
+    OpenCore.EvalExpr world calls locals (matchSteps (tree.toPlan input).steps
       (bindUsers (tree.toPlan input).bindings body) failure) heap result after ↔
       (∃ bindings, matchPatternWith constant depth [] heap tree.erase value = .ok (some bindings) ∧
-        Engine.EvalExpr world (bindings ++ locals) body heap result after) ∨
+        OpenCore.EvalExpr world calls (bindings ++ locals) body heap result after) ∨
       (matchPatternWith constant depth [] heap tree.erase value = .ok none ∧
-        ∃ fallback, failure = some fallback ∧ Engine.EvalExpr world locals fallback heap result after) := by
+        ∃ fallback, failure = some fallback ∧ OpenCore.EvalExpr world calls locals fallback heap result after) := by
   rw [matchSteps_iff]
   constructor
   · rintro ⟨accepted, final, attempted, continued⟩

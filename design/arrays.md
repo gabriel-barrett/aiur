@@ -141,9 +141,10 @@ the single evaluation and exact final heap, including empty results and
 nondeterministic operands. Alias and const expansion's literal-conversion
 theorems cover the new forms. `SourceSemantics` and `SourceEvalFacts` now
 define and verify native source execution, while `SourceSimulation` proves
-source specialization equivalence. Tree/memoized and integer-checker proofs
-remain checked for the lowered core. The full source-to-core equivalence is
-pending; see [the proof boundary](source-semantics.md#proof-boundary).
+source specialization equivalence. The full source-to-core equivalence is proved
+and composed with the tree/memoized and integer-checker results. Reflection uses
+the source-scope typing certificate to retain array shape and valid bounds even
+for an empty slice; see [the proof boundary](source-semantics.md#proof-boundary).
 There are no proof admissions or new axioms.
 
 An implementation guard rejects individual lengths exceeding 65,536 before

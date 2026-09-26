@@ -103,8 +103,9 @@ path they lower to tuples and fixed projections without dynamic indexing circuit
 recursive paths that change a function's type arguments. The resulting wrapper
 keeps that public interface; `specialized.compile` produces a circuit artifact
 with the same entrypoint checks. Source evaluation is proved equivalent before
-and after finite instance selection. The full bridge from this native source
-predicate to the lowered circuit core remains pending; see the
+and after compiler preparation. Full completeness and soundness connect the
+native predicate to integer row checking; memoized soundness requires an acyclic
+claim graph. Completeness requires enough field addresses for allocations. See the
 [semantic boundary and proof status](design/source-semantics.md).
 See [the design](design/generics.md) and [the example](Examples/Generics.lean).
 

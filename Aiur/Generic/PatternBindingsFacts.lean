@@ -3,6 +3,9 @@ import Aiur.Generic.PreparationPatternFacts
 
 namespace Aiur.Generic.PatternLowering
 
+variable {calls : CallRelation F}
+
+
 def lookupValues (locals : Environment F Nat) : List String → Option (List (SourceValue F))
   | [] => some []
   | name :: names => do
@@ -114,7 +117,7 @@ variable [Field F] [DecidableEq F] {world : Engine.World F}
 
 theorem evalVars_iff {locals : Environment F Nat} {names : List String}
     {values : List (SourceValue F)} {before after : Heap F} :
-    Engine.EvalArgs world locals (names.map Aiur.Expr.var) before values after ↔
+    OpenCore.EvalArgs world calls locals (names.map Aiur.Expr.var) before values after ↔
       lookupValues locals names = some values ∧ after = before := by
   induction names generalizing before values with
   | nil =>
@@ -151,9 +154,9 @@ Reading every temporary before installing any user name avoids capture and
 preserves the source matcher's left-to-right binding order. -/
 theorem bindUsers_iff {bindings : List (String × String)} {locals : Environment F Nat}
     {body : Aiur.Expr F} {before after : Heap F} {result : SourceValue F} :
-    Engine.EvalExpr world locals (bindUsers bindings body) before result after ↔
+    OpenCore.EvalExpr world calls locals (bindUsers bindings body) before result after ↔
       ∃ values, lookupValues locals (bindings.map Prod.snd) = some values ∧
-        Engine.EvalExpr world (((bindings.map Prod.fst).zip values) ++ locals) body before result after := by
+        OpenCore.EvalExpr world calls (((bindings.map Prod.fst).zip values) ++ locals) body before result after := by
   have sources : bindings.map (fun b => (Aiur.Expr.var b.2 : Aiur.Expr F)) =
       (bindings.map Prod.snd).map Aiur.Expr.var := by simp only [List.map_map, Function.comp_def]
   have names : bindings.map (fun b => (Aiur.Pattern.bind b.1 : Aiur.Pattern F)) =
@@ -175,8 +178,8 @@ theorem bindUsers_iff {bindings : List (String × String)} {locals : Environment
   · rintro ⟨values, found, body⟩
     have len : (bindings.map Prod.fst).length = values.length := by
       simpa only [List.length_map] using lookupValues_length found
-    apply Engine.EvalExpr.letValue (bindings := (bindings.map Prod.fst).zip values)
-    · apply Engine.EvalExpr.tuple
+    apply OpenCore.EvalExpr.letValue (bindings := (bindings.map Prod.fst).zip values)
+    · apply OpenCore.EvalExpr.tuple
       rw [sources]
       exact evalVars_iff.mpr ⟨found, rfl⟩
     · simp only [Aiur.Pattern.bindings, names, bindingsList_binders _ _ len]
@@ -184,9 +187,9 @@ theorem bindUsers_iff {bindings : List (String × String)} {locals : Environment
 
 theorem bindUsers_resolved_iff {links : List (String × String)} {locals : Environment F Nat}
     {body : Aiur.Expr F} {before after : Heap F} {result : SourceValue F} :
-    Engine.EvalExpr world locals (bindUsers links body) before result after ↔
+    OpenCore.EvalExpr world calls locals (bindUsers links body) before result after ↔
       ∃ bindings, resolveBindings links locals = some bindings ∧
-        Engine.EvalExpr world (bindings ++ locals) body before result after := by
+        OpenCore.EvalExpr world calls (bindings ++ locals) body before result after := by
   rw [bindUsers_iff]
   constructor
   · rintro ⟨values, found, body⟩

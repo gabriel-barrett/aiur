@@ -2,6 +2,9 @@ import Aiur.Generic.PatternContinuationFacts
 
 namespace Aiur.Generic.PatternLowering
 
+variable {calls : CallRelation F}
+
+
 variable [DecidableEq F] {heap : Heap F} {locals final : Environment F Nat}
   {steps : List (Step F)} {input : String} {value : SourceValue F}
 
@@ -41,8 +44,8 @@ theorem Plan.retained_match_iff [Field F] {world : Engine.World F}
     {failure : Option (Aiur.Expr F)} (p : Plan F)
     (found : locals.find? (·.1 == input) = some (input, value))
     (fresh : input ∉ writtenNames p.steps) :
-    Engine.EvalExpr world locals (matchSteps (p.retainedSteps input) body failure) heap result after ↔
-      Engine.EvalExpr world locals (matchSteps p.steps body failure) heap result after := by
+    OpenCore.EvalExpr world calls locals (matchSteps (p.retainedSteps input) body failure) heap result after ↔
+      OpenCore.EvalExpr world calls locals (matchSteps p.steps body failure) heap result after := by
   rw [matchSteps_iff, matchSteps_iff]
   apply exists_congr; intro accepted
   apply exists_congr; intro final

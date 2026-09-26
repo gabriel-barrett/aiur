@@ -64,6 +64,26 @@ statement with an admitted proof does not close this chain.
 
 ## Implementation status
 
-This document records the agreed refactor. The implementation and the missing
-source-to-core preservation proof are being developed. Existing core compiler
-and integer accumulator proofs remain available during the transition.
+The source refactor and both directions of the complete correctness chain are
+implemented and proved. `Specialized.native_entry_iff` relates original-source
+evaluation to the prepared core, including the exact result and heap.
+`Specialized.native_evalCall_iff` states the same equivalence for public claims.
+`Specialized.checker_heap_complete` and `checkerMemo_heap_complete` compose it
+with the derivation and integer row-checker results. They assume successful
+specialization/compilation, a well-formed system, a selected entrypoint, and enough
+field elements for the allocation heap. They do not assume source termination.
+
+`Specialized.checker_heap_sound` reflects accepted unit rows to the original
+source predicate. `checkerMemo_acyclic_heap_sound` does the same for weighted
+rows when the graph recovered from checker acceptance is acyclic. Neither
+soundness theorem assumes totality or an allocation bound. Results containing
+pointers use the heap/ROM `Represents` relation; circuit addresses need not equal
+source addresses. The public artifact wrappers `Compiled.check_sound` and
+`Compiled.checkMemo_acyclic_sound` conclude `Source.EvalCall` directly.
+
+Compiler certificates check temporary scope, function/map lookup priority, and
+typing of source subexpressions after preparation. These are finite syntax/type
+checks, not semantic-equivalence assumptions. The proofs induct on finite
+evaluations and reuse the core compiler/derivation/checker results. Axiom
+regressions verify that the final theorems use only Lean's standard logical
+axioms, with no admissions or project-specific axioms.

@@ -1,5 +1,5 @@
 import Aiur.Generic.PatternLowering
-import Aiur.Generic.Engine
+import Aiur.Generic.OpenCore
 
 namespace Aiur.Generic.Engine
 
@@ -41,18 +41,21 @@ private theorem selected_member [DecidableEq F] {arms : List (Aiur.Pattern F × 
           subst expr
           exact ⟨pat, by simp⟩
 
-variable [Field F] [DecidableEq F] {world : World F}
+end Aiur.Generic.Engine
+
+namespace Aiur.Generic.OpenCore
+open Engine
+variable [Field F] [DecidableEq F] {world : Engine.World F} {calls : CallRelation F}
 
 /-- Compiler temporaries cannot affect an expression whose names they do not
 shadow. Calls start in their own environments, and the heap is unchanged by
 this change of local bindings. -/
-theorem EvalExpr.changeLocals (ev : EvalExpr world locals expr before value after) :
+theorem EvalExpr.changeLocals (ev : EvalExpr world calls locals expr before value after) :
     ∀ other, EnvAgrees (PatternLowering.exprNames expr) locals other →
-      EvalExpr world other expr before value after := by
+      EvalExpr world calls other expr before value after := by
   induction ev using EvalExpr.rec
     (motive_2 := fun ls es b vs h _ => ∀ other,
-      EnvAgrees (es.flatMap PatternLowering.exprNames) ls other → EvalArgs world other es b vs h)
-    (motive_3 := fun _ _ _ _ _ _ => True) with
+      EnvAgrees (es.flatMap PatternLowering.exprNames) ls other → EvalArgs world calls other es b vs h) with
   | literal => intro _ _; exact .literal
   | var lookup =>
       intro other agree
@@ -76,7 +79,7 @@ theorem EvalExpr.changeLocals (ev : EvalExpr world locals expr before value afte
       intro other agree
       exact .binary (ih1 other (agree.mono (by intros; simp [PatternLowering.exprNames, *])))
         (ih2 other (agree.mono (by intros; simp [PatternLowering.exprNames, *]))) op
-  | call _ callee ih _ => intro other agree; exact .call (ih other (by simpa only [PatternLowering.exprNames] using agree)) callee
+  | call _ callee ih => intro other agree; exact .call (ih other (by simpa only [PatternLowering.exprNames] using agree)) callee
   | matchValue _ selected _ ih1 ih2 =>
       intro other agree
       apply EvalExpr.matchValue
@@ -91,10 +94,9 @@ theorem EvalExpr.changeLocals (ev : EvalExpr world locals expr before value afte
       rename_i other agree
       exact .cons (ih1 other (agree.mono (by intros; simp [*])))
         (ih2 other (agree.mono (by intros; simp [*])))
-  | intro => trivial
 
 theorem evalExpr_env_iff (agree : EnvAgrees (PatternLowering.exprNames expr) locals other) :
-    EvalExpr world locals expr before value after ↔ EvalExpr world other expr before value after :=
+    EvalExpr world calls locals expr before value after ↔ EvalExpr world calls other expr before value after :=
   ⟨fun h => h.changeLocals other agree, fun h => h.changeLocals locals agree.symm⟩
 
-end Aiur.Generic.Engine
+end Aiur.Generic.OpenCore
