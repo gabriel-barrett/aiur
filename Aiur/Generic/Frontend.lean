@@ -14,6 +14,7 @@ syntax (name := bodyLet) "let" aiur_pattern "=" aiur_expr ";" aiur_body : aiur_b
 syntax (name := bodyLetTypedEnd) "let" aiur_pattern ":" aiur_type "=" aiur_expr ";" : aiur_body
 syntax (name := bodyLetTyped) "let" aiur_pattern ":" aiur_type "=" aiur_expr ";" aiur_body : aiur_body
 syntax (name := ascribeExpr) "(" aiur_expr ":" aiur_type ")" : aiur_expr
+syntax (name := assertExpr) "assert_eq!" "(" aiur_expr "," aiur_expr (atomic("," str))? (",")? ")" : aiur_expr
 syntax (name := debugExpr) "debug!" "(" str ("," sepBy(aiur_expr, ",", ",", allowTrailingSep))? ")" : aiur_expr
 syntax (name := blockStatements) "{" (aiur_body)? "}" : aiur_expr
 syntax (name := functionStatements) "fn" ident
@@ -188,6 +189,9 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
       (.builtin (.ascribe (← type params s[3])) [← expr params s[5]]) body
   else if k == ``ascribeExpr then
     return .builtin (.ascribe (← type params s[3])) [← expr params s[1]]
+  else if k == ``assertExpr then
+    let message := if s[5].getArgs.isEmpty then none else s[5][1].isStrLit?
+    return .builtin (.assertEq message) [← expr params s[2], ← expr params s[4]]
   else if k == ``debugExpr then
     let values ← if s[3].getArgs.isEmpty then pure [] else s[3][1].getSepArgs.toList.mapM (expr params)
     return .builtin (.debug (s[2].isStrLit?.getD "")) values

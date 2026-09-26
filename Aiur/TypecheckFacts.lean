@@ -193,6 +193,19 @@ theorem ROMEvalExprWith.wellTyped [Field F] [DecidableEq F] {program : Program F
       cases input with
       | field x => cases operation; simp [Value.type]
       | tuple | ptr | construct => cases operation
+  | @assertEq locals lhs x rhs y op result _ _ operation leftIH rightIH =>
+      intro formed caller type checked
+      simp only [inferType] at checked
+      obtain ⟨leftType, leftRun, rest⟩ := except_bind_ok.mp checked
+      obtain ⟨rightType, rightRun, rest⟩ := except_bind_ok.mp rest
+      obtain ⟨finished, _, rest⟩ := except_bind_ok.mp rest
+      have resultUnit := (evalAssertEq_ok.mp operation).2.2
+      subst result
+      split at rest
+      · simp [bind, Except.bind] at rest
+      · have same : type = .tuple [] := by simpa [bind, Except.bind, pure, Except.pure] using rest.symm
+        subst type
+        simp [Value.type]
   | @binary locals lhs x rhs y op result _ _ operation leftIH rightIH =>
       intro formed caller type checked
       simp only [inferType] at checked

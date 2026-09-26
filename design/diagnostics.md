@@ -35,7 +35,30 @@ the native source evaluation predicate. `BuiltinLowering.expression_iff` proves
 late annotation/debug translation in both directions, and the existing source,
 derivation and integer row-checker results include these constructs.
 
-Equality assertions are planned for all statically pointer-free types. The type
-restriction includes all enum variants and zero-length array element types.
-Assertions must neither observe addresses nor recursively follow pointers;
-explicitly loading pointer-free contents before comparing them is allowed.
+`assert_eq!(left, right)` and `assert_eq!(left, right, "message")` evaluate the
+two operands once, left to right, require structural equality, and return `()`.
+Failure reports `EvalError.assertionFailed` with the optional message. A traced
+execution also retains preceding messages and the active call stack. A break or
+return in either operand skips the rest of the assertion in the usual way.
+
+The checker requires the same statically pointer-free type on both sides. This
+includes fields, tuples, arrays, enums and structs; it inspects all enum variants
+and zero-length array element types. An unconstrained generic parameter cannot
+satisfy this restriction. Assertions neither observe addresses nor follow
+pointers. For example, `assert_eq!(&0, &0)` is rejected, while
+`assert_eq!(*p, *q)` is allowed when the loaded type is pointer-free.
+
+This restriction is necessary for the execution/circuit correspondence: two
+fresh execution allocations may share one prover-chosen ROM address. Equality
+of those addresses would not imply equality of execution locations.
+`Represents.assertEq` proves reflection using equality of pointer-free data,
+without requiring an injective address correspondence.
+
+The source operation lowers to the core assertion node. Circuit compilation
+equates each column of the operands' canonical encodings, guarded by the
+expression's enable. This covers enum tags, active payloads, and zero padding.
+It requires no auxiliary columns and performs no memory traversal. The existing
+encoding uniqueness theorem supplies completeness for equal structured values;
+decoding equal encodings supplies soundness. Native source, ordinary derivation,
+acyclic memoized derivation, and both integer row-checker theorems include
+assertions. Messages remain diagnostic metadata throughout.

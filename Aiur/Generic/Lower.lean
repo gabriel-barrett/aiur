@@ -93,6 +93,8 @@ namespace BuiltinLowering
 /-- Only generated syntax occurs inside these temporary scopes. -/
 def expression (op : Builtin) (operands : List (Aiur.Expr α)) : Aiur.Expr α :=
   match op with
+  | .assertEq message => .letValue (.tuple [.bind "$assertLeft", .bind "$assertRight"]) (.tuple operands)
+      (.assertEq message (.var "$assertLeft") (.var "$assertRight"))
   | .ascribe _ => .letValue (.tuple [.bind "$annotation"]) (.tuple operands) (.var "$annotation")
   | .debug _ => .letValue .wildcard (.tuple operands) (.tuple [])
 
@@ -175,7 +177,7 @@ def coreCalls : Aiur.Expr α → List String
   | .tuple xs | .construct _ _ xs => xs.flatMap coreCalls
   | .call n xs => n :: xs.flatMap coreCalls
   | .project x _ | .store x | .load x | .hint _ x | .neg x => coreCalls x
-  | .letValue _ x b | .binary _ x b => coreCalls x ++ coreCalls b
+  | .letValue _ x b | .binary _ x b | .assertEq _ x b => coreCalls x ++ coreCalls b
   | .matchValue x arms => coreCalls x ++ arms.flatMap (fun a => coreCalls a.2)
 termination_by e => sizeOf e
 decreasing_by
@@ -190,7 +192,7 @@ def coreExprNames : Aiur.Expr α → List String
   | .project x _ | .store x | .load x | .neg x => coreExprNames x
   | .hint t x => coreTypeNames t ++ coreExprNames x
   | .letValue p x b => corePatternNames p ++ coreExprNames x ++ coreExprNames b
-  | .binary _ x b => coreExprNames x ++ coreExprNames b
+  | .binary _ x b | .assertEq _ x b => coreExprNames x ++ coreExprNames b
   | .matchValue x arms => coreExprNames x ++ arms.flatMap (fun a => corePatternNames a.1 ++ coreExprNames a.2)
 termination_by e => sizeOf e
 decreasing_by

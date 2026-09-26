@@ -141,6 +141,18 @@ theorem Represents.neg [Field F] {source : SourceValue F} {target result : Value
   | field => cases operation; exact ⟨_, rfl, .field⟩
   | tuple | ptr | construct => cases operation
 
+theorem Represents.assertEq [DecidableEq F]
+    {left right : SourceValue F} {x y result : Value F}
+    (first : Represents rom heap left x) (second : Represents rom heap right y)
+    (operation : evalAssertEq message x y = .ok result) :
+    ∃ value, evalAssertEq message left right = .ok value ∧ Represents rom heap value result := by
+  obtain ⟨free, rfl, rfl⟩ := evalAssertEq_ok.mp operation
+  have lhs := first.pointerFree_eq free
+  have rhs := second.pointerFree_eq free
+  refine ⟨.tuple [], evalAssertEq_ok.mpr ⟨?_, lhs.trans rhs.symm, rfl⟩, .tuple .nil⟩
+  rw [lhs, Value.pointerFree_mapAddress]
+  exact free
+
 theorem Represents.binary [Field F] [DecidableEq F]
     {left right : SourceValue F} {x y result : Value F} {op : BinOp}
     (l : Represents rom heap left x) (r : Represents rom heap right y)

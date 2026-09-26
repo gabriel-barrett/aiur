@@ -188,6 +188,23 @@ mutual
         obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
         obtain ⟨a, extension, bounded⟩ := lowerExpr_inactive valueRun layout valid localsBound enableBound inactive
         exact ⟨a, extension, by simpa [ArithExpr.inBounds, Scalar.Circuit.ArithExpr.inBounds] using bounded⟩
+    | assertEq message left right =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨leftWire, s₁, leftRun, rest⟩ := bind_ok.mp compiled
+        obtain ⟨rightWire, s₂, rightRun, rest⟩ := bind_ok.mp rest
+        split at rest
+        · simp [StateT.bind, bind, Except.bind] at rest
+        · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+          obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+          obtain ⟨⟨⟩, last, equated, finished⟩ := bind_ok.mp rest
+          obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+          obtain ⟨a, e₁, leftBound⟩ := lowerExpr_inactive leftRun layout valid localsBound enableBound inactive
+          obtain ⟨b, e₂, rightBound⟩ := lowerExpr_inactive rightRun e₁.layout e₁.valid
+            (localsBound.mono e₁.increase) (e₁.bound enableBound) ((e₁.polynomial enableBound).trans inactive)
+          have chainExt := e₁.trans e₂
+          have e₃ := constrainValue_complete equated e₂.layout e₂.valid (chainExt.bound enableBound)
+            (leftBound.mono e₂.increase) rightBound (Or.inl ((chainExt.polynomial enableBound).trans inactive))
+          exact ⟨b, chainExt.trans e₃, bounded_tuple.mpr (by simp)⟩
     | binary op left right =>
         simp only [lowerExpr] at compiled
         obtain ⟨leftValue, s₁, leftRun, rest⟩ := bind_ok.mp compiled

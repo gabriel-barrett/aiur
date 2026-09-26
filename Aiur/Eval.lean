@@ -35,6 +35,8 @@ def evalExprWith [Field F] [DecidableEq F] (program : Program F) (hints : HintPr
           let value ← liftM ((hints key type).mapError EvalError.hint)
           return value.val.toValue
       | .neg value => liftM (evalNeg (← evalExprWith program hints locals fuel value))
+      | .assertEq op left right =>
+          liftM (evalAssertEq op (← evalExprWith program hints locals fuel left) (← evalExprWith program hints locals fuel right))
       | .binary op left right =>
           liftM (evalBinOp op (← evalExprWith program hints locals fuel left) (← evalExprWith program hints locals fuel right))
       | .call name args =>

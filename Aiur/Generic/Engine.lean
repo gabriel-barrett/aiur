@@ -47,6 +47,8 @@ def evalExprWith [Field F] [DecidableEq F] (world : World F) (hints : HintProvid
           let value ← liftM ((hints key type).mapError EvalError.hint)
           return value.val.toValue
       | .neg value => liftM (evalNeg (← evalExprWith world hints locals fuel value))
+      | .assertEq op left right =>
+          liftM (evalAssertEq op (← evalExprWith world hints locals fuel left) (← evalExprWith world hints locals fuel right))
       | .binary op left right =>
           liftM (evalBinOp op (← evalExprWith world hints locals fuel left) (← evalExprWith world hints locals fuel right))
       | .call name args =>
@@ -88,6 +90,10 @@ mutual
     | neg (value : EvalExpr world locals expr before input after)
         (operation : evalNeg input = .ok result) :
         EvalExpr world locals (.neg expr) before result after
+    | assertEq (left : EvalExpr world locals lhs before x middle)
+        (right : EvalExpr world locals rhs middle y after)
+        (operation : evalAssertEq op x y = .ok result) :
+        EvalExpr world locals (.assertEq op lhs rhs) before result after
     | binary (left : EvalExpr world locals lhs before x middle)
         (right : EvalExpr world locals rhs middle y after)
         (operation : evalBinOp op x y = .ok result) :
@@ -202,6 +208,12 @@ theorem evalExpr_spec [Field F] [DecidableEq F]
             simpa [bind, StateT.bind, Evaluation.get_apply, Except.bind] using loaded
           obtain ⟨loadOK, rfl⟩ := Evaluation.lift_ok.mp lifted
           exact .load (ih operand) loadOK
+      | assertEq op left right =>
+          simp only [evalExprWith] at executed
+          obtain ⟨leftValue, middle, leftRun, rest⟩ := Evaluation.bind_ok.mp executed
+          obtain ⟨rightValue, last, rightRun, operation⟩ := Evaluation.bind_ok.mp rest
+          obtain ⟨operationOK, rfl⟩ := Evaluation.lift_ok.mp operation
+          exact .assertEq (ih leftRun) (ih rightRun) operationOK
       | binary op left right =>
           simp only [evalExprWith] at executed
           obtain ⟨leftValue, middle, leftRun, rest⟩ := Evaluation.bind_ok.mp executed

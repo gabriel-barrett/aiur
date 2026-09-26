@@ -30,7 +30,44 @@ inductive EvalError where
   | missingMapInput (name : String)
   | invalidMap (name : String)
   | hint (error : HintError)
+  | assertionFailed (message : Option String)
+  | pointerEquality
   deriving Repr, BEq, DecidableEq
+
+/-- Structural equality never follows a pointer or observes its address. The
+checker excludes pointers from the entire operand type before execution. -/
+def evalAssertEq [DecidableEq F] [DecidableEq A] (message : Option String)
+    (left right : Value F A) : Except EvalError (Value F A) :=
+  if left.pointerFree && right.pointerFree then
+    if left = right then .ok (.tuple []) else .error (.assertionFailed message)
+  else .error .pointerEquality
+
+theorem evalAssertEq_ok [DecidableEq F] [DecidableEq A] {left right result : Value F A} :
+    evalAssertEq message left right = .ok result ↔
+      left.pointerFree = true ∧ left = right ∧ result = .tuple [] := by
+  by_cases free : left.pointerFree = true
+  · by_cases same : left = right
+    · subst right; simp [evalAssertEq, free, eq_comm]
+    · by_cases other : right.pointerFree = true <;> simp [evalAssertEq, free, same, other]
+  · simp [evalAssertEq, free]
+
+@[simp] theorem Value.pointerFree_mapAddress (encode : A → B) (value : Value F A) :
+    (value.mapAddress encode).pointerFree = value.pointerFree := by
+  cases value with
+  | field | ptr => simp only [Value.mapAddress, Value.pointerFree]
+  | tuple values | construct name ctor values =>
+      simp only [Value.mapAddress, Value.pointerFree, List.map_map, Function.comp_def]
+      apply congrArg (fun values : List Bool => values.all id)
+      exact List.map_congr_left (fun v _ => Value.pointerFree_mapAddress encode v)
+termination_by sizeOf value
+
+theorem evalAssertEq_mapAddress [DecidableEq F] [DecidableEq A] [DecidableEq B]
+    {left right result : Value F A} (operation : evalAssertEq message left right = .ok result)
+    (encode : A → B) :
+    evalAssertEq message (left.mapAddress encode) (right.mapAddress encode) = .ok (result.mapAddress encode) := by
+  obtain ⟨free, rfl, rfl⟩ := evalAssertEq_ok.mp operation
+  exact evalAssertEq_ok.mpr ⟨by simpa using free, rfl, by simp [Value.mapAddress]⟩
+
 
 mutual
   /-- Match the whole value and collect bindings in left-to-right order. -/

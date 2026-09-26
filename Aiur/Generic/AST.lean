@@ -163,19 +163,23 @@ their operands remain ordinary expressions throughout source evaluation. -/
 inductive Builtin where
   | ascribe (type : Ty)
   | debug (message : String)
+  | assertEq (message : Option String)
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 def Builtin.subst (types : List (String × Ty)) : Builtin → Builtin
   | .ascribe t => .ascribe (t.subst types)
   | .debug message => .debug message
+  | .assertEq message => .assertEq message
 
 def Builtin.mapTypesM [Monad m] (f : Ty → m Ty) : Builtin → m Builtin
   | .ascribe t => return .ascribe (← f t)
   | .debug message => return .debug message
+  | .assertEq message => return .assertEq message
 
 def Builtin.types : Builtin → List Ty
   | .ascribe t => [t]
   | .debug _ => []
+  | .assertEq _ => []
 
 inductive Expr (α : Type) where
   | literal (value : α)

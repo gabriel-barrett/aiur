@@ -248,6 +248,12 @@ mutual
         let result ← freshValue program.enums type
         validateValue program.enums enable (result.map ArithExpr.var)
         return result.map ArithExpr.var
+    | .assertEq _ left right =>
+        let left ← lowerExpr program function locals enable left
+        let right ← lowerExpr program function locals enable right
+        if !left.type.pointerFree program.enums then throw .invalidShape
+        constrainValue enable left right
+        return .tuple []
     | .binary op left right =>
         let left ← asField (← lowerExpr program function locals enable left)
         let right ← asField (← lowerExpr program function locals enable right)

@@ -156,6 +156,20 @@ theorem EvalExpr.wellTyped [Field F] [DecidableEq F] {program : Program F}
       cases input with
       | field x => cases operation; exact ⟨by simp [Value.type], by simp, heapGood⟩
       | tuple | ptr | construct => cases operation
+  | @assertEq locals lhs before x middle rhs y after op result _ _ operation leftIH rightIH =>
+      intro memory formed caller type checked
+      simp only [inferType] at checked
+      obtain ⟨leftType, leftRun, rest⟩ := except_bind_ok.mp checked
+      obtain ⟨rightType, rightRun, rest⟩ := except_bind_ok.mp rest
+      obtain ⟨finished, _, rest⟩ := except_bind_ok.mp rest
+      have resultUnit := (evalAssertEq_ok.mp operation).2.2
+      subst result
+      split at rest
+      · simp [bind, Except.bind] at rest
+      · have same : type = .tuple [] := by simpa [bind, Except.bind, pure, Except.pure] using rest.symm
+        subst type
+        have heapGood := (rightIH (leftIH memory formed caller leftType leftRun).2.2 formed caller rightType rightRun).2.2
+        exact ⟨by simp [Value.type], by simp, heapGood⟩
   | @binary locals lhs before x middle rhs y after op result _ _ operation leftIH rightIH =>
       intro memory formed caller type checked
       simp only [inferType] at checked
