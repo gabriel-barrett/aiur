@@ -1,5 +1,6 @@
 import Aiur.Generic.PatternBindingsFacts
 import Aiur.Generic.PatternStepFacts
+import Aiur.Generic.PreparationPatternFacts
 
 namespace Aiur.Generic.PatternLowering
 open SourceSemantics
@@ -74,6 +75,11 @@ theorem planTree_match [DecidableEq F] (pat : Pattern F)
   | literal x | wildcard | bind n =>
       simp only [planTree, pure, StateT.pure, PlanTree.erase, matchPatternWith]
   | global n t => simp [Consts.dependencies] at resolved
+  | orElse left right layout =>
+      have plain := resolved
+      simp only [Consts.dependencies, List.append_eq_nil_iff] at plain
+      simp only [planTree, state_bind_run, state_pure_run, fresh_run, PlanTree.erase, matchPatternWith]
+      rw [sub left (by simp_wf; omega) plain.1, sub right (by simp_wf; omega) plain.2]
   | load p =>
       have hp : Consts.dependencies p = [] := by simpa only [Consts.dependencies] using resolved
       simp only [planTree, state_bind_run, fresh_run, state_pure_run, PlanTree.erase, matchPatternWith]

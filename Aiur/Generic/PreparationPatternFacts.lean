@@ -98,6 +98,11 @@ theorem pattern_match [DecidableEq F] (program : Program F)
               simp only [matchPatternWith, lookup, found, Except.mapError,
                 bind, Except.bind]
               exact sub depth [] body (by exact Prod.Lex.left _ _ (by omega)) expanded value
+  | orElse left right names =>
+      simp only [pattern, except_bind_ok, except_pure_ok] at expanded
+      obtain ⟨l, hl, r, hr, rfl⟩ := expanded
+      simp only [matchPatternWith, sub depth types left (by apply Prod.Lex.right; simp_wf; omega) hl,
+        sub depth types right (by apply Prod.Lex.right; simp_wf; omega) hr]
   | load child =>
       simp only [pattern, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨q, hq, rfl⟩ := expanded

@@ -6,21 +6,25 @@ namespace Aiur.Generic.PatternLowering
 
 theorem writtenNames_append (left right : List (Step F)) :
     writtenNames (left ++ right) = writtenNames left ++ writtenNames right := by
-  simp only [writtenNames, List.flatMap_append]
+  simp only [writtenNames, stepNames, List.flatMap_append]
 
 theorem writtenNames_flatMap (parts : List A) (steps : A → List (Step F)) :
     writtenNames (parts.flatMap steps) = parts.flatMap (fun part => writtenNames (steps part)) := by
-  simp only [writtenNames, List.flatMap_assoc]
+  simp only [writtenNames, stepNames, List.flatMap_assoc]
 
 theorem PlanTree.written (tree : PlanTree F) (input : String) :
     writtenNames (tree.toPlan input).steps = tree.temps := by
   have sub (t : PlanTree F) (smaller : sizeOf t < sizeOf tree) (n : String) :
       writtenNames (t.toPlan n).steps = t.temps := PlanTree.written t n
   cases tree with
-  | literal | wildcard | bind => simp only [PlanTree.toPlan, PlanTree.temps, writtenNames,
+  | literal | wildcard | bind => simp only [PlanTree.toPlan, PlanTree.temps, writtenNames, stepNames,
       List.flatMap_cons, List.flatMap_nil, patternNames, List.nil_append]
+  | choice stem left right layout =>
+      simp only [PlanTree.toPlan, PlanTree.temps, writtenNames, stepNames, List.flatMap_cons, List.flatMap_nil,
+        stepNames, List.append_nil]
+      rw [← writtenNames, ← writtenNames, sub left (by simp_wf; omega), sub right (by simp_wf; omega)]
   | load name child =>
-      simpa only [PlanTree.toPlan, PlanTree.temps, writtenNames, List.flatMap_cons,
+      simpa only [PlanTree.toPlan, PlanTree.temps, writtenNames, stepNames, List.flatMap_cons,
         List.singleton_append] using congrArg (name :: ·) (sub child (by simp_wf <;> omega) name)
   | tuple parts | construct _ _ parts =>
       have children : parts.flatMap (fun part => writtenNames (part.2.toPlan part.1).steps) =
@@ -28,7 +32,7 @@ theorem PlanTree.written (tree : PlanTree F) (input : String) :
         apply List.flatMap_congr
         intro part hp
         exact sub part.2 (by simp_wf; have := List.sizeOf_lt_of_mem hp; cases part; simp_all only [Prod.mk.sizeOf_spec]; omega) part.1
-      simp only [PlanTree.toPlan, PlanTree.temps, writtenNames, List.flatMap_cons,
+      simp only [PlanTree.toPlan, PlanTree.temps, writtenNames, stepNames, List.flatMap_cons,
         patternNames, List.map_map, List.flatMap_map, Function.comp_def, List.flatMap_assoc]
       change _ ++ parts.flatMap (fun part => writtenNames (part.2.toPlan part.1).steps) = _
       rw [children]
@@ -48,6 +52,9 @@ theorem PlanTree.binding_sources (tree : PlanTree F) (input : String) :
   cases tree with
   | literal | wildcard => simp only [PlanTree.toPlan, List.map_nil, List.not_mem_nil, false_implies, implies_true]
   | bind => simp only [PlanTree.toPlan, List.map_cons, List.map_nil, List.mem_singleton]; intros; exact Or.inl ‹_›
+  | choice stem left right layout =>
+      intro n member
+      exact Or.inr (by simpa only [PlanTree.toPlan, PlanTree.temps, List.mem_append] using Or.inr member)
   | load name child =>
       intro n member
       rcases sub child (by simp_wf <;> omega) name n (by simpa only [PlanTree.toPlan] using member) with rfl | h
@@ -66,6 +73,13 @@ theorem PlanTree.binding_sources (tree : PlanTree F) (input : String) :
         exact Or.inr ⟨part, hp, h⟩
 termination_by sizeOf tree
 decreasing_by exact smaller
+
+theorem PlanTree.safe_choice {stem : String} {left right : PlanTree F} {layout : OrBindings}
+    (safe : (input :: (PlanTree.choice stem left right layout).temps).Nodup) :
+    (input :: left.temps).Nodup ∧ (input :: right.temps).Nodup ∧
+      ((choiceBindings stem layout.names).map Prod.snd).Nodup := by
+  simp only [PlanTree.temps, List.nodup_cons, List.mem_append, not_or, List.nodup_append] at safe ⊢
+  tauto
 
 theorem PlanTree.safe_load {name : String} {child : PlanTree F}
     (safe : (input :: (PlanTree.load name child).temps).Nodup) :

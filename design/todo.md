@@ -50,10 +50,10 @@ not an outstanding TODO.
   checkers, with the existing acyclicity condition for memoized soundness.
   See [structs](structs.md).
 
-- [ ] **OR patterns.** Support alternatives such as `p1 | p2`, checking that
-  alternatives bind the same names at compatible types. Preserve first-match
-  behavior and the existing policy on duplicate conditions after field
-  specialization. See ix's [pattern definitions](../../ix/Ix/Aiur/Stages/Source.lean).
+- [x] **OR patterns.** Native `p1 | p2` alternatives bind the same names at
+  compatible types, including reordered bindings and nested pointer patterns.
+  First-match behavior, duplicate checks after field conversion, and late
+  circuit lowering are proved. See [or-patterns](or-patterns.md).
 
 - [x] **Dereferencing patterns.** `&pattern` loads and matches contents in lets,
   ordered match arms, and irrefutable parameters. Nested patterns lower to

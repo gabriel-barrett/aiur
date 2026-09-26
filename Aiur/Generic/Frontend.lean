@@ -35,6 +35,7 @@ syntax (name := aliasDefinition) &"type" ident "=" aiur_type ";" : aiur_alias
 syntax (name := genericAlias) &"type" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
   "=" aiur_type ";" : aiur_alias
 syntax (name := aliasDecl) aiur_alias : aiur_decl
+syntax:10 (name := orPattern) aiur_pattern:10 "|" aiur_pattern:11 : aiur_pattern
 syntax:75 (name := loadPattern) "&" aiur_pattern:75 : aiur_pattern
 syntax (name := globalPattern) "::" ident : aiur_pattern
 syntax (name := globalExpr) "::" ident : aiur_expr
@@ -136,6 +137,9 @@ private partial def pattern (params : List String) (s : Syntax) : Except String 
       let pat ← if entry.getKind == ``recordPatternShorthand then pure (.bind name) else pattern params entry[2]
       return (name, pat)
     return .record { type := .named (← readName s[0]) args, fields := named.map Prod.fst, rest } (named.map Prod.snd)
+  else if s.getKind == ``orPattern then
+    let left ← pattern params s[0]
+    return .orElse left (← pattern params s[2]) ⟨left.bindingNames, []⟩
   else if s.getKind == ``loadPattern then return .load (← pattern params s[1])
   else if s.getKind == ``globalPattern then return .global (← readName s[1])
   else if s.getKind == ``arrayPattern then return .array (← s[1].getSepArgs.toList.mapM (pattern params))

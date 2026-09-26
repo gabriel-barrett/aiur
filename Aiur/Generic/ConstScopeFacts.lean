@@ -41,7 +41,7 @@ theorem toExpr_closed (pat : Pattern F) {expr : Expr F}
       simp only [toExpr, except_pure_ok] at interpreted
       subst expr
       constructor
-  | wildcard | bind => simp [toExpr] at interpreted
+  | wildcard | bind | orElse => simp [toExpr] at interpreted
   | load p | «repeat» p n =>
       simp only [toExpr, except_bind_ok, except_pure_ok] at interpreted
       obtain ⟨e, h, rfl⟩ := interpreted

@@ -1,4 +1,6 @@
 import Aiur.Generic.PatternSequenceFacts
+import Aiur.Generic.PatternChoiceFacts
+import Aiur.Generic.OrPatternFacts
 
 namespace Aiur.Generic.PatternLowering
 open SourceSemantics
@@ -92,6 +94,33 @@ theorem PlanTree.attempt_sound [DecidableEq F] (tree : PlanTree F) (input : Stri
       cases attempted
       refine ⟨[(name, value)], by simp only [PlanTree.erase, matchPatternWith, pure, Except.pure], ?_⟩
       simp [resolveBindings_cons, found]
+  | choice stem left right layout =>
+      obtain ⟨safeLeft, safeRight, unique⟩ := PlanTree.safe_choice safe
+      simp only [PlanTree.toPlan, PlanTree.erase] at attempted ⊢
+      cases attempted with
+      | choiceLeft selected aligned copied rest =>
+          cases rest
+          obtain ⟨bs, hm, resolved⟩ := sub left (by simp_wf; omega) input safeLeft value locals found selected
+          have aligned := aligned
+          simp only [choiceBindings, List.length_map] at aligned
+          obtain ⟨ordered, reordered, recovered⟩ := choice_copied resolved unique _ _ aligned copied
+          refine ⟨ordered, ?_, recovered⟩
+          exact match_or_some_iff.mpr (Or.inl ⟨bs, hm, reordered⟩)
+      | choiceRight missed selected aligned copied rest =>
+          cases rest
+          have failed := sub left (by simp_wf; omega) input safeLeft value locals found missed
+          have nextFound := missed.unchanged (by rw [PlanTree.written]; exact (List.nodup_cons.mp safeLeft).1)
+          rw [found] at nextFound
+          obtain ⟨bs, hm, resolved⟩ := sub right (by simp_wf; omega) input safeRight value _ nextFound selected
+          obtain ⟨ordered, reordered, recovered⟩ := choice_copied resolved unique _ _ aligned copied
+          refine ⟨ordered, ?_, recovered⟩
+          exact match_or_some_iff.mpr (Or.inr ⟨failed, bs, hm, reordered⟩)
+      | choiceMiss missed rejected =>
+          have failed := sub left (by simp_wf; omega) input safeLeft value locals found missed
+          have nextFound := missed.unchanged (by rw [PlanTree.written]; exact (List.nodup_cons.mp safeLeft).1)
+          rw [found] at nextFound
+          have failedRight := sub right (by simp_wf; omega) input safeRight value _ nextFound rejected
+          exact match_or_none_iff.mpr ⟨failed, failedRight⟩
   | load name child =>
       simp only [PlanTree.toPlan] at attempted ⊢
       cases attempted with

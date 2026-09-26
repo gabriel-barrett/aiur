@@ -1,4 +1,5 @@
 import Aiur.Generic.LoweringTypes
+import Aiur.Generic.OrPatternFacts
 import Aiur.Generic.PatternTreeFacts
 import Aiur.Generic.PatternTreeSoundness
 import Aiur.Memory.Typing
@@ -77,6 +78,17 @@ private theorem sequence_typed [DecidableEq F]
                                 (fun v hv => good v (by simp [hv])) tail tailType
                               exact ⟨by simp only [environmentTypes_append, hf, hr], Environment.good_append.mpr ⟨gf, gr⟩⟩
 
+theorem reorder_typed {names positions} {bindings ordered : Environment F Nat}
+    (same : environmentTypes bindings = types) (good : bindings.Good decls)
+    (reordered : reorderBindings names positions bindings = some ordered)
+    (typed : reorderBindings names positions types = some orderedTypes) :
+    environmentTypes ordered = orderedTypes ∧ ordered.Good decls := by
+  have mapped := reorderBindings_mapValues (Value.type (α := F) (Address := Nat)) names positions bindings
+  change reorderBindings names positions (environmentTypes bindings) =
+    (reorderBindings names positions bindings).map environmentTypes at mapped
+  rw [same, typed, reordered, Option.map_some] at mapped
+  exact ⟨(Option.some.inj mapped).symm, reorderBindings_good good reordered⟩
+
 /-- A successful native match produces exactly its statically inferred user
 binding types. Read-only loads preserve well-formed values from the heap. -/
 theorem PlanTree.match_typed [DecidableEq F] (tree : PlanTree F)
@@ -121,6 +133,24 @@ theorem PlanTree.match_typed [DecidableEq F] (tree : PlanTree F)
       split at matched
       · cases matched; exact ⟨rfl, by simp [Environment.Good]⟩
       · cases matched
+  | choice stem left right layout =>
+      rw [PlanTree.bindTypes] at typed
+      obtain ⟨lts, leftTyped, typed⟩ := Option.bind_eq_some_iff.mp typed
+      obtain ⟨rts, rightTyped, typed⟩ := Option.bind_eq_some_iff.mp typed
+      obtain ⟨lhs, lhsTyped, typed⟩ := Option.bind_eq_some_iff.mp typed
+      obtain ⟨rhs, rhsTyped, typed⟩ := Option.bind_eq_some_iff.mp typed
+      split at typed
+      · rename_i equal
+        have equal : lhs = rhs := by simpa using equal
+        have result : lhs = types := Option.some.inj typed
+        subst types
+        simp only [PlanTree.erase] at matched
+        rcases match_or_some_iff.mp matched with ⟨bs, matched, reordered⟩ | ⟨_, bs, matched, reordered⟩
+        · obtain ⟨same, good⟩ := sub left (by simp_wf; omega) value bs lts valueGood matched leftTyped
+          exact reorder_typed same good reordered lhsTyped
+        · obtain ⟨same, good⟩ := sub right (by simp_wf; omega) value bs rts valueGood matched rightTyped
+          simpa only [equal] using reorder_typed same good reordered rhsTyped
+      · contradiction
   | load name child =>
       cases value <;> simp only [Value.type, PlanTree.bindTypes] at typed
       all_goals first | contradiction | skip

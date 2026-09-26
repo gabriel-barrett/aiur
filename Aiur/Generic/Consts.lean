@@ -26,6 +26,7 @@ termination_by e => sizeOf e
 
 def checkBody : Pattern α → Except String Unit
   | .literal _ | .global _ _ => pure ()
+  | .orElse _ _ _ => throw "const bodies must specify a single value; or-patterns are not allowed"
   | .wildcard => throw "const bodies must specify complete values; wildcards are not allowed"
   | .bind n => throw s!"const bodies cannot bind '{n}'; use '::{n}' for a global reference"
   | .load p | .repeat p _ => checkBody p
@@ -46,6 +47,7 @@ def substitute (lookup : String → Except String (Pattern α)) : Pattern α →
   | .bind n => pure (.bind n)
   | .global n _ => lookup n
   | .record head ps => return .record head (← ps.mapM (substitute lookup))
+  | .orElse left right names => return .orElse (← substitute lookup left) (← substitute lookup right) names
   | .load p => return .load (← substitute lookup p)
   | .tuple ps => return .tuple (← ps.mapM (substitute lookup))
   | .array ps => return .array (← ps.mapM (substitute lookup))
@@ -82,6 +84,7 @@ def checkDeclarations (p : Program α) : Except String Unit := do
 
 def dependencies : Pattern α → List String
   | .global name _ => [name]
+  | .orElse left right _ => dependencies left ++ dependencies right
   | .load p | .repeat p _ => dependencies p
   | .record _ ps | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps =>
       ps.flatMap dependencies
@@ -126,6 +129,7 @@ def toExpr : Pattern α → Except String (Expr α)
   | .constructAs params t c ps => return .constructAs params t c (← ps.mapM toExpr)
   | .construct _ _ _ => throw "const constructor requires a nominal enum type"
   | .global n t => pure (.global n t)
+  | .orElse _ _ _ => throw "const bodies must specify a single value; or-patterns are not allowed"
   | .wildcard => throw "const bodies must specify complete values; wildcards are not allowed"
   | .bind n => throw s!"const bodies cannot bind '{n}'; use '::{n}' for a global reference"
 termination_by p => sizeOf p

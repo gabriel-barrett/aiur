@@ -19,6 +19,12 @@ def PlanTree.bindTypes (decls : Declarations) : PlanTree F → Aiur.Ty → Optio
   | .literal _, _ => none
   | .wildcard, _ => some []
   | .bind name, type => some [(name, type)]
+  | .choice _ left right layout, type => do
+      let lbs ← left.bindTypes decls type
+      let rbs ← right.bindTypes decls type
+      let lhs ← reorderBindings layout.names (List.range layout.names.length) lbs
+      let rhs ← reorderBindings layout.names layout.rightOrder rbs
+      if lhs = rhs then some lhs else none
   | .load _ child, .ptr target => child.bindTypes decls target
   | .load _ _, _ => none
   | .tuple children, .tuple types =>

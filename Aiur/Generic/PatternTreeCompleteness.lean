@@ -47,6 +47,36 @@ theorem PlanTree.attempt_complete [DecidableEq F] (tree : PlanTree F) (input : S
       subst outcome
       simp only [PlanTree.toPlan]
       exact ⟨locals, .done⟩
+  | choice stem left right layout =>
+      obtain ⟨safeLeft, safeRight, unique⟩ := PlanTree.safe_choice safe
+      simp only [PlanTree.erase] at matched
+      simp only [PlanTree.toPlan]
+      cases outcome with
+      | none =>
+          obtain ⟨hmLeft, hmRight⟩ := match_or_none_iff.mp matched
+          obtain ⟨middle, missed⟩ := sub left (by simp_wf; omega) input safeLeft value locals found hmLeft
+          have nextFound := missed.unchanged (by rw [PlanTree.written]; exact (List.nodup_cons.mp safeLeft).1)
+          rw [found] at nextFound
+          obtain ⟨final, rejected⟩ := sub right (by simp_wf; omega) input safeRight value middle nextFound hmRight
+          exact ⟨final, .choiceMiss missed rejected⟩
+      | some ordered =>
+          rcases match_or_some_iff.mp matched with ⟨bs, hm, reordered⟩ | ⟨failed, bs, hm, reordered⟩
+          · obtain ⟨middle, selected⟩ := sub left (by simp_wf; omega) input safeLeft value locals found hm
+            obtain ⟨actual, same, resolved⟩ := left.attempt_sound input safeLeft constant depth heap value locals found selected
+            have same := Except.ok.inj (hm.symm.trans same)
+            cases Option.some.inj same
+            obtain ⟨aliases, installed, aligned, copied⟩ := choice_copy_exists (stem := stem) resolved reordered
+            refine ⟨installed ++ middle, .choiceLeft selected ?_ copied .done⟩
+            simpa only [choiceBindings, List.length_map] using aligned
+          · obtain ⟨rejected, missed⟩ := sub left (by simp_wf; omega) input safeLeft value locals found failed
+            have nextFound := missed.unchanged (by rw [PlanTree.written]; exact (List.nodup_cons.mp safeLeft).1)
+            rw [found] at nextFound
+            obtain ⟨middle, selected⟩ := sub right (by simp_wf; omega) input safeRight value rejected nextFound hm
+            obtain ⟨actual, same, resolved⟩ := right.attempt_sound input safeRight constant depth heap value rejected nextFound selected
+            have same := Except.ok.inj (hm.symm.trans same)
+            cases Option.some.inj same
+            obtain ⟨aliases, installed, aligned, copied⟩ := choice_copy_exists (stem := stem) resolved reordered
+            exact ⟨installed ++ middle, .choiceRight missed selected aligned copied .done⟩
   | load name child =>
       simp only [PlanTree.erase, matchPatternWith, except_bind_ok] at matched
       obtain ⟨contents, loaded, matched⟩ := matched
