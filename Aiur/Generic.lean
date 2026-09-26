@@ -3,6 +3,8 @@ import Aiur.Generic.SourceRules
 import Aiur.Generic.AliasFacts
 import Aiur.Generic.ConstFacts
 import Aiur.Generic.PatternFacts
+import Aiur.Generic.PatternRetentionFacts
+import Aiur.Generic.PatternLoweringFacts
 import Aiur.Generic.PatternTranslation
 import Aiur.Generic.EnvironmentFacts
 import Aiur.Generic.PreparationExpressionFacts

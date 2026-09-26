@@ -5,7 +5,7 @@ import Mathlib.Data.List.Forall2
 namespace Aiur.Generic
 open SourceSemantics
 
-private theorem option_mapM_relation {f : A → Option B} {xs : List A} {ys : List B}
+theorem option_mapM_relation {f : A → Option B} {xs : List A} {ys : List B}
     (mapped : xs.mapM f = some ys) : List.Forall₂ (fun x y => f x = some y) xs ys := by
   induction xs generalizing ys with
   | nil => simp at mapped; subst ys; exact .nil

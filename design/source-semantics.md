@@ -95,16 +95,27 @@ compiler/tree/memoized/integer-checker results remain checked under explicit
 `Specialized.core_*` names. `CoreRuntime.lean` isolates the old reference runtime
 from ordinary source execution.
 
-**The full source-to-core lowering equivalence remains to be proved.** In
-particular, the direct recursive pattern matcher must be connected to generated
-read/test plans, including fresh-variable scope and first-match failure
-continuations. Slice lowering also needs the static array-shape/bounds facts.
+**The full source-to-core lowering equivalence remains to be proved.** The
+recursive expression and function bridge remains, including the static
+array-shape/bounds facts needed for slice reflection.
 `PreparationExpressionFacts.expression_preparation_iff` (in the
 `SourceSemantics` namespace) proves preservation and reflection of native
 evaluation across type instantiation and const unfolding, with identical values
 and heaps. `PreparationPatternFacts.pattern_match` also preserves failed matches
 and load errors. Closed const bodies cannot capture caller locals, as proved in
 `ConstScopeFacts.lean`.
+The pattern compiler now records its nested structure in an internal `PlanTree`
+before flattening the same tests and reads. `planTree_match` proves that naming
+these nodes preserves native matching. `PlanTree.attempt_sound` and
+`attempt_complete` connect that match to the flat steps, given distinct generated
+names. `PlanTree.let_iff` and `match_iff` connect the steps to core continuations
+and hide temporary bindings, given their syntactic freshness conditions. User
+bindings are installed together in their source order. `lowerLet_iff` and
+`lowerMatch_iff` prove the complete enclosing pattern translations, including
+ordered arms and removal of temporary bindings. Compiler preparation checks
+their finite syntactic safety conditions on the actual generated names;
+`LoweringChecks.lean` does not test or assume semantic equivalence. These checks
+also reject unresolved globals and unelaborated slice endpoints before lowering.
 `PatternTranslation.lean` now proves that pure patterns (including arrays and
 repeated patterns) preserve matching and binding order. `EnvironmentFacts.lean`
 proves independence from compiler temporaries outside an expression's names.
