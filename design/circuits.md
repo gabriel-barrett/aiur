@@ -122,3 +122,14 @@ active call or ROM requirement; inactive division witnesses impose no inverse
 condition. The local circuit language is unchanged. The proved translation
 preserves the original source result and heap and composes with both row-checker
 models. See [control flow](control-flow.md) for the rules and theorem names.
+
+## Struct layouts
+
+[Structs](structs.md) enter this compiler after their proved source translation.
+The first layout uses a single internal constructor: a zero tag followed by the
+flattened declared fields. Thus `struct Point { x: Field, y: Field }` occupies
+`[0, x, y]`. Existing nominal-value checks enforce the tag, nested enum validity,
+and public-root shape. Field projection selects fixed positions; construction
+preserves written initializer effects before arranging the payload. No dynamic
+indexing or additional channel is introduced. Eliminating the fixed tag is a
+later layout optimization.

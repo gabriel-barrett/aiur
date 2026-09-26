@@ -1,7 +1,7 @@
 # Aiur
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
-field arithmetic, nested tuples and fixed-size arrays, generic functions, nominal enums, type aliases, typed ROM
+field arithmetic, nested tuples and fixed-size arrays, generic functions, nominal enums and structs, type aliases, typed ROM
 pointers, mutual recursion, pattern matching, named blocks and early return, static tables and maps, and compilation
 to chips with polynomial equations and abstract call messages.
 
@@ -21,6 +21,7 @@ lake env lean Examples/PointerPatterns.lean
 lake env lean Examples/Consts.lean
 lake env lean Examples/Arrays.lean
 lake env lean Examples/Control.lean
+lake env lean Examples/Structs.lean
 ```
 
 ## Use from Lean
@@ -99,6 +100,14 @@ with `[a, b]`; consts can use forms such as `const cell = &[0];`. Source evaluat
 path they lower to tuples and fixed projections without dynamic indexing circuitry. See
 [arrays](design/arrays.md) and [the example](Examples/Arrays.lean).
 
+Structs use `struct Point { x: Field, y: Field }`, named construction
+`Point { x, y: 3 }`, field access `p.x`, and patterns such as
+`let Point { x, .. } = p;`. They are nominal and support generic parameters,
+transparent aliases, consts, pointers, tables, and hints. Initializers evaluate
+once in written order; patterns inspect declaration order. Their native semantics
+and late circuit lowering are proved. See [structs](design/structs.md) and
+[the example](Examples/Structs.lean).
+
 Named blocks use `'label: { ... }`, with `break 'label value` returning the
 block's value. `return value` exits the current function. Both work in expression
 positions and preserve earlier allocations while skipping later operations.
@@ -120,7 +129,7 @@ See [the design](design/generics.md) and [the example](Examples/Generics.lean).
 
 Every function parameter and result type must be explicit. Types are `Field`,
 tuples of any finite arity and nesting, nominal enums, and pointers `&A`; the
-generic source frontend also supports fixed-size arrays `[A; n]`. `()` is
+generic source frontend also supports structs and fixed-size arrays `[A; n]`. `()` is
 unit, `(x,)` is a singleton tuple, and `(x)` groups an expression. Tuple projection is zero-based: `p.0`, `p.1.0`.
 Arithmetic operates only on field elements.
 

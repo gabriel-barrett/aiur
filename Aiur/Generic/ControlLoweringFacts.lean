@@ -92,6 +92,14 @@ theorem expression_correct {env : Renaming} {expr code : Expr F}
         apply Exec.congr ?_ (fun _ _ _ => Iff.rfl)
         intro v h
         exact run_project fresh.next
+    | member x field =>
+        simp only [expression, except_bind_ok] at built
+        obtain ⟨input, freshInput, child⟩ := built
+        have fresh := fresh_reserved (fresh_ok freshInput)
+        rw [expression_correct child _ _ _ _ _ scope, exec_member]
+        apply Exec.congr ?_ (fun _ _ _ => Iff.rfl)
+        intro v h
+        exact run_member fresh.next
     | store x =>
         simp only [expression, except_bind_ok] at built
         obtain ⟨input, freshInput, child⟩ := built
@@ -142,6 +150,15 @@ theorem expression_correct {env : Renaming} {expr code : Expr F}
         intro vs h length
         rw [← length]
         exact run_constructAs fresh.next
+    | record head xs =>
+        simp only [expression, except_bind_ok] at built
+        obtain ⟨input, freshInput, child⟩ := built
+        have fresh := fresh_reserved (fresh_ok freshInput)
+        rw [arguments_correct child _ _ _ _ _ scope, exec_record]
+        apply ExecArgs.congr_length ?_ (fun _ _ _ => Iff.rfl)
+        intro vs h length
+        rw [← length]
+        exact run_record fresh.next
     | call name types xs =>
         simp only [expression, except_bind_ok] at built
         obtain ⟨input, freshInput, child⟩ := built

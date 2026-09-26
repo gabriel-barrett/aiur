@@ -14,6 +14,7 @@ inductive Closed : Expr F → Prop where
   | «repeat» (item : Closed e) : Closed (.repeat e n)
   | store (item : Closed e) : Closed (.store e)
   | construct (items : ∀ e ∈ es, Closed e) : Closed (.construct name types ctor es)
+  | record (items : ∀ e ∈ es, Closed e) : Closed (.record head es)
   | constructAs (items : ∀ e ∈ es, Closed e) : Closed (.constructAs params type ctor es)
 
 theorem toExpr_closed (pat : Pattern F) {expr : Expr F}
@@ -46,7 +47,7 @@ theorem toExpr_closed (pat : Pattern F) {expr : Expr F}
       obtain ⟨e, h, rfl⟩ := interpreted
       constructor
       exact sub p (by simp_wf <;> omega) h
-  | tuple ps | array ps | constructAs params t c ps =>
+  | record _ ps | tuple ps | array ps | constructAs params t c ps =>
       simp only [toExpr, except_bind_ok, except_pure_ok] at interpreted
       obtain ⟨es, h, rfl⟩ := interpreted
       constructor
@@ -78,6 +79,7 @@ theorem Closed.openChangeLocals [Field F] [DecidableEq F] {world : World F} {cal
   | array _ ih => cases closed with | array h => exact .array (ih h other)
   | «repeat» _ ih => cases closed with | «repeat» h => exact .repeat (ih h other)
   | construct _ ih => cases closed with | construct h => exact .construct (ih h other)
+  | record _ ih => cases closed with | record h => exact .record (ih h other)
   | constructAs _ ih => cases closed with | constructAs h => exact .constructAs (ih h other)
   | store _ ih => cases closed with | store h => exact .store (ih h other)
   | nil => exact .nil

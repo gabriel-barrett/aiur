@@ -13,6 +13,9 @@ def Pattern.toCore? (env : List (String × Ty)) : Pattern α → Option (Aiur.Pa
   | .global _ _ => none
   | .load _ => none
   | .tuple ps | .array ps => return .tuple (← ps.mapM (Pattern.toCore? env))
+  | .record head ps => do
+      let .enum n := (head.type.subst env).toCore | none
+      return .construct n structConstructor (head.order (← ps.mapM (Pattern.toCore? env)) .wildcard)
   | .repeat p n => return .tuple (List.replicate n (← p.toCore? env))
   | .construct t c ps | .constructAs _ t c ps => do
       let .enum n := (t.subst env).toCore | none
@@ -142,6 +145,15 @@ def planTree (env : List (String × Ty)) (stem : String) : Pattern α → StateM
         let name ← fresh stem
         return (name, ← planTree env stem p)
       return .tuple parts
+  | .record head ps => do
+      let parts ← (head.order (ps.attach.map some) none).mapM fun child => do
+        let name ← fresh stem
+        let tree ← match child with
+          | some p => planTree env stem p.val
+          | none => pure .wildcard
+        return (name, tree)
+      let n := match (head.type.subst env).toCore with | .enum n => n | _ => "$invalid"
+      return .construct n structConstructor parts
   | .construct t c ps | .constructAs _ t c ps => do
       let parts ← ps.mapM fun p => do
         let name ← fresh stem
@@ -152,6 +164,7 @@ termination_by p => sizeOf p
 decreasing_by
   all_goals simp_wf
   all_goals try have := List.sizeOf_lt_of_mem ‹_ ∈ _›
+  all_goals try have := List.sizeOf_lt_of_mem p.property
   all_goals omega
 
 def plan (env : List (String × Ty)) (stem : String) (pat : Pattern α) (input : String) :

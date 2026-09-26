@@ -1,5 +1,6 @@
 import Aiur.Generic.Preparation
 import Aiur.Generic.TypeFacts
+import Aiur.Generic.RecordFacts
 import Mathlib.Data.List.Forall2
 
 namespace Aiur.Generic.Preparation
@@ -124,6 +125,28 @@ theorem pattern_match [DecidableEq F] (program : Program F)
       · rfl
       · apply matchList_congr
         exact List.forall₂_same.mpr (fun _ _ v => single v)
+  | record head ps =>
+      simp only [pattern, except_bind_ok, except_pure_ok] at expanded
+      obtain ⟨qs, hqs, rfl⟩ := expanded
+      have base := mapM_relation hqs
+      have withMem : List.Forall₂ (fun p q => p ∈ ps ∧ pattern program depth types p = .ok q) ps qs :=
+        (List.forall₂_and_left _ _).mpr ⟨fun _ h => h, base⟩
+      have rel : List.Forall₂ (fun p q => ∀ v,
+          matchPatternWith constant depth types heap p v =
+          matchPatternWith other otherDepth [] heap q v) ps qs := by
+        apply withMem.imp
+        intro p q h v
+        exact sub depth types p (Prod.Lex.right _ (by simp_wf; have := List.sizeOf_lt_of_mem h.1; omega)) h.2 v
+      have ordered := head.order_rel rel (a := Pattern.wildcard) (b := Pattern.wildcard)
+        (by intro v; simp only [matchPatternWith])
+      have names : constructorName [] (head.subst types).type = constructorName types head.type := by
+        simp [RecordHead.subst, constructorName]
+      cases value <;> simp only [match_record, names, RecordHead.order_subst, ordered.length_eq]
+      split
+      · rfl
+      · split
+        · rfl
+        · exact matchList_congr ordered _
   | construct t ctor ps | constructAs params t ctor ps =>
       simp only [pattern, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qs, hqs, rfl⟩ := expanded

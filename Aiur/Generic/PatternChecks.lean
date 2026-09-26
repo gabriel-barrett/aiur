@@ -17,9 +17,9 @@ irrefutable arm are discarded, as in the core compiler. -/
 def checkLoadPatterns [DecidableEq α] (program : Program α) (caller : String) : Expr α → Except String Unit
   | .literal _ | .var _ => pure ()
   | .global _ _ => pure ()
-  | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => do
+  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => do
       for x in xs do checkLoadPatterns program caller x
-  | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => checkLoadPatterns program caller x
+  | .member x _ | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => checkLoadPatterns program caller x
   | .letValue _ x b | .binary _ x b => do
       checkLoadPatterns program caller x
       checkLoadPatterns program caller b
@@ -27,7 +27,7 @@ def checkLoadPatterns [DecidableEq α] (program : Program α) (caller : String) 
       let _ : BEq α := ⟨fun x y => decide (x = y)⟩
       let patterns ← arms.mapM fun arm => inspectPattern program 4096 arm.1
       if patterns.any Pattern.hasLoads then
-        checkLoadArms program.enums caller patterns []
+        checkLoadArms program.nominals caller patterns []
       checkLoadPatterns program caller x
       for arm in arms do checkLoadPatterns program caller arm.2
 termination_by e => sizeOf e

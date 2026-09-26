@@ -20,6 +20,7 @@ import AiurTests.Consts
 import AiurTests.Arrays
 import AiurTests.SourceEvaluation
 import AiurTests.Control
+import AiurTests.Structs
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -189,3 +190,4 @@ def main : IO Unit := do
   AiurConstTests.run
   AiurArrayTests.run
   AiurControlTests.run
+  AiurStructTests.run

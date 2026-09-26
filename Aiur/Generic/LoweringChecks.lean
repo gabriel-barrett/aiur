@@ -78,9 +78,10 @@ lowering. Rejection is a compiler error, not a new source-language behavior. -/
 def Expr.lowerSafe (types : List (String × Ty)) : Expr F → Prop
   | .literal _ | .var _ => True
   | .global _ _ | .control _ _ => False
-  | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs =>
+  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs =>
       ∀ x ∈ xs, x.lowerSafe types
   | .repeat x _ | .index x _ | .project x _ | .store x | .load x | .hint _ x | .neg x => x.lowerSafe types
+  | .member x field => x.lowerSafe types ∧ field.index < field.arity
   | .slice x start (some stop) => start ≤ stop ∧ x.lowerSafe types
   | .slice _ _ none => False
   | .binary _ left right => left.lowerSafe types ∧ right.lowerSafe types
@@ -100,13 +101,16 @@ instance decidableLowerSafe (types : List (String × Ty)) (expr : Expr F) : Deci
     decidableLowerSafe types e
   cases expr with
   | literal _ | var _ | global _ _ | control _ _ => unfold Expr.lowerSafe; infer_instance
-  | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
+  | record _ xs | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       unfold Expr.lowerSafe
       apply decideAll
       intro e he
       exact sub e (by simp_wf; have := List.sizeOf_lt_of_mem he; omega)
   | «repeat» x _ | index x _ | project x _ | store x | load x | hint _ x | neg x =>
       unfold Expr.lowerSafe; exact sub x (by simp_wf <;> omega)
+  | member x field =>
+      haveI := sub x (by simp_wf; omega)
+      unfold Expr.lowerSafe; infer_instance
   | slice x start stop =>
       haveI := sub x (by simp_wf; omega)
       cases stop <;> unfold Expr.lowerSafe <;> infer_instance

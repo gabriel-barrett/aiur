@@ -58,6 +58,29 @@ syntax:10 (name := breakUnit) "break" "@" ident : aiur_expr
 syntax:10 (name := returnExpr) "return" aiur_expr:11 : aiur_expr
 syntax:10 (name := returnUnit) "return" : aiur_expr
 
+declare_syntax_cat aiur_struct_field (behavior := symbol)
+declare_syntax_cat aiur_struct (behavior := symbol)
+declare_syntax_cat aiur_record_value (behavior := symbol)
+declare_syntax_cat aiur_record_pattern_field (behavior := symbol)
+declare_syntax_cat aiur_record_patterns (behavior := symbol)
+syntax (name := structField) ident ":" aiur_type : aiur_struct_field
+syntax (name := structDefinition) &"struct" ident "{" sepBy(aiur_struct_field, ",", ",", allowTrailingSep) "}" : aiur_struct
+syntax (name := genericStruct) &"struct" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
+  "{" sepBy(aiur_struct_field, ",", ",", allowTrailingSep) "}" : aiur_struct
+syntax (name := structDecl) aiur_struct : aiur_decl
+syntax (name := recordValueField) ident ":" aiur_expr : aiur_record_value
+syntax (name := recordValueShorthand) ident : aiur_record_value
+syntax (name := recordExpr) atomic(ident "{" sepBy(aiur_record_value, ",", ",", allowTrailingSep) "}") : aiur_expr
+syntax (name := genericRecordExpr) atomic(ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">"
+  "{" sepBy(aiur_record_value, ",", ",", allowTrailingSep) "}") : aiur_expr
+syntax:80 (name := memberExpr) aiur_expr:80 "." ident : aiur_expr
+syntax (name := recordPatternField) ident ":" aiur_pattern : aiur_record_pattern_field
+syntax (name := recordPatternShorthand) ident : aiur_record_pattern_field
+syntax (name := recordPatternFields) sepBy(aiur_record_pattern_field, ",", ",", allowTrailingSep) (".." (",")?)? : aiur_record_patterns
+syntax (name := recordPattern) ident "{" aiur_record_patterns "}" : aiur_pattern
+syntax (name := genericRecordPattern) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">"
+  "{" aiur_record_patterns "}" : aiur_pattern
+
 private def readName (s : Syntax) : Except String String :=
   match s.getId with
   | .str .anonymous n => .ok n
@@ -85,7 +108,21 @@ private partial def type (params : List String) (s : Syntax) : Except String Ty 
   else throw "expected an Aiur type"
 
 private partial def pattern (params : List String) (s : Syntax) : Except String (Pattern Nat) := do
-  if s.getKind == ``loadPattern then return .load (← pattern params s[1])
+  if s.getKind == `choice then pattern params s[0]
+  else if s.getKind == ``recordPattern || s.getKind == ``genericRecordPattern then
+    let generic := s.getKind == ``genericRecordPattern
+    let args ← if generic then s[2].getSepArgs.toList.mapM (type params) else pure []
+    let fields := s[if generic then 5 else 2]
+    let rest := !fields[1].getArgs.isEmpty
+    let entries := fields[0].getSepArgs.toList
+    if rest && !entries.isEmpty && fields[0].getArgs.size % 2 != 0 then
+      throw "expected a comma before '..' in a struct pattern"
+    let named ← entries.mapM fun entry => do
+      let name ← readName entry[0]
+      let pat ← if entry.getKind == ``recordPatternShorthand then pure (.bind name) else pattern params entry[2]
+      return (name, pat)
+    return .record { type := .named (← readName s[0]) args, fields := named.map Prod.fst, rest } (named.map Prod.snd)
+  else if s.getKind == ``loadPattern then return .load (← pattern params s[1])
   else if s.getKind == ``globalPattern then return .global (← readName s[1])
   else if s.getKind == ``arrayPattern then return .array (← s[1].getSepArgs.toList.mapM (pattern params))
   else if s.getKind == ``repeatPattern then return .repeat (← pattern params s[1]) (← readLength s[3])
@@ -174,6 +211,15 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
       let [x] := xs | throw "hint takes one key"
       return .hint t x
     return .call n (some ts) xs
+  else if k == ``recordExpr || k == ``genericRecordExpr then
+    let generic := k == ``genericRecordExpr
+    let args ← if generic then s[2].getSepArgs.toList.mapM (type params) else pure []
+    let named ← s[if generic then 5 else 2].getSepArgs.toList.mapM fun entry => do
+      let name ← readName entry[0]
+      let value ← if entry.getKind == ``recordValueShorthand then pure (.var name) else expr params entry[2]
+      return (name, value)
+    return .record { type := .named (← readName s[0]) args, fields := named.map Prod.fst } (named.map Prod.snd)
+  else if k == ``memberExpr then return .member (← expr params s[0]) { name := ← readName s[2] }
   else if k == ``project then return .project (← expr params s[0]) (s[2].isNatLit?.getD 0)
   else if k == ``letValue then return .letValue (← pattern params s[1]) (← expr params s[3]) (← expr params s[5])
   else if k == ``parens || k == ``block then expr params s[1]
@@ -197,6 +243,13 @@ private def lowerEnum (s : Syntax) : Except String EnumDecl := do
       let fields ← if c.getKind == ``payloadConstructor then c[2].getSepArgs.toList.mapM (type ps) else pure []
       return { name := ← readName c[0], fields }
   }
+
+private def lowerStruct (s : Syntax) : Except String StructDecl := do
+  let generic := s.getKind == ``genericStruct
+  let params ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
+  let fields ← s[if generic then 6 else 3].getSepArgs.toList.mapM fun field => do
+    return (← readName field[0], ← type params field[2])
+  return { name := ← readName s[1], typeParams := params, fields }
 
 private def lowerAlias (s : Syntax) : Except String AliasDecl := do
   let generic := s.getKind == ``genericAlias
@@ -251,12 +304,13 @@ def ofString (env : Lean.Environment) (source : String) : Except String (Program
   let s ← Parser.runParserCategory env `aiur_program source "<aiur>"
   let ds := s[0].getArgs.toList
   let enums ← (ds.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])
+  let structs ← (ds.filter (·.getKind == ``structDecl)).mapM (fun d => lowerStruct d[0])
   let aliases ← (ds.filter (·.getKind == ``aliasDecl)).mapM (fun d => lowerAlias d[0])
   let consts ← (ds.filter (·.getKind == ``constDecl)).mapM fun d => do
     return { name := ← readName d[0][1], value := ← Consts.ofExpr (← expr [] d[0][3]) : ConstDecl Nat }
-  let expanded ← Aliases.resolveDeclarations ({ functions := [], enums, aliases } : Program Nat)
-  let resolved ← Consts.resolveDeclarations ({ functions := [], enums, aliases, consts } : Program Nat)
-  let functions ← (ds.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction enums expanded resolved d[0])
+  let expanded ← Aliases.resolveDeclarations ({ functions := [], enums, structs, aliases } : Program Nat)
+  let resolved ← Consts.resolveDeclarations ({ functions := [], enums, structs, aliases, consts } : Program Nat)
+  let functions ← (ds.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction (enums ++ structs.map StructDecl.signature) expanded resolved d[0])
   let tables ← (ds.filter (·.getKind == ``tableDecl)).mapM fun d => do
     let s := d[0]
     return { name := ← readName s[1], rowType := ← type [] s[3], rows := ← s[5].getSepArgs.toList.mapM (expr []) : Table Nat }
@@ -266,7 +320,7 @@ def ofString (env : Lean.Environment) (source : String) : Except String (Program
       let .bind n ← pattern [] param[0] | throw "map parameters must be named bindings"
       return (n, ← type [] param[2])
     return { name := ← readName s[1], params, result := ← type [] s[6], input := ← readName s[8], output := ← readName s[10] : MapDecl }
-  return (← prepare { functions, enums, tables, maps, aliases, consts }).program
+  return (← prepare { functions, enums, structs, tables, maps, aliases, consts }).program
 
 /-- The ordinary quotation supports the source AST when that type is expected.
 Existing quotations of the monomorphic core remain compatible. -/

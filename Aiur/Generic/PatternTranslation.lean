@@ -1,4 +1,5 @@
 import Aiur.Generic.SourceSemantics
+import Aiur.Generic.RecordFacts
 import Aiur.Generic.PatternFacts
 import Mathlib.Data.List.Forall2
 
@@ -114,6 +115,42 @@ theorem Pattern.toCore_match [DecidableEq F] (pat : Pattern F) {core : Aiur.Patt
             exact matchList_core (rel n) vs
           · have unequal : (List.replicate n c).length ≠ vs.length := by simp; omega
             simp [equal, bindingsList_length unequal]
+  | record head ps =>
+      cases type : (head.type.subst types).toCore <;> simp only [Pattern.toCore?, type] at lowered
+      all_goals first | contradiction | skip
+      rename_i name
+      cases mapped : ps.mapM (Pattern.toCore? types) with
+      | none => simp [mapped] at lowered
+      | some cs =>
+          have same : Aiur.Pattern.construct name structConstructor (head.order cs .wildcard) = core := by
+            simpa [mapped] using lowered
+          subst core
+          have base := option_mapM_relation mapped
+          have withMem : List.Forall₂ (fun p c => p ∈ ps ∧ p.toCore? types = some c) ps cs :=
+            (List.forall₂_and_left _ _).mpr ⟨fun _ h => h, base⟩
+          have rel : List.Forall₂ (fun p c => ∀ v,
+              matchPatternWith constant depth types heap p v = .ok (c.bindings v)) ps cs := by
+            apply withMem.imp
+            intro p c h v
+            exact sub p (by simp_wf; have := List.sizeOf_lt_of_mem h.1; omega) h.2 v
+          have ordered := head.order_rel rel (a := Pattern.wildcard) (b := Aiur.Pattern.wildcard)
+            (by intro v; simp [matchPatternWith, Aiur.Pattern.bindings])
+          cases value <;> simp only [match_record, Aiur.Pattern.bindings, constructorName, type]
+          rename_i actual ctor vs
+          by_cases names : actual = name
+          · subst actual
+            by_cases ctors : ctor = structConstructor
+            · subst ctor
+              simp only [beq_self_eq_true, bne_self_eq_false, Bool.false_or, true_and, ↓reduceIte]
+              by_cases equal : (head.order ps Pattern.wildcard).length = vs.length
+              · simp only [equal, bne_self_eq_false, Bool.false_eq_true, ↓reduceIte]
+                exact matchList_core ordered vs
+              · have unequal : (head.order cs Aiur.Pattern.wildcard).length ≠ vs.length := by
+                  rw [← ordered.length_eq]; exact equal
+                have different : (head.positions ps.length).length ≠ vs.length := by simpa using equal
+                simp [different, bindingsList_length unequal]
+            · simp [ctors, Ne.symm ctors]
+          · simp [names, Ne.symm names]
   | construct t ctor ps | constructAs _ t ctor ps =>
       cases type : (t.subst types).toCore <;> simp only [Pattern.toCore?, type] at lowered
       all_goals first | contradiction | skip

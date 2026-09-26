@@ -31,6 +31,7 @@ def constantOfSource : Expr α → Except String (Constant α)
   | .repeat x n => do
       checkArrayLength n
       return .tuple (List.replicate n (← constantOfSource x))
+  | .record head xs => return .construct (StructLowering.nominalName [] head.type) structConstructor (head.order (← xs.mapM constantOfSource) (.tuple []))
   | .construct n ts c xs =>
       return .construct (Instance.symbol ⟨n, ts.getD []⟩) c (← xs.mapM constantOfSource)
   | _ => throw "table rows must be constant literals, tuples, arrays, or constructors"

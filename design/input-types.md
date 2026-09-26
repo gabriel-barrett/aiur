@@ -7,7 +7,8 @@ Status: enforced for public entry inputs, tables, maps, and
 
 Public entry inputs, static tables/maps, and nondeterministic inputs must
 have types containing no pointers anywhere. The check examines the complete
-declared type, including every constructor of every reachable enum, regardless
+declared type, including every field of every reachable struct and every constructor of every
+reachable enum, regardless
 of the value supplied or the variants represented in a table. The extra
 expressiveness of accepting just the pointer-free variants is not worth the
 value-dependent enforcement. This restriction is a static property of the type;
@@ -22,10 +23,12 @@ A declaration-aware predicate determines whether a type is pointer-free:
   zero. The source checker examines this before erasing arrays to tuples.
 - An enum is permitted when every payload type of every constructor is
   permitted. Follow nominal references through the program's declarations.
+- A struct is permitted when every declared field type is permitted. Generic
+  field types are instantiated before inspection.
 - Every pointer type `&A` is rejected.
 
 Normal declaration validation still rejects unknown types and inline recursive
-cycles. Legal recursive enums use pointers, so their types fail this restriction.
+cycles. Legal recursive enums and structs use pointers, so their types fail this restriction.
 The existing finite layouts contain all constructor payloads. `Layout.pointerFree`
 checks every component, and `Ty.pointerFree decls type` resolves nominal types
 through those layouts. Unknown or invalid layouts fail the check.

@@ -20,6 +20,7 @@ def pattern (p : Program F) (depth : Nat) (types : SourceSemantics.Types) :
       | 0 => throw "const dependency depth exceeded"
       | depth + 1 => pattern p depth [] (← elaborateConst p name (type.subst types))
   | .load child => return .load (← pattern p depth types child)
+  | .record head children => return .record (head.subst types) (← children.mapM (pattern p depth types))
   | .tuple children => return .tuple (← children.mapM (pattern p depth types))
   | .array children => return .array (← children.mapM (pattern p depth types))
   | .repeat child n => return .repeat (← pattern p depth types child) n
@@ -44,6 +45,8 @@ def expression (p : Program F) (depth : Nat) (types : SourceSemantics.Types) :
       | depth + 1 =>
           let body ← Consts.toExpr (← elaborateConst p name (type.subst types))
           expression p depth [] body
+  | .record head children => return .record (head.subst types) (← children.mapM (expression p depth types))
+  | .member child field => return .member (← expression p depth types child) (field.subst types)
   | .tuple children => return .tuple (← children.mapM (expression p depth types))
   | .array children => return .array (← children.mapM (expression p depth types))
   | .repeat child n => return .repeat (← expression p depth types child) n

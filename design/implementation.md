@@ -268,3 +268,14 @@ continuation, and evaluation-rule helper modules prove that translation correct.
 The existing native specialization and integer-checker theorems include it.
 `AiurTests/Control.lean` covers the three execution paths and concrete accepted
 and rejected unit/weighted rows. See [the design](control-flow.md).
+
+## Structs
+
+`Generic.AST` retains `StructDecl`, `RecordHead`, `FieldRef`, and named expression
+and pattern nodes. The generic frontend/checker resolves field names and type
+arguments while retaining source order. `Generic.SourceSemantics` and
+`Generic.ControlEval` interpret the nodes directly. `Generic.RecordFacts` proves
+field-order and pattern facts; `Generic.StructFacts` proves construction and
+projection equivalence with `StructLowering`. The existing native compiler and
+row-checker theorems include these cases. See [struct design](structs.md),
+[tests](../AiurTests/Structs.lean), and [example](../Examples/Structs.lean).

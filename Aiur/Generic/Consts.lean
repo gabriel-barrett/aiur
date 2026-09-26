@@ -18,6 +18,7 @@ def ofExpr : Expr α → Except String (Pattern α)
   | .tuple xs => return .tuple (← xs.mapM ofExpr)
   | .array xs => return .array (← xs.mapM ofExpr)
   | .repeat x n => return .repeat (← ofExpr x) n
+  | .record head xs => return .record head (← xs.mapM ofExpr)
   | .construct n ts c xs => return .construct (.named n (ts.getD [])) c (← xs.mapM ofExpr)
   | .constructAs params t c xs => return .constructAs params t c (← xs.mapM ofExpr)
   | _ => throw "const bodies require literals, tuples, arrays, constructors, stores, or const references"
@@ -28,6 +29,10 @@ def checkBody : Pattern α → Except String Unit
   | .wildcard => throw "const bodies must specify complete values; wildcards are not allowed"
   | .bind n => throw s!"const bodies cannot bind '{n}'; use '::{n}' for a global reference"
   | .load p | .repeat p _ => checkBody p
+  | .record head ps => do
+      if head.rest then throw "const struct bodies must specify every field"
+      let _ ← ps.mapM checkBody
+      pure ()
   | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => do
       let _ ← ps.mapM checkBody
       pure ()
@@ -40,6 +45,7 @@ def substitute (lookup : String → Except String (Pattern α)) : Pattern α →
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
   | .global n _ => lookup n
+  | .record head ps => return .record head (← ps.mapM (substitute lookup))
   | .load p => return .load (← substitute lookup p)
   | .tuple ps => return .tuple (← ps.mapM (substitute lookup))
   | .array ps => return .array (← ps.mapM (substitute lookup))
@@ -77,7 +83,7 @@ def checkDeclarations (p : Program α) : Except String Unit := do
 def dependencies : Pattern α → List String
   | .global name _ => [name]
   | .load p | .repeat p _ => dependencies p
-  | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps =>
+  | .record _ ps | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps =>
       ps.flatMap dependencies
   | _ => []
 termination_by p => sizeOf p
@@ -110,6 +116,7 @@ def expandPattern (decls : List (ConstDecl α)) : Pattern α → Except String (
 use. This is separate from `Aiur.Constant`, which forbids pointers in tables. -/
 def toExpr : Pattern α → Except String (Expr α)
   | .literal x => pure (.literal x)
+  | .record head ps => return .record head (← ps.mapM toExpr)
   | .load p => return .store (← toExpr p)
   | .tuple ps => return .tuple (← ps.mapM toExpr)
   | .array ps => return .array (← ps.mapM toExpr)
@@ -142,6 +149,8 @@ def expandExpr (decls : List (ConstDecl α)) (locals : List String) : Expr α �
   | .slice x start stop => return .slice (← expandExpr decls locals x) start stop
   | .construct n ts c xs => return .construct n ts c (← xs.mapM (expandExpr decls locals))
   | .constructAs params t c xs => return .constructAs params t c (← xs.mapM (expandExpr decls locals))
+  | .record head xs => return .record head (← xs.mapM (expandExpr decls locals))
+  | .member x field => return .member (← expandExpr decls locals x) field
   | .project x i => return .project (← expandExpr decls locals x) i
   | .letValue pat x b => do
       let pat ← expandPattern decls pat

@@ -83,13 +83,13 @@ private def resolve (decls : List AliasDecl) :
 an alias erases. Aliases and enums share a namespace. Cycles through pointers
 are rejected; recursion through a nominal enum remains available. -/
 def resolveDeclarations (p : Program α) : Except String (List AliasDecl) := do
-  if let some n := findDuplicate (p.enums.map (·.name) ++ p.aliases.map (·.name)) [] then
+  if let some n := findDuplicate (p.nominals.map (·.name) ++ p.aliases.map (·.name)) [] then
     throw s!"duplicate type '{n}'"
   for d in p.aliases do
     checkIdentifier d.name
     if d.name == "Field" then throw "Field is a reserved type name"
     checkParams d.typeParams
-    checkSurfaceType p.enums p.aliases d.typeParams d.target
+    checkSurfaceType p.nominals p.aliases d.typeParams d.target
   let (_, aliases) ← (p.aliases.forM fun d => resolve p.aliases (p.aliases.length + 1) [] d.name).run []
   return aliases
 
@@ -104,11 +104,19 @@ def constructorType (aliases : List AliasDecl) (d : AliasDecl)
       let env ← arguments d.typeParams ts
       return ([], d.target.subst env)
 
+def expandRecordHead (aliases : List AliasDecl) (head : RecordHead) : Except String RecordHead := do
+  if let .named name args := head.type then
+    if let some decl := aliases.find? (·.name == name) then
+      let (params, type) ← constructorType aliases decl (if args.isEmpty then none else some args)
+      return { head with params, type }
+  return { head with type := ← expandType aliases head.type }
+
 def expandPattern (aliases : List AliasDecl) : Pattern α → Except String (Pattern α)
   | .literal x => pure (.literal x)
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
   | .global n t => pure (.global n t)
+  | .record head ps => return .record (← expandRecordHead aliases head) (← ps.mapM (expandPattern aliases))
   | .load p => return .load (← expandPattern aliases p)
   | .tuple ps => return .tuple (← ps.mapM (expandPattern aliases))
   | .array ps => return .array (← ps.mapM (expandPattern aliases))
@@ -142,6 +150,8 @@ def expandExpr (aliases : List AliasDecl) : Expr α → Except String (Expr α)
       return .construct n (← ts.mapM (fun ts => ts.mapM (expandType aliases))) c xs
   | .constructAs params t c xs =>
       return .constructAs params (← expandType aliases t) c (← xs.mapM (expandExpr aliases))
+  | .record head xs => return .record (← expandRecordHead aliases head) (← xs.mapM (expandExpr aliases))
+  | .member x field => return .member (← expandExpr aliases x) { field with owner := ← field.owner.mapM (expandType aliases) }
   | .project x i => return .project (← expandExpr aliases x) i
   | .letValue pat x b => return .letValue (← expandPattern aliases pat) (← expandExpr aliases x) (← expandExpr aliases b)
   | .store x => return .store (← expandExpr aliases x)
@@ -174,6 +184,10 @@ def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid 
   | .tuple ps | .array ps => do
       let _ ← ps.mapM (checkPatternTypes enums aliases rigid)
       pure ()
+  | .record head ps => do
+      checkPatternHead enums aliases (head.params ++ rigid) head.type
+      let _ ← ps.mapM (checkPatternTypes enums aliases rigid)
+      pure ()
   | .construct t _ ps => do
       checkPatternHead enums aliases rigid t
       let _ ← ps.mapM (checkPatternTypes enums aliases rigid)
@@ -189,6 +203,13 @@ def checkExprTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : L
   | .tuple xs | .array xs => do
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
       pure ()
+  | .record head xs => do
+      checkPatternHead enums aliases (head.params ++ rigid) head.type
+      let _ ← xs.mapM (checkExprTypes enums aliases rigid)
+      pure ()
+  | .member x field => do
+      field.owner.toList.forM (checkSurfaceType enums aliases rigid)
+      checkExprTypes enums aliases rigid x
   | .construct _ ts _ xs | .call _ ts xs => do
       (ts.getD []).forM (checkSurfaceType enums aliases rigid)
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
@@ -250,12 +271,17 @@ def expandConst (enums : List EnumDecl) (raw aliases : List AliasDecl)
   return { d with value := ← expandPattern aliases d.value }
 
 def expandProgram (aliases : List AliasDecl) (p : Program α) : Except String (Program α) := do
-  let functions ← p.functions.mapM (expandFunction p.enums p.aliases aliases)
-  let enums ← p.enums.mapM (expandEnum p.enums p.aliases aliases)
-  let tables ← p.tables.mapM (expandTable p.enums p.aliases aliases)
-  let maps ← p.maps.mapM (expandMap p.enums p.aliases aliases)
-  let consts ← p.consts.mapM (expandConst p.enums p.aliases aliases)
-  return { functions, enums, tables, maps, aliases := [], consts }
+  let functions ← p.functions.mapM (expandFunction p.nominals p.aliases aliases)
+  let enums ← p.enums.mapM (expandEnum p.nominals p.aliases aliases)
+  let tables ← p.tables.mapM (expandTable p.nominals p.aliases aliases)
+  let maps ← p.maps.mapM (expandMap p.nominals p.aliases aliases)
+  let consts ← p.consts.mapM (expandConst p.nominals p.aliases aliases)
+  let structs ← p.structs.mapM fun decl => do
+    let fields ← decl.fields.mapM fun (name, type) => do
+      checkSurfaceType p.nominals p.aliases decl.typeParams type
+      return (name, ← expandType aliases type)
+    return { decl with fields }
+  return { functions, enums, structs, tables, maps, aliases := [], consts }
 
 end Aliases
 

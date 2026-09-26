@@ -72,21 +72,21 @@ theorem evalOutcome_spec {locals : Environment F Nat} {fuel : Nat} {expr : Expr 
               simp only [evalOutcomeWith, found] at executed
               obtain ⟨rfl, rfl⟩ := FlowEvaluation.pure_ok.mp executed
               exact .var found
-      | tuple items | array items | construct name args ctor items | constructAs params t ctor items =>
+      | record head items | tuple items | array items | construct name args ctor items | constructAs params t ctor items =>
           simp only [evalOutcomeWith] at executed
           rcases FlowEvaluation.bind_ok.mp executed with ⟨values, middle, run, finished⟩ | ⟨⟨target, value⟩, run, rfl⟩
           · obtain ⟨rfl, rfl⟩ := FlowEvaluation.pure_ok.mp finished
             have args := args_spec (fun _ _ _ _ h => ih h) run
-            first | exact .tuple args | exact .array args | exact .construct args | exact .constructAs args
+            first | exact .record args | exact .tuple args | exact .array args | exact .construct args | exact .constructAs args
           · have args := args_spec (fun _ _ _ _ h => ih h) run
-            first | exact .fromTuple args | exact .fromArray args | exact .fromConstruct args | exact .fromConstructAs args
-      | project value index | index value index | slice value start stop | neg value =>
+            first | exact .fromRecord args | exact .fromTuple args | exact .fromArray args | exact .fromConstruct args | exact .fromConstructAs args
+      | member value field | project value index | index value index | slice value start stop | neg value =>
           simp only [evalOutcomeWith] at executed
           rcases FlowEvaluation.bind_ok.mp executed with ⟨input, middle, run, operation⟩ | ⟨⟨target, value⟩, run, rfl⟩
           · obtain ⟨result, op, rfl, rfl⟩ := FlowEvaluation.lift_ok.mp operation
-            first | exact .project (ih run) op | exact .index (ih run) op
+            first | exact .member (ih run) op | exact .project (ih run) op | exact .index (ih run) op
                   | exact .slice (ih run) op | exact .neg (ih run) op
-          · first | exact .fromProject (ih run) | exact .fromIndex (ih run)
+          · first | exact .fromMember (ih run) | exact .fromProject (ih run) | exact .fromIndex (ih run)
                   | exact .fromSlice (ih run) | exact .fromNeg (ih run)
       | «repeat» value length =>
           simp only [evalOutcomeWith] at executed

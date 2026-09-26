@@ -71,6 +71,18 @@ theorem lowering_sound [Field F] [DecidableEq F]
           have args := (children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)
             (by simpa only [Expr.lowerSafe] using safe) (option_mapM_hasResult mapped) items heapGood).1
           first | exact .tuple args | exact .array args
+  | record head es =>
+      rw [Expr.lower] at evaluated
+      obtain ⟨values, items, rfl⟩ := StructLowering.record_iff.mp evaluated
+      obtain ⟨_, mapped, _⟩ := Option.bind_eq_some_iff.mp checks
+      exact .record ((children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)
+        (by simpa only [Expr.lowerSafe] using safe) (option_mapM_hasResult mapped) items heapGood).1)
+  | member child field =>
+      rw [Expr.lowerSafe] at safe
+      rw [Expr.lower] at evaluated
+      obtain ⟨value, ev, projected⟩ := (StructLowering.member_iff safe.2).mp evaluated
+      obtain ⟨_, typed, _⟩ := Option.bind_eq_some_iff.mp checks
+      exact .member (sub child (by simp_wf; omega) locals _ _ _ safe.1 typed ev heapGood localsGood) projected
   | construct name args ctor es | constructAs params t ctor es =>
       rw [Expr.lower] at evaluated
       cases evaluated with

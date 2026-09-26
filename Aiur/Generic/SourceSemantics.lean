@@ -63,6 +63,14 @@ def matchPatternWith [DecidableEq F] (constant : String → Ty → Except EvalEr
       if values.length != n then return none
       matchListWith (fun (_ : Unit) value => matchPatternWith constant depth types heap pat value)
         (List.replicate n ()) values
+  | .record head ps, value => do
+      let .construct name ctor values := value | return none
+      if name != constructorName types head.type || ctor != structConstructor then return none
+      let children := head.order (ps.attach.map some) none
+      if children.length != values.length then return none
+      matchListWith (fun child value => match child with
+        | some pat => matchPatternWith constant depth types heap pat.val value
+        | none => pure (some [])) children values
   | .construct t c ps, value | .constructAs _ t c ps, value => do
       let .construct name ctor values := value | return none
       if name != constructorName types t || ctor != c || ps.length != values.length then return none
@@ -73,7 +81,7 @@ decreasing_by
   all_goals first | omega | skip
   all_goals try have := List.sizeOf_lt_of_mem pat.property
   all_goals try simp_all only [Pattern.tuple.sizeOf_spec, Pattern.array.sizeOf_spec,
-    Pattern.construct.sizeOf_spec, Pattern.constructAs.sizeOf_spec]
+    Pattern.construct.sizeOf_spec, Pattern.constructAs.sizeOf_spec, Pattern.record.sizeOf_spec]
   all_goals omega
 
 def World.matchPattern [DecidableEq F] (world : World F) :=
@@ -98,6 +106,16 @@ def sliceValue (value : SourceValue F) (start : Nat) (stop : Option Nat) : Excep
   if start > stop || stop > values.length then throw (.projectionBounds stop values.length)
   return .tuple ((values.drop start).take (stop - start))
 
+
+/-- Read one field of a checked nominal product; no address is observed. -/
+def memberValue (types : Types) (field : FieldRef) (value : SourceValue F) : Except EvalError (SourceValue F) := do
+  let name := constructorName types (field.owner.getD (.named "$invalid" []))
+  let .construct actual ctor values := value | throw (.malformedValue (.enum name))
+  if actual != name || ctor != structConstructor || values.length != field.arity then
+    throw (.malformedValue (.enum name))
+  match values[field.index]? with
+  | some value => return value
+  | none => throw (.projectionBounds field.index field.arity)
 
 abbrev HintProvider (world : World F) := SourceValue F → (type : Aiur.Ty) →
   Except HintError { value : Constant F // world.typed type value = true }
@@ -132,6 +150,12 @@ mutual
     | slice (value : EvalExpr world types locals expr before input after)
         (sliced : sliceValue input start stop = .ok result) :
         EvalExpr world types locals (.slice expr start stop) before result after
+    | record (items : EvalArgs world types locals exprs before values after) :
+        EvalExpr world types locals (.record head exprs) before
+          (.construct (constructorName types head.type) structConstructor (head.order values (.tuple []))) after
+    | member (value : EvalExpr world types locals expr before input after)
+        (projected : memberValue types field input = .ok result) :
+        EvalExpr world types locals (.member expr field) before result after
     | construct (items : EvalArgs world types locals exprs before values after) :
         EvalExpr world types locals (.construct name args ctor exprs) before (.construct (instanceName types name args) ctor values) after
     | constructAs (items : EvalArgs world types locals exprs before values after) :
@@ -207,6 +231,10 @@ mutual
         EvalExit world types locals (.index expr index) before target result after
     | fromSlice (value : EvalExit world types locals expr before target result after) :
         EvalExit world types locals (.slice expr start stop) before target result after
+    | fromRecord (items : EvalArgsExit world types locals exprs before target result after) :
+        EvalExit world types locals (.record head exprs) before target result after
+    | fromMember (value : EvalExit world types locals expr before target result after) :
+        EvalExit world types locals (.member expr field) before target result after
     | fromConstruct (items : EvalArgsExit world types locals exprs before target result after) :
         EvalExit world types locals (.construct name args ctor exprs) before target result after
     | fromConstructAs (items : EvalArgsExit world types locals exprs before target result after) :

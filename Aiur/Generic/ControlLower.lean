@@ -11,9 +11,9 @@ namespace Aiur.Generic.ControlLower
 def hasControl : Expr α → Bool
   | .control _ _ => true
   | .literal _ | .var _ | .global _ _ => false
-  | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs =>
+  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs =>
       (xs.map hasControl).any id
-  | .repeat x _ | .index x _ | .slice x _ _ | .project x _ | .store x | .load x | .hint _ x | .neg x => hasControl x
+  | .member x _ | .repeat x _ | .index x _ | .slice x _ _ | .project x _ | .store x | .load x | .hint _ x | .neg x => hasControl x
   | .letValue _ x b | .binary _ x b => hasControl x || hasControl b
   | .matchValue x arms => hasControl x || (arms.map fun arm => hasControl arm.2).any id
 termination_by expr => sizeOf expr
@@ -24,8 +24,8 @@ decreasing_by
 def names : Expr α → List String
   | .literal _ | .global _ _ => []
   | .var name => [name]
-  | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => xs.flatMap names
-  | .control _ x | .repeat x _ | .index x _ | .slice x _ _ | .project x _ | .store x | .load x | .hint _ x | .neg x => names x
+  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => xs.flatMap names
+  | .member x _ | .control _ x | .repeat x _ | .index x _ | .slice x _ _ | .project x _ | .store x | .load x | .hint _ x | .neg x => names x
   | .letValue pat x b => pat.bindingNames ++ names x ++ names b
   | .binary _ x b => names x ++ names b
   | .matchValue x arms => names x ++ arms.flatMap (fun arm => arm.1.bindingNames ++ names arm.2)
@@ -44,6 +44,7 @@ def renamePattern (env : Renaming) : Pattern α → Pattern α
   | .bind name => .bind (rename env name)
   | .global name type => .global name type
   | .load p => .load (renamePattern env p)
+  | .record head ps => .record head (ps.map (renamePattern env))
   | .tuple ps => .tuple (ps.map (renamePattern env))
   | .array ps => .array (ps.map (renamePattern env))
   | .repeat p n => .repeat (renamePattern env p) n
@@ -99,6 +100,9 @@ mutual
             return next.apply (.var renamed)
         | .global _ _ => throw "expand const expressions before control lowering"
         | .tuple xs | .array xs => arguments fuel env xs next handlers
+        | .record head xs =>
+            let input ← fresh used
+            arguments fuel env xs ⟨input, next.apply (.record head (projects input xs.length))⟩ handlers
         | .construct name types ctor xs =>
             let input ← fresh used
             arguments fuel env xs ⟨input, next.apply (.construct name types ctor (projects input xs.length))⟩ handlers
@@ -117,6 +121,9 @@ mutual
         | .slice x start stop =>
             let input ← fresh used
             expression fuel env x ⟨input, next.apply (.slice (.var input) start stop)⟩ handlers
+        | .member x field =>
+            let input ← fresh used
+            expression fuel env x ⟨input, next.apply (.member (.var input) field)⟩ handlers
         | .project x i =>
             let input ← fresh used
             expression fuel env x ⟨input, next.apply (.project (.var input) i)⟩ handlers

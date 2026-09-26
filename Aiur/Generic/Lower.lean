@@ -18,6 +18,32 @@ def resolveEnum (p : Program α) (key : Instance) : Except String Aiur.EnumDecl 
       { name := ctor.name, fields := ctor.fields.map (fun t => (t.subst env).toCore) }
   }
 
+namespace StructLowering
+
+def nominalName (types : List (String × Ty)) (type : Ty) : String :=
+  match (type.subst types).toCore with | .enum name => name | _ => "$invalid"
+
+/-- Evaluate initializers once in written order, then arrange their values in
+  declaration order. The temporary's scope contains only generated syntax. -/
+def record (types : List (String × Ty)) (head : RecordHead) (items : List (Aiur.Expr α)) : Aiur.Expr α :=
+  .letValue (.bind "$record") (.tuple items)
+    (.construct (nominalName types head.type) structConstructor
+      (head.order ((List.range items.length).map fun i => .project (.var "$record") i) (.tuple [])))
+
+def fieldPatterns : Nat → Nat → List (Aiur.Pattern α)
+  | 0, _ => []
+  | n + 1, 0 => .bind "$member" :: List.replicate n .wildcard
+  | n + 1, i + 1 => .wildcard :: fieldPatterns n i
+
+def fieldPattern (field : FieldRef) : Aiur.Pattern α :=
+  .construct (nominalName [] (field.owner.getD (.named "$invalid" []))) structConstructor
+    (fieldPatterns field.arity field.index)
+
+def member (types : List (String × Ty)) (value : Aiur.Expr α) (field : FieldRef) : Aiur.Expr α :=
+  .letValue (fieldPattern (field.subst types)) value (.var "$member")
+
+end StructLowering
+
 /-- Inference has filled in every call/constructor's type arguments before
 circuit lowering. Source evaluation uses the original body with a type
 environment and never calls this translation. -/
@@ -36,6 +62,8 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .constructAs _ t c xs =>
       let name := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
       .construct name c (xs.map (Expr.lower env))
+  | .record head xs => StructLowering.record env head (xs.map (Expr.lower env))
+  | .member x field => StructLowering.member env (x.lower env) field
   | .project x i => .project (x.lower env) i
   | .letValue p x b => PatternLowering.lowerLet env p (x.lower env) (b.lower env)
   | .store x => .store (x.lower env)

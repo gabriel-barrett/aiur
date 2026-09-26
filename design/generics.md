@@ -174,3 +174,12 @@ cache-order regressions, enums, pointers, hints, tables/maps, and theorem reuse.
 `AiurTests/SourceEvaluation.lean` checks source syntax retention, source fuel
 behavior, hint-key effects, and both directions of source specialization.
 `Examples/Generics.lean` shows the public API.
+
+## Structs
+
+Generic [structs](structs.md) use the same type substitution and instance keys as
+enums. For example, `struct Box<T> { value: T }` admits `Box { value: 3 }` and
+`Box::<Field> { value: 3 }`. Named patterns infer arguments from the scrutinee,
+and `box.value` uses the instantiated field type. Struct declarations and named
+source nodes remain through evaluation; concrete nominal product signatures
+are collected on the circuit path. Transparent aliases may name these types.
