@@ -26,8 +26,11 @@ not an outstanding TODO.
   patterns, and static indexing/slicing have native evaluation rules. Their
   circuit compilation uses tuples and fixed projections; repetition and slicing
   evaluate operands once. See [arrays](arrays.md).
-- [ ] **Further array conveniences.** Functional updates, bounded compile-time
-  folds, rest patterns, and symbolic lengths/const generics. Dynamic indexing,
+- [x] **Functional updates.** `base with { .field = value, [0] = value }`
+  supports nested struct, tuple, and array paths, with native evaluation and
+  proved late reconstruction. See [functional updates](updates.md).
+- [ ] **Further array conveniences.** Bounded compile-time folds, rest patterns,
+  and symbolic lengths/const generics. Dynamic indexing,
   mutable memory, and runtime loops remain separate from these conveniences.
 
 - [x] **Type aliases.** Named and parameterized declarations are retained;

@@ -11,7 +11,7 @@ namespace Aiur.Generic.ControlLower
 def hasControl : Expr α → Bool
   | .control _ _ => true
   | .literal _ | .var _ | .global _ _ => false
-  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs =>
+  | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs =>
       (xs.map hasControl).any id
   | .member x _ | .repeat x _ | .index x _ | .slice x _ _ | .project x _ | .store x | .load x | .hint _ x | .neg x => hasControl x
   | .letValue _ x b | .binary _ x b => hasControl x || hasControl b
@@ -24,7 +24,7 @@ decreasing_by
 def names : Expr α → List String
   | .literal _ | .global _ _ => []
   | .var name => [name]
-  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => xs.flatMap names
+  | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => xs.flatMap names
   | .member x _ | .control _ x | .repeat x _ | .index x _ | .slice x _ _ | .project x _ | .store x | .load x | .hint _ x | .neg x => names x
   | .letValue pat x b => pat.bindingNames ++ names x ++ names b
   | .binary _ x b => names x ++ names b
@@ -100,6 +100,9 @@ mutual
             return next.apply (.var renamed)
         | .global _ _ => throw "expand const expressions before control lowering"
         | .tuple xs | .array xs => arguments fuel env xs next handlers
+        | .update paths xs =>
+            let input ← fresh (reserved env next handlers)
+            arguments fuel env xs ⟨input, next.apply (.update paths (projects input xs.length))⟩ handlers
         | .record head xs =>
             let input ← fresh used
             arguments fuel env xs ⟨input, next.apply (.record head (projects input xs.length))⟩ handlers

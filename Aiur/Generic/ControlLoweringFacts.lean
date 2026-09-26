@@ -150,6 +150,15 @@ theorem expression_correct {env : Renaming} {expr code : Expr F}
         intro vs h length
         rw [← length]
         exact run_constructAs fresh.next
+    | update paths xs =>
+        simp only [expression, except_bind_ok] at built
+        obtain ⟨input, freshInput, child⟩ := built
+        have fresh := fresh_reserved (fresh_ok freshInput)
+        rw [arguments_correct child _ _ _ _ _ scope, exec_update]
+        apply ExecArgs.congr_length ?_ (fun _ _ _ => Iff.rfl)
+        intro vs h length
+        rw [← length]
+        exact run_update fresh.next
     | record head xs =>
         simp only [expression, except_bind_ok] at built
         obtain ⟨input, freshInput, child⟩ := built

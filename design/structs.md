@@ -117,3 +117,7 @@ There are no admitted proof steps.
 [Tests](../AiurTests/Structs.lean) cover source/core execution, field ordering and
 allocation effects, generic inference, consts, pointers, early exits, tables,
 hints, rejection cases, and both row checkers. [Example](../Examples/Structs.lean).
+
+Functional updates use `p with { .x = value }`, including nested paths. They
+preserve nominal type and evaluate the base and replacements once in written
+order. See [updates](updates.md) for the native semantics and correctness proof.

@@ -1,7 +1,7 @@
 # Source semantics and the compilation boundary
 
 The evaluation predicate defines the language on `Generic.Expr`, with explicit
-arrays, repetition, static indexing/slicing, structs, named fields, pointer patterns, and lexical exits. It must not
+arrays, repetition, static indexing/slicing, structs, named fields, functional updates, pointer patterns, and lexical exits. It must not
 be defined by evaluating an expression after circuit lowering. Adding a source
 construct requires its own evaluation rule and a correctness argument for its
 compilation.
@@ -14,7 +14,7 @@ references when inferring their use types and checks the dependency graph
 without inlining bodies. Alias targets normalize type information; they do not
 replace executable code. Inference fills type arguments and omitted slice
 endpoints, annotates named struct fields with checked positions, and preserves
-array operations, named construction, field projection, and repeated patterns. Field conversion
+array operations, named construction, field projection, functional updates, and repeated patterns. Field conversion
 changes field literals in expressions, patterns, and const declarations. Lengths
 and indices stay natural numbers. See [the pipeline](source-pipeline.md).
 
@@ -56,6 +56,11 @@ in declaration order under a nominal product constructor. Named projections
 evaluate their operand once. Struct patterns inspect declaration order, including
 nested loads. These operations have native rules, independent of their later
 translation to constructor patterns and fixed projections. See [structs](structs.md).
+
+Functional updates evaluate the base and every replacement once, in written
+order, then rebuild the selected paths without heap access. Their paths and
+operand sequence remain explicit in the AST. Direct normal and exit rules are
+proved equivalent to late reconstruction; see [updates](updates.md).
 
 The interpreter reuses the existing structured `SourceValue` and heap. Arrays
 and tuples share its sequence constructor, while their source types remain

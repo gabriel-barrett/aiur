@@ -21,6 +21,7 @@ import AiurTests.Arrays
 import AiurTests.SourceEvaluation
 import AiurTests.Control
 import AiurTests.Structs
+import AiurTests.Updates
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -191,3 +192,4 @@ def main : IO Unit := do
   AiurArrayTests.run
   AiurControlTests.run
   AiurStructTests.run
+  AiurUpdateTests.run

@@ -185,7 +185,7 @@ theorem expandExpr_map (f : α → β) (decls : List (ConstDecl α)) (locals) (e
       simp only [Expr.map, expandExpr, List.any_map, Function.comp_def, ConstDecl.map]
       split <;> simp [expression_map, Except.map, pure, Except.pure, Expr.map]
   | global n ann => simpa only [Expr.map, expandExpr] using expression_map f decls n
-  | record _ xs | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
+  | update _ xs | record _ xs | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, expandExpr]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]

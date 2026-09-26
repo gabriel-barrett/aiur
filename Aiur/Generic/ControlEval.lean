@@ -55,6 +55,8 @@ def evalOutcomeWith [Field F] [DecidableEq F] (world : World F) (hints : HintPro
       | .repeat value n => return .tuple (List.replicate n (← evalOutcomeWith world hints types locals fuel value))
       | .index value i | .project value i => liftM (projectValue (← evalOutcomeWith world hints types locals fuel value) i)
       | .slice value start stop => liftM (sliceValue (← evalOutcomeWith world hints types locals fuel value) start stop)
+      | .update paths items =>
+          liftM (Update.value types paths (← items.mapM (evalOutcomeWith world hints types locals fuel)))
       | .record head items =>
           let values ← items.mapM (evalOutcomeWith world hints types locals fuel)
           return .construct (constructorName types head.type) structConstructor (head.order values (.tuple []))

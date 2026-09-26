@@ -103,7 +103,7 @@ theorem checkExprTypes_map (enums aliases rigid) (f : α → β) (expr : Expr α
     traverse_same xs _ _ _ (fun x hx => checkExprTypes_map enums aliases rigid f x)
   cases expr with
   | literal | var | global => simp [Expr.map, checkExprTypes]
-  | record _ xs | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
+  | update _ xs | record _ xs | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, checkExprTypes]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
   | member x _ | control _ x | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
@@ -135,7 +135,7 @@ theorem expandExpr_map (aliases) (f : α → β) (expr : Expr α) :
     traverse_map xs _ _ _ _ (fun x hx => expandExpr_map aliases f x)
   cases expr with
   | literal | var | global => simp [Expr.map, expandExpr, map_pure]
-  | record _ xs | tuple xs | array xs | constructAs _ _ _ xs | call _ _ xs =>
+  | update _ xs | record _ xs | tuple xs | array xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, expandExpr]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]

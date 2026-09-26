@@ -25,6 +25,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   circuit interfaces, first-match equations, and proof boundaries.
 - [Arrays](arrays.md): homogeneous fixed-size values, repetition, patterns,
   static indexing and slicing, and late circuit lowering.
+- [Functional updates](updates.md): `with` for nested arrays, tuples, and structs,
+  operand order, retained source semantics, and proved reconstruction.
 - [Pointers and ROM](pointers.md): typed opaque pointers, a prover-chosen
   heterogeneous table, allocation bounds, and source/circuit correspondence.
 - [Pointer patterns](pointer-patterns.md): `&pattern` as a load, nested ordered

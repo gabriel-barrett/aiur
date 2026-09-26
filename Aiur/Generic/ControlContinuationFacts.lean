@@ -193,6 +193,15 @@ theorem run_constructAs (fresh : input ∉ next.names) :
   rw [eval_apply_exec, exec_constructAs, exec_projects (by simp)]
   simp only [Continuation.run_add fresh]
 
+theorem run_update (fresh : input ∉ next.names) :
+    (Continuation.mk input (next.apply (.update paths (projects input values.length)))).run
+      world calls locals (.tuple values) before result after ↔
+      ∃ output, Update.value [] paths values = .ok output ∧
+        next.run world calls locals output before result after := by
+  change OpenSource.EvalExpr _ _ _ _ (next.apply _) _ _ _ ↔ _
+  rw [eval_apply_exec, exec_update, exec_projects (by simp)]
+  simp only [Continuation.run_add fresh]
+
 theorem run_record (fresh : input ∉ next.names) :
     (Continuation.mk input (next.apply (.record head (projects input values.length)))).run world calls locals (.tuple values) before result after ↔
       next.run world calls locals (.construct (constructorName [] head.type) structConstructor (head.order values (.tuple []))) before result after := by
