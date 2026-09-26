@@ -36,7 +36,7 @@ def exprNames : Aiur.Expr α → List String
   | .tuple xs | .construct _ _ xs | .call _ xs => xs.flatMap exprNames
   | .project x _ | .store x | .load x | .hint _ x | .neg x => exprNames x
   | .letValue p x b => patternNames p ++ exprNames x ++ exprNames b
-  | .binary _ x y => exprNames x ++ exprNames y
+  | .binary _ x y | .assertEq _ x y => exprNames x ++ exprNames y
   | .matchValue x arms => exprNames x ++ arms.flatMap (fun arm => patternNames arm.1 ++ exprNames arm.2)
 termination_by e => sizeOf e
 decreasing_by

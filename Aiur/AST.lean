@@ -282,6 +282,7 @@ inductive Expr (α : Type) where
   | hint (type : Ty) (key : Expr α)
   | neg (value : Expr α)
   | binary (op : BinOp) (left right : Expr α)
+  | assertEq (message : Option String) (left right : Expr α)
   | call (function : String) (args : List (Expr α))
   | matchValue (scrutinee : Expr α) (arms : List (Pattern α × Expr α))
   deriving Repr, BEq
@@ -378,6 +379,7 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .hint type key => .hint type (key.map f)
   | .neg value => .neg (value.map f)
   | .binary op left right => .binary op (left.map f) (right.map f)
+  | .assertEq message left right => .assertEq message (left.map f) (right.map f)
   | .call name args => .call name (args.map (Expr.map f))
   | .matchValue scrutinee arms =>
       .matchValue (scrutinee.map f) (arms.map fun arm => (arm.1.map f, arm.2.map f))
@@ -410,7 +412,7 @@ def Expr.noHints : Expr α → Bool
   | .tuple items | .construct _ _ items | .call _ items =>
       (items.map Expr.noHints).all id
   | .project value _ | .store value | .load value | .neg value => value.noHints
-  | .letValue _ value body | .binary _ value body => value.noHints && body.noHints
+  | .letValue _ value body | .binary _ value body | .assertEq _ value body => value.noHints && body.noHints
   | .matchValue value arms => value.noHints && (arms.map fun arm => arm.2.noHints).all id
 termination_by expr => sizeOf expr
 decreasing_by

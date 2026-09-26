@@ -129,6 +129,7 @@ theorem eval_agrees [Field F] [DecidableEq F] (world : World F)
           apply flow_bind (args _ _ _)
           intro values
           cases op with
+          | assertEq message => simpa only [pure_bind] using (flow_lift (Builtin.apply (.assertEq message) values))
           | ascribe t => simpa only [pure_bind] using (flow_lift (Builtin.apply (.ascribe t) values))
           | debug message => exact emit_then _ (flow_lift _)
       | update paths items => exact flow_bind (args _ _ _) (fun values => flow_lift _)

@@ -280,6 +280,13 @@ private def infer (p : Program α) (rigid : List String) :
               if let some expected := expected then agree type expected
               let (_, value) ← infer p rigid fuel locals value (some type)
               pure (type, .builtin (.ascribe type) [value])
+          | .assertEq message =>
+              let [left, right] := operands | throw "assert_eq! takes two operands"
+              let (type, left) ← infer p rigid fuel locals left none
+              let (_, right) ← infer p rigid fuel locals right (some type)
+              let type ← zonk type
+              liftM (checkPointerFree p "assert_eq!" 1024 [] type)
+              pure (.tuple [], .builtin (.assertEq message) [left, right])
           | .debug message =>
               let pairs ← operands.mapM fun value => infer p rigid fuel locals value none
               pure (.tuple [], .builtin (.debug message) (pairs.map Prod.snd))

@@ -73,11 +73,12 @@ not an outstanding TODO.
   includes skipped calls, hints, allocations, and scope shadowing. See
   [control flow](control-flow.md).
 
-- [ ] **Assertions and zero tests.** Add convenient syntax or library definitions
-  for `assert_eq!` and `eq_zero`. Field zero tests already use `match`; field
-  equality assertions can use a partial match on the difference. Define the
-  supported types for structured assertions without introducing pointer equality.
-  See ix's [assertion checking](../../ix/Ix/Aiur/Compiler/Check.lean).
+- [x] **Equality assertions.** `assert_eq!(left, right, "optional message")`
+  supports every statically pointer-free type. Native semantics, structural
+  comparison of canonical circuit encodings, diagnostics and correctness proofs
+  are implemented. See [diagnostics](diagnostics.md).
+- [ ] **Zero-test convenience.** Consider an `eq_zero` library helper. Field
+  zero tests already use `match`; equality assertions need no such helper.
 
 ## Frontend and program organization
 

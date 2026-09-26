@@ -34,7 +34,10 @@ mutual
     | .neg x, .neg y => by
         letI := exprDecEq x y
         exact decidable_of_iff (x = y) (by simp only [Aiur.Expr.neg.injEq])
-    | .binary op x y, .binary oq z w => by
+    | .assertEq op x y, .assertEq oq z w => by
+        letI := exprDecEq x z
+        letI := exprDecEq y w
+        exact decidable_of_iff (op = oq ∧ x = z ∧ y = w) (by simp only [Aiur.Expr.assertEq.injEq])    | .binary op x y, .binary oq z w => by
         letI := exprDecEq x z
         letI := exprDecEq y w
         exact decidable_of_iff (op = oq ∧ x = z ∧ y = w) (by simp only [Aiur.Expr.binary.injEq])
@@ -201,6 +204,32 @@ mutual
     | .matchValue _ _, .neg _ => isFalse (by intro h; cases h)
     | .matchValue _ _, .binary _ _ _ => isFalse (by intro h; cases h)
     | .matchValue _ _, .call _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .literal _ => isFalse (by intro h; cases h)
+    | .literal _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .var _ => isFalse (by intro h; cases h)
+    | .var _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .tuple _ => isFalse (by intro h; cases h)
+    | .tuple _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .construct _ _ _ => isFalse (by intro h; cases h)
+    | .construct _ _ _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .project _ _ => isFalse (by intro h; cases h)
+    | .project _ _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .letValue _ _ _ => isFalse (by intro h; cases h)
+    | .letValue _ _ _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .store _ => isFalse (by intro h; cases h)
+    | .store _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .load _ => isFalse (by intro h; cases h)
+    | .load _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .hint _ _ => isFalse (by intro h; cases h)
+    | .hint _ _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .neg _ => isFalse (by intro h; cases h)
+    | .neg _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .binary _ _ _ => isFalse (by intro h; cases h)
+    | .binary _ _ _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .call _ _ => isFalse (by intro h; cases h)
+    | .call _ _, .assertEq _ _ _ => isFalse (by intro h; cases h)
+    | .assertEq _ _ _, .matchValue _ _ => isFalse (by intro h; cases h)
+    | .matchValue _ _, .assertEq _ _ _ => isFalse (by intro h; cases h)
   termination_by sizeOf a
 
   def exprListDecEq [DecidableEq α] (a b : List (Aiur.Expr α)) : Decidable (a = b) :=

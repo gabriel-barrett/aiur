@@ -40,6 +40,10 @@ mutual
     | neg (value : EvalExpr world calls locals expr before input after)
         (operation : evalNeg input = .ok result) :
         EvalExpr world calls locals (.neg expr) before result after
+    | assertEq (left : EvalExpr world calls locals lhs before x middle)
+        (right : EvalExpr world calls locals rhs middle y after)
+        (operation : evalAssertEq op x y = .ok result) :
+        EvalExpr world calls locals (.assertEq op lhs rhs) before result after
     | binary (left : EvalExpr world calls locals lhs before x middle)
         (right : EvalExpr world calls locals rhs middle y after)
         (operation : evalBinOp op x y = .ok result) :
@@ -79,6 +83,7 @@ theorem EvalExpr.mapCalls
   | load _ h ih => exact .load ih h
   | hint _ h ih => exact .hint ih h
   | neg _ h ih => exact .neg ih h
+  | assertEq _ _ h ih1 ih2 => exact .assertEq ih1 ih2 h
   | binary _ _ h ih1 ih2 => exact .binary ih1 ih2 h
   | matchValue _ h _ ih1 ih2 => exact .matchValue ih1 h ih2
   | nil => exact .nil
@@ -100,6 +105,7 @@ theorem EvalExpr.close
   | load _ h ih => exact .load ih h
   | hint _ h ih => exact .hint ih h
   | neg _ h ih => exact .neg ih h
+  | assertEq _ _ h ih1 ih2 => exact .assertEq ih1 ih2 h
   | binary _ _ h ih1 ih2 => exact .binary ih1 ih2 h
   | matchValue _ h _ ih1 ih2 => exact .matchValue ih1 h ih2
   | nil => exact .nil
@@ -122,6 +128,7 @@ theorem of_closed
   | load _ h ih => exact .load ih h
   | hint _ h ih => exact .hint ih h
   | neg _ h ih => exact .neg ih h
+  | assertEq _ _ h ih1 ih2 => exact .assertEq ih1 ih2 h
   | binary _ _ h ih1 ih2 => exact .binary ih1 ih2 h
   | matchValue _ h _ ih1 ih2 => exact .matchValue ih1 h ih2
   | nil => exact .nil

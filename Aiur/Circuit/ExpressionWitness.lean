@@ -291,6 +291,33 @@ mutual
             rw [← inputDecode] at operation
             refine ⟨a, ext, by simpa [Scalar.Circuit.ArithExpr.inBounds] using bounded, ?_⟩
             simpa [evalNeg, Scalar.Circuit.ArithExpr.denote] using operation
+    | assertEq message left right =>
+        cases evaluated with
+        | assertEq leftEval rightEval operation =>
+            obtain ⟨_, same, rfl⟩ := evalAssertEq_ok.mp operation
+            simp only [lowerExpr] at compiled
+            obtain ⟨leftWire, s₁, leftRun, rest⟩ := bind_ok.mp compiled
+            obtain ⟨rightWire, s₂, rightRun, rest⟩ := bind_ok.mp rest
+            split at rest
+            · simp [StateT.bind, bind, Except.bind] at rest
+            · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+              obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+              obtain ⟨⟨⟩, last, equated, finished⟩ := bind_ok.mp rest
+              obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+              obtain ⟨a, e₁, leftBound, leftDecode⟩ := lowerExpr_complete checked tags typed callComplete leftRun
+                layout valid localsBound enableBound active decoded leftEval
+              obtain ⟨b, e₂, rightBound, rightDecode⟩ := lowerExpr_complete checked tags typed callComplete rightRun
+                e₁.layout e₁.valid (localsBound.mono e₁.increase) (e₁.bound enableBound)
+                ((e₁.polynomial enableBound).trans active) (e₁.environment localsBound decoded) rightEval
+              have chainExt := e₁.trans e₂
+              have leftDecodeB := e₂.decoded_value leftBound leftDecode
+              rw [same] at leftDecodeB
+              have equal := WireValue.decode_injective checked leftDecodeB rightDecode
+              have e₃ := constrainValue_complete equated e₂.layout e₂.valid (chainExt.bound enableBound)
+                (leftBound.mono e₂.increase) rightBound (Or.inr equal)
+              exact ⟨b, chainExt.trans e₃, bounded_tuple.mpr (by simp), by
+                simpa only [WireValue.map_tuple, List.map_nil] using
+                  WireValue.decode_tuple checked tags (.nil : DecodesValues program.enums [] [])⟩
     | binary op left right =>
         cases evaluated with
         | binary leftEval rightEval operation =>

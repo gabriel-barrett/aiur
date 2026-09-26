@@ -11,6 +11,7 @@ fn double(x: Field) -> Field {
 fn main() -> Field {
   let values: [Field; 2] = [3, 4];
   debug!(\"inputs\", values);
+  assert_eq!(values, [3, 4], \"unexpected inputs\");
   (double(values[0]): Field)
 }
 "

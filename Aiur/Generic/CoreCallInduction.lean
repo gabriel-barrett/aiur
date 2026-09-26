@@ -31,6 +31,10 @@ theorem EvalExpr.openCalls [Field F] [DecidableEq F]
       simp only [inScope, Bool.and_eq_true] at h
       exact .hint (ih h.2) typed
   | neg _ op ih => intro h; exact .neg (ih (by simpa [inScope] using h)) op
+  | assertEq _ _ op ih1 ih2 =>
+      intro h
+      simp only [inScope, Bool.and_eq_true] at h
+      exact .assertEq (ih1 h.1) (ih2 h.2) op
   | binary _ _ op ih1 ih2 =>
       intro h
       simp only [inScope, Bool.and_eq_true] at h

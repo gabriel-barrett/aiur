@@ -133,6 +133,12 @@ theorem evalExpr_spec [Field F] [DecidableEq F]
             simpa [bind, StateT.bind, Evaluation.get_apply, Except.bind] using loaded
           obtain ⟨loadOK, rfl⟩ := Evaluation.lift_ok.mp lifted
           exact .load (ih operand) loadOK
+      | assertEq op left right =>
+          simp only [evalExprWith] at executed
+          obtain ⟨leftValue, middle, leftRun, rest⟩ := Evaluation.bind_ok.mp executed
+          obtain ⟨rightValue, last, rightRun, operation⟩ := Evaluation.bind_ok.mp rest
+          obtain ⟨operationOK, rfl⟩ := Evaluation.lift_ok.mp operation
+          exact .assertEq (ih leftRun) (ih rightRun) operationOK
       | binary op left right =>
           simp only [evalExprWith] at executed
           obtain ⟨leftValue, middle, leftRun, rest⟩ := Evaluation.bind_ok.mp executed
@@ -215,6 +221,19 @@ theorem EvalExpr.eventually_runs [Field F] [DecidableEq F]
           simp [evalExprWith, runs fuel (by omega), bind, StateT.bind, Except.bind,
             Evaluation.get_apply, set, StateT.set, pure, StateT.pure, Except.pure]
   | hint => intro impossible; simp [Expr.noHints] at impossible
+  | assertEq _ _ operation leftIH rightIH =>
+      intro exprSafe
+      simp only [Expr.noHints, Bool.and_eq_true] at exprSafe
+      have safeParts := exprSafe
+      obtain ⟨leftMinimum, leftRuns⟩ := leftIH safeParts.1
+      obtain ⟨rightMinimum, rightRuns⟩ := rightIH safeParts.2
+      refine ⟨max leftMinimum rightMinimum + 1, ?_⟩
+      intro fuel enough
+      cases fuel with
+      | zero => omega
+      | succ fuel =>
+          simp [evalExprWith, leftRuns fuel (by omega), rightRuns fuel (by omega),
+            operation, bind, StateT.bind, Except.bind, Evaluation.lift_apply, Except.map, Evaluation.get_apply]
   | binary _ _ operation leftIH rightIH =>
       intro exprSafe
       simp only [Expr.noHints, Bool.and_eq_true] at exprSafe

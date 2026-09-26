@@ -4,16 +4,6 @@ import Aiur.WireMemory
 
 namespace Aiur
 
-@[simp] theorem Value.pointerFree_mapAddress (encode : A → B) (value : Value F A) :
-    (value.mapAddress encode).pointerFree = value.pointerFree := by
-  cases value with
-  | field | ptr => simp only [Value.mapAddress, Value.pointerFree]
-  | tuple values | construct name ctor values =>
-      simp only [Value.mapAddress, Value.pointerFree, List.map_map, Function.comp_def]
-      apply congrArg (fun values : List Bool => values.all id)
-      exact List.map_congr_left (fun v _ => Value.pointerFree_mapAddress encode v)
-termination_by sizeOf value
-
 @[simp] theorem Value.pointerNames_mapAddress (decls : Declarations) (encode : A → B) (value : Value F A) :
     (value.mapAddress encode).PointerNames decls ↔ value.PointerNames decls := by
   cases value with

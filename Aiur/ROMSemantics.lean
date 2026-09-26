@@ -31,6 +31,9 @@ mutual
         ROMEvalExpr rom program locals (.hint type expr) value.toValue
     | neg (value : ROMEvalExpr rom program locals expr input) (operation : evalNeg input = .ok result) :
         ROMEvalExpr rom program locals (.neg expr) result
+    | assertEq (left : ROMEvalExpr rom program locals lhs x) (right : ROMEvalExpr rom program locals rhs y)
+        (operation : evalAssertEq op x y = .ok result) :
+        ROMEvalExpr rom program locals (.assertEq op lhs rhs) result
     | binary (left : ROMEvalExpr rom program locals lhs x) (right : ROMEvalExpr rom program locals rhs y)
         (operation : evalBinOp op x y = .ok result) :
         ROMEvalExpr rom program locals (.binary op lhs rhs) result

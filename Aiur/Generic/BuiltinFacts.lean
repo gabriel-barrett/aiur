@@ -13,6 +13,49 @@ theorem expression_iff {op : Builtin} {operands : List (Aiur.Expr F)} :
       ∃ values, OpenCore.EvalArgs world calls locals operands before values after ∧
         op.apply values = .ok result := by
   cases op with
+  | assertEq message =>
+      constructor
+      · intro h
+        cases h with
+        | letValue value matched body =>
+            cases value with
+            | tuple items =>
+                rename_i values
+                cases values with
+                | nil => simp [Aiur.Pattern.bindings, Aiur.Pattern.bindingsList] at matched
+                | cons left rest =>
+                    cases rest with
+                    | nil => simp [Aiur.Pattern.bindings, Aiur.Pattern.bindingsList] at matched
+                    | cons right rest =>
+                        cases rest with
+                        | cons => simp [Aiur.Pattern.bindings, Aiur.Pattern.bindingsList] at matched
+                        | nil =>
+                            simp [Aiur.Pattern.bindings, Aiur.Pattern.bindingsList] at matched
+                            subst_vars
+                            cases body with
+                            | assertEq lhs rhs applied =>
+                                cases lhs with
+                                | var found =>
+                                    simp at found
+                                    subst_vars
+                                    cases rhs with
+                                    | var found =>
+                                        simp at found
+                                        subst_vars
+                                        exact ⟨_, items, applied⟩
+      · rintro ⟨values, items, applied⟩
+        cases values with
+        | nil => simp [Builtin.apply] at applied
+        | cons left rest =>
+            cases rest with
+            | nil => simp [Builtin.apply] at applied
+            | cons right rest =>
+                cases rest with
+                | cons => simp [Builtin.apply] at applied
+                | nil =>
+                    exact .letValue (bindings := [("$assertLeft", left), ("$assertRight", right)])
+                      (.tuple items) (by simp [Aiur.Pattern.bindings, Aiur.Pattern.bindingsList])
+                      (.assertEq (.var (by simp)) (.var (by simp)) applied)
   | ascribe type =>
       constructor
       · intro h

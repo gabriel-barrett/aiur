@@ -150,6 +150,11 @@ mutual
     | .neg value =>
         requireType caller .field (← inferType program caller locals value)
         return .field
+    | .assertEq _ left right =>
+        let type ← inferType program caller locals left
+        requireType caller type (← inferType program caller locals right)
+        if !type.pointerFree program.enums then throw (.pointerType "assert_eq!" type)
+        return .tuple []
     | .binary _ left right =>
         requireType caller .field (← inferType program caller locals left)
         requireType caller .field (← inferType program caller locals right)

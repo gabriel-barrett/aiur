@@ -312,6 +312,8 @@ private def quoteExpr : Aiur.Expr Nat → Lean.Expr
   | .load pointer => mkApp2 (mkConst ``Aiur.Expr.load) natType (quoteExpr pointer)
   | .hint type key => mkApp3 (mkConst ``Aiur.Expr.hint) natType (quoteTy type) (quoteExpr key)
   | .neg value => mkApp2 (mkConst ``Aiur.Expr.neg) natType (quoteExpr value)
+  | .assertEq message left right =>
+      mkApp4 (mkConst ``Aiur.Expr.assertEq) natType (toExpr message) (quoteExpr left) (quoteExpr right)
   | .binary op left right =>
       mkApp4 (mkConst ``Aiur.Expr.binary) natType (quoteOp op) (quoteExpr left) (quoteExpr right)
   | .call name args =>

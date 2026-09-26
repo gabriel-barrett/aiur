@@ -79,6 +79,7 @@ theorem evaluation_complete [Field F] [DecidableEq F]
   | load _ cell typed ih => exact .load ih cell typed
   | hint _ typed ih => exact .hint ih typed
   | neg _ operation ih => exact .neg ih operation
+  | assertEq _ _ operation leftIH rightIH => exact .assertEq leftIH rightIH operation
   | binary _ _ operation leftIH rightIH => exact .binary leftIH rightIH operation
   | call _ _ argsIH calleeIH => exact .call argsIH calleeIH
   | matchValue _ selected _ inputIH bodyIH => exact .matchValue inputIH selected bodyIH

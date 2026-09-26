@@ -31,6 +31,10 @@ mutual
     | neg (value : EvalExpr program locals expr before input after)
         (operation : evalNeg input = .ok result) :
         EvalExpr program locals (.neg expr) before result after
+    | assertEq (left : EvalExpr program locals lhs before x middle)
+        (right : EvalExpr program locals rhs middle y after)
+        (operation : evalAssertEq op x y = .ok result) :
+        EvalExpr program locals (.assertEq op lhs rhs) before result after
     | binary (left : EvalExpr program locals lhs before x middle)
         (right : EvalExpr program locals rhs middle y after)
         (operation : evalBinOp op x y = .ok result) :

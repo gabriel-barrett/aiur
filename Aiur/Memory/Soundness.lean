@@ -79,6 +79,12 @@ theorem ROMEvalExpr.realize [Field F] [DecidableEq F] (valid : rom.Valid)
       simpa only [Constant.toValue_mapAddress] using
         (Represents.of_pointerFree (rom := rom) (heap := after) constant.toValue
           (Constant.toValue_pointerFree constant) (fun _ => (0 : F)))
+  | assertEq _ _ operation leftIH rightIH =>
+      intro heap locals related
+      obtain ⟨left, middle, leftEval, first, leftRep⟩ := leftIH heap locals related
+      obtain ⟨right, after, rightEval, second, rightRep⟩ := rightIH middle locals (related.mono first)
+      obtain ⟨value, operation, result⟩ := (leftRep.mono second).assertEq rightRep operation
+      exact ⟨value, after, .assertEq leftEval rightEval operation, first.trans second, result⟩
   | binary _ _ operation leftIH rightIH =>
       intro heap locals related
       obtain ⟨left, middle, leftEval, first, leftRep⟩ := leftIH heap locals related

@@ -226,6 +226,30 @@ mutual
         subst value
         exact ⟨.field (0 - polynomial.denote assignment), by simp [Scalar.Circuit.ArithExpr.denote],
           .neg valueEval (by simp [evalNeg])⟩
+    | assertEq message left right =>
+        simp only [lowerExpr] at compiled
+        obtain ⟨leftWire, s₁, leftRun, rest⟩ := bind_ok.mp compiled
+        obtain ⟨rightWire, s₂, rightRun, rest⟩ := bind_ok.mp rest
+        split at rest
+        · simp [StateT.bind, bind, Except.bind] at rest
+        · rename_i free
+          obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp rest
+          obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
+          obtain ⟨⟨⟩, last, equated, finished⟩ := bind_ok.mp rest
+          obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+          obtain ⟨valid₂, equal⟩ := constrainValue_sound equated valid
+          obtain ⟨valid₁, rightEval⟩ := lowerExpr_sound checked tags callSound rightRun valid₂
+          obtain ⟨previous, leftEval⟩ := lowerExpr_sound checked tags callSound leftRun valid₁
+          refine ⟨previous, fun active environment decoded => ?_⟩
+          obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded
+          obtain ⟨y, yDecode, yEval⟩ := rightEval active environment decoded
+          have same : x = y := Option.some.inj (xDecode.symm.trans ((equal active) ▸ yDecode))
+          have data := WireValue.decode_spec xDecode
+          have pointerFree : x.pointerFree = true := Value.pointerFree_of_type
+            (by simpa [data.1, WireValue.type_map] using free) data.2.1
+          exact ⟨.tuple [], by simpa only [WireValue.map_tuple, List.map_nil] using
+            WireValue.decode_tuple checked tags (.nil : DecodesValues program.enums [] []),
+            .assertEq xEval yEval (evalAssertEq_ok.mpr ⟨pointerFree, same, rfl⟩)⟩
     | binary op left right =>
         simp only [lowerExpr] at compiled
         obtain ⟨leftWire, s₁, leftRun, rest⟩ := bind_ok.mp compiled

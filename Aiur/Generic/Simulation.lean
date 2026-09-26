@@ -8,7 +8,7 @@ def inScope (names : List String) (hintType : Aiur.Ty → Bool) : Aiur.Expr α �
   | .call n xs => names.contains n && (xs.map (inScope names hintType)).all id
   | .project x _ | .store x | .load x | .neg x => inScope names hintType x
   | .hint t x => hintType t && inScope names hintType x
-  | .letValue _ x b | .binary _ x b => inScope names hintType x && inScope names hintType b
+  | .letValue _ x b | .binary _ x b | .assertEq _ x b => inScope names hintType x && inScope names hintType b
   | .matchValue x arms => inScope names hintType x && (arms.map fun a => inScope names hintType a.2).all id
 termination_by e => sizeOf e
 decreasing_by
@@ -67,6 +67,10 @@ theorem EvalExpr.transfer [Field F] [DecidableEq F]
       simp only [inScope, Bool.and_eq_true] at h
       exact .hint (ih h.2) ((a.hint _ h.1 _).mp typed)
   | neg _ op ih => intro h; exact .neg (ih (by simpa [inScope] using h)) op
+  | assertEq _ _ op ih1 ih2 =>
+      intro h
+      simp only [inScope, Bool.and_eq_true] at h
+      exact .assertEq (ih1 h.1) (ih2 h.2) op
   | binary _ _ op ih1 ih2 =>
       intro h
       simp only [inScope, Bool.and_eq_true] at h
@@ -116,6 +120,7 @@ theorem EvalExpr.toCore [Field F] [DecidableEq F] {p : Aiur.Program F}
   | load _ op ih => exact .load ih op
   | hint _ typed ih => exact .hint ih typed
   | neg _ op ih => exact .neg ih op
+  | assertEq _ _ op ih1 ih2 => exact .assertEq ih1 ih2 op
   | binary _ _ op ih1 ih2 => exact .binary ih1 ih2 op
   | call _ _ ih1 ih2 => exact .call ih1 ih2
   | matchValue _ h _ ih1 ih2 => exact .matchValue ih1 h ih2
@@ -139,6 +144,7 @@ theorem ofCore [Field F] [DecidableEq F] {p : Aiur.Program F}
   | load _ op ih => exact .load ih op
   | hint _ typed ih => exact .hint ih typed
   | neg _ op ih => exact .neg ih op
+  | assertEq _ _ op ih1 ih2 => exact .assertEq ih1 ih2 op
   | binary _ _ op ih1 ih2 => exact .binary ih1 ih2 op
   | call _ _ ih1 ih2 => exact .call ih1 ih2
   | matchValue _ h _ ih1 ih2 => exact .matchValue ih1 h ih2
