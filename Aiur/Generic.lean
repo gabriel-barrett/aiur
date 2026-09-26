@@ -5,5 +5,7 @@ import Aiur.Generic.ConstFacts
 import Aiur.Generic.PatternFacts
 import Aiur.Generic.PatternTranslation
 import Aiur.Generic.EnvironmentFacts
+import Aiur.Generic.PreparationExpressionFacts
 import Aiur.Generic.ArrayFacts
+import Aiur.Generic.SliceFacts
 import Aiur.Generic.Circuit

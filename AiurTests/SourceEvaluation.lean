@@ -104,4 +104,20 @@ example [Field F] [DecidableEq F] {s : Generic.Source F}
 #guard_msgs in
 #print axioms Generic.Specialized.sourceAgreement
 
+/-- info: 'Aiur.Generic.SourceSemantics.expression_preparation_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.SourceSemantics.expression_preparation_iff
+/-- info: 'Aiur.Generic.Preparation.pattern_match' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.Preparation.pattern_match
+
+-- Const expansion is a compiler operation with a proof on the independent
+-- native predicate, including the exact resulting heap.
+example [Field F] [DecidableEq F] (s : Generic.Source F)
+    (expanded : Generic.Preparation.expression s.program depth types expr = .ok prepared) :
+    Generic.SourceSemantics.EvalExpr s.world types locals expr before value after ↔
+      Generic.SourceSemantics.EvalExpr s.world [] locals prepared before value after :=
+  Generic.SourceSemantics.expression_preparation_iff s.program s.world
+    (fun _ _ => rfl) rfl depth types expr expanded locals before value after
+
 end AiurSourceEvaluationTests

@@ -76,7 +76,10 @@ The same specialization operation produces `Specialized.program`, the existing
 monomorphic core used for circuit compilation. Array and pointer-pattern lowering
 belongs here, after the source semantic boundary. `Specialized.coreRun` provides
 reference execution of that core. It is useful for independent regression tests.
-There is no additional source normalization pass.
+`Preparation.expression` instantiates type metadata and unfolds const references
+for each concrete function instance using the source evaluator's declaration
+lookup. It does not rerun inference on an inlined body. This compiler operation
+is separate from source checking and execution.
 
 Circuit layouts remain flat field-word sequences (`WireValue.words`): tuples and
 arrays concatenate component layouts; enums use tags, payload words, and canonical
@@ -96,10 +99,18 @@ from ordinary source execution.
 particular, the direct recursive pattern matcher must be connected to generated
 read/test plans, including fresh-variable scope and first-match failure
 continuations. Slice lowering also needs the static array-shape/bounds facts.
+`PreparationExpressionFacts.expression_preparation_iff` (in the
+`SourceSemantics` namespace) proves preservation and reflection of native
+evaluation across type instantiation and const unfolding, with identical values
+and heaps. `PreparationPatternFacts.pattern_match` also preserves failed matches
+and load errors. Closed const bodies cannot capture caller locals, as proved in
+`ConstScopeFacts.lean`.
 `PatternTranslation.lean` now proves that pure patterns (including arrays and
 repeated patterns) preserve matching and binding order. `EnvironmentFacts.lean`
 proves independence from compiler temporaries outside an expression's names.
 `ArrayFacts.lean` already characterizes core repetition and slicing;
+`SliceFacts.lean` connects static projection lists to native slices, with the
+operand shape and bounds required for reflection;
 `PatternFacts.lean` characterizes core plan execution. These are component facts,
 not a proof of the complete translation. `SourceRules.lean` provides native
 repetition and pointer-let laws without invoking that translation.

@@ -65,10 +65,6 @@ def prepare [DecidableEq F] (p : Program F) : Except String (Source F) := do
     | .error e => throw (toString e)
     | .ok _ => throw "invalid static tables"
 
-/-- Compiler-only templates. Failure is propagated by `specialize`; the default
-is used solely by the total reference lookup API. -/
-def Source.compilerTemplate [DecidableEq F] (s : Source F) : Program F :=
-  (prepareTemplates s.program).toOption.getD { functions := [] }
 
 def Source.checkEntry [DecidableEq F] (s : Source F) (name : String) : Except String Unit := do
   let some fn := s.program.findFunction? name | throw s!"unknown entrypoint '{name}'"

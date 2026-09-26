@@ -1,4 +1,4 @@
-import Aiur.Generic.Runtime
+import Aiur.Generic.Preparation
 import Aiur.Generic.Equality
 import Aiur.Generic.ValueTyping
 import Aiur.Generic.Simulation
@@ -13,7 +13,7 @@ not ask a validator to decide semantic equivalence. -/
 def Valid [DecidableEq F] (s : Source F) (p : Aiur.Program F) (entries : List String) : Prop :=
   typecheck p = .ok () ∧
   p.tables = s.tables.tables ∧ p.maps = s.tables.maps ∧
-  (∀ n ∈ callableNames p, s.compilerTemplate.function? n = p.findFunction? n) ∧
+  (∀ n ∈ callableNames p, s.compilerFunction? n = p.findFunction? n) ∧
   (∀ d ∈ p.enums, s.program.enum? d.name = some d) ∧
   closedEnums p.enums ∧
   (∀ fn ∈ p.functions, (∀ param ∈ fn.params, knownType p.enums param.2 = true) ∧
@@ -51,23 +51,23 @@ private structure Collect (F : Type) where
   functions : List (Aiur.Function F) := []
   remaining : Nat
 
-private def visit (p : Program F) : Nat → List Instance → String → StateT (Collect F) (Except String) Unit
+private def visit [DecidableEq F] (s : Source F) : Nat → List Instance → String → StateT (Collect F) (Except String) Unit
   | 0, _, _ => throw "function dependency depth limit exceeded"
   | fuel + 1, path, name => do
       let key ← liftM (Instance.ofSymbol name)
-      if (p.findFunction? key.name).isSome then
+      if (s.program.findFunction? key.name).isSome then
         if !key.types.all Ty.concrete then throw "cannot specialize an abstract type argument"
         if let some ancestor := path.find? (·.name == key.name) then
           if ancestor != key then throw s!"recursive call to '{key.name}' changes type arguments"
           return
         if (← get).functions.any (·.name == name) then return
-        let fn ← liftM (resolveFunction p key)
+        let fn ← liftM (Preparation.function s.program key)
         let state : Collect F ← get
         if state.remaining == 0 then throw "function instance limit exceeded"
         set ({ functions := state.functions ++ [fn], remaining := state.remaining - 1 } : Collect F)
-        for callee in coreCalls fn.body do visit p fuel (key :: path) callee
+        for callee in coreCalls fn.body do visit s fuel (key :: path) callee
       else
-        if !key.types.isEmpty || !(p.maps.any (·.name == key.name)) then
+        if !key.types.isEmpty || !(s.program.maps.any (·.name == key.name)) then
           throw s!"unknown function or map '{key.name}'"
 
 /-- Reachability is checked again after collection. Cache reuse on a different
@@ -90,9 +90,8 @@ private def checkRecursion (p : Aiur.Program F) : Except String Unit := do
 
 def specialize [DecidableEq F] (s : Source F) (entries : List String) (limits : Limits := {}) :
     Except String (Specialized s entries) := do
-  let _ ← prepareTemplates s.program
   for name in entries do s.checkEntry name
-  let (_, collected) ← (entries.forM (visit s.compilerTemplate (s.program.functions.length + 2) [])).run
+  let (_, collected) ← (entries.forM (visit s (s.program.functions.length + 2) [])).run
     { remaining := limits.instances }
   let names := collected.functions.flatMap fun fn =>
     ((fn.params.map Prod.snd ++ [fn.result]).flatMap coreTypeNames) ++ coreExprNames fn.body
