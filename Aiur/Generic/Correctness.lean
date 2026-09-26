@@ -86,7 +86,7 @@ theorem Specialized.coreAgreement [DecidableEq F] {s : Source F} {entries : List
     have fnAgreement := functions n hn
     cases found : q.program.findFunction? n with
     | none =>
-        have absent : s.compilerTemplate.function? n = none := fnAgreement.trans found
+        have absent : s.compilerFunction? n = none := fnAgreement.trans found
         simp only [Source.coreWorld, absent, prepareCall, found]
         simp only [except_bind_ok, except_pure_ok, Prod.mk.injEq]
         constructor
@@ -95,7 +95,7 @@ theorem Specialized.coreAgreement [DecidableEq F] {s : Source F} {entries : List
         · rintro ⟨v, hv, hl, hb⟩
           exact ⟨v, lookupMap_transfer s.tablesChecked tables maps hv, hl, hb⟩
     | some fn =>
-        have resolved : s.compilerTemplate.function? n = some fn := fnAgreement.trans found
+        have resolved : s.compilerFunction? n = some fn := fnAgreement.trans found
         simp only [Source.coreWorld, resolved, prepareFunction_iff, prepared_function_iff found]
         by_cases ht : fn.params.map Prod.snd = args.map Value.type
         · have known := (bodies fn (List.mem_of_find?_eq_some found)).1
