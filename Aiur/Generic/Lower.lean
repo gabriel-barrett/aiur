@@ -88,6 +88,16 @@ def expression (types : List (String × Ty)) (paths : List UpdatePath) (operands
 
 end UpdateLowering
 
+namespace BuiltinLowering
+
+/-- Only generated syntax occurs inside these temporary scopes. -/
+def expression (op : Builtin) (operands : List (Aiur.Expr α)) : Aiur.Expr α :=
+  match op with
+  | .ascribe _ => .letValue (.tuple [.bind "$annotation"]) (.tuple operands) (.var "$annotation")
+  | .debug _ => .letValue .wildcard (.tuple operands) (.tuple [])
+
+end BuiltinLowering
+
 /-- Inference has filled in every call/constructor's type arguments before
 circuit lowering. Source evaluation uses the original body with a type
 environment and never calls this translation. -/
@@ -106,6 +116,7 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .constructAs _ t c xs =>
       let name := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
       .construct name c (xs.map (Expr.lower env))
+  | .builtin op xs => BuiltinLowering.expression op (xs.map (Expr.lower env))
   | .update paths xs => UpdateLowering.expression env paths (xs.map (Expr.lower env))
   | .record head xs => StructLowering.record env head (xs.map (Expr.lower env))
   | .member x field => StructLowering.member env (x.lower env) field

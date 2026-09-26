@@ -150,6 +150,7 @@ def expandExpr (aliases : List AliasDecl) : Expr α → Except String (Expr α)
       return .construct n (← ts.mapM (fun ts => ts.mapM (expandType aliases))) c xs
   | .constructAs params t c xs =>
       return .constructAs params (← expandType aliases t) c (← xs.mapM (expandExpr aliases))
+  | .builtin op xs => return .builtin (← op.mapTypesM (expandType aliases)) (← xs.mapM (expandExpr aliases))
   | .update paths xs => do
       let paths ← paths.mapM fun path => path.mapM fun step => match step with
         | .member field => return .member { field with owner := ← field.owner.mapM (expandType aliases) }
@@ -205,6 +206,10 @@ termination_by pat => sizeOf pat
 
 def checkExprTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Expr α → Except String Unit
   | .literal _ | .var _ | .global _ _ => pure ()
+  | .builtin op xs => do
+      op.types.forM (checkSurfaceType enums aliases rigid)
+      let _ ← xs.mapM (checkExprTypes enums aliases rigid)
+      pure ()
   | .update _ xs | .tuple xs | .array xs => do
       let _ ← xs.mapM (checkExprTypes enums aliases rigid)
       pure ()

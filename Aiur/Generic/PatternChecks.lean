@@ -17,7 +17,7 @@ irrefutable arm are discarded, as in the core compiler. -/
 def checkLoadPatterns [DecidableEq α] (program : Program α) (caller : String) : Expr α → Except String Unit
   | .literal _ | .var _ => pure ()
   | .global _ _ => pure ()
-  | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => do
+  | .builtin _ xs | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => do
       for x in xs do checkLoadPatterns program caller x
   | .member x _ | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => checkLoadPatterns program caller x
   | .letValue _ x b | .binary _ x b => do

@@ -83,11 +83,13 @@ not an outstanding TODO.
 
 - [x] Add [const templates](consts.md) with retained references, cycle checks, fully
   specified value/pattern bodies, and capitalization-independent name resolution.
-- [ ] Add local type annotations and expression type annotations.
+- [x] Add local type annotations and expression type annotations, retained in
+  native semantics with proved late erasure. See [diagnostics](diagnostics.md).
 - [x] Add ordinary `expr; rest` statements and trailing semicolons, lowering to
   `let _ = expr; rest` and a final `()` where appropriate.
-- [ ] Add debugging output and useful call traces. Specify which debug operands
-  are evaluated; printing itself must not affect circuit claims.
+- [x] Add `debug!` messages and useful call traces via `Source.runTraced`.
+  Operands evaluate once in order, messages survive failures, and exact erasure
+  of instrumentation is proved. See [diagnostics](diagnostics.md).
 - [ ] Extend rooted const references to module-qualified global names and checked
   composition of programs, including enum, const, function, table, and map declarations.
 - [x] Select public entrypoints externally, independently of the toplevel syntax.

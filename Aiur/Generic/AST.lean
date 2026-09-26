@@ -158,6 +158,25 @@ inductive Control where
   | exit (target : ExitTarget)
   deriving Repr, BEq, DecidableEq, Inhabited, Lean.ToExpr
 
+/-- Source operations with an ordered argument list. Diagnostics are metadata;
+their operands remain ordinary expressions throughout source evaluation. -/
+inductive Builtin where
+  | ascribe (type : Ty)
+  | debug (message : String)
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
+def Builtin.subst (types : List (String × Ty)) : Builtin → Builtin
+  | .ascribe t => .ascribe (t.subst types)
+  | .debug message => .debug message
+
+def Builtin.mapTypesM [Monad m] (f : Ty → m Ty) : Builtin → m Builtin
+  | .ascribe t => return .ascribe (← f t)
+  | .debug message => return .debug message
+
+def Builtin.types : Builtin → List Ty
+  | .ascribe t => [t]
+  | .debug _ => []
+
 inductive Expr (α : Type) where
   | literal (value : α)
   | var (name : String)
@@ -178,6 +197,7 @@ inductive Expr (α : Type) where
   /-- Functional updates retain their paths. Operands are the base followed by
   replacements in written order; checking enforces one operand per path. -/
   | update (paths : List UpdatePath) (operands : List (Expr α))
+  | builtin (operation : Builtin) (operands : List (Expr α))
   | project (value : Expr α) (index : Nat)
   | letValue (pattern : Pattern α) (value body : Expr α)
   | store (value : Expr α)
@@ -335,6 +355,7 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .constructAs ps t c xs => .constructAs ps t c (xs.map (Expr.map f))
   | .record head xs => .record head (xs.map (Expr.map f))
   | .update paths xs => .update paths (xs.map (Expr.map f))
+  | .builtin op xs => .builtin op (xs.map (Expr.map f))
   | .member x field => .member (x.map f) field
   | .project x i => .project (x.map f) i
   | .letValue p x b => .letValue (p.map f) (x.map f) (b.map f)
