@@ -1,3 +1,4 @@
+import Aiur.Generic.UpdateFacts
 import Aiur.Generic.LoweringCompleteness
 import Aiur.Generic.LoweringTypeFacts
 
@@ -71,6 +72,12 @@ theorem lowering_sound [Field F] [DecidableEq F]
           have args := (children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)
             (by simpa only [Expr.lowerSafe] using safe) (option_mapM_hasResult mapped) items heapGood).1
           first | exact .tuple args | exact .array args
+  | update paths es =>
+      rw [Expr.lower] at evaluated
+      obtain ⟨values, items, updated⟩ := UpdateLowering.expression_iff.mp evaluated
+      obtain ⟨_, mapped, _⟩ := Option.bind_eq_some_iff.mp checks
+      exact .update ((children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)
+        (by simpa only [Expr.lowerSafe] using safe) (option_mapM_hasResult mapped) items heapGood).1) updated
   | record head es =>
       rw [Expr.lower] at evaluated
       obtain ⟨values, items, rfl⟩ := StructLowering.record_iff.mp evaluated

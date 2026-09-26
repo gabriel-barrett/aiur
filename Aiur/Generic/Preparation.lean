@@ -45,6 +45,7 @@ def expression (p : Program F) (depth : Nat) (types : SourceSemantics.Types) :
       | depth + 1 =>
           let body ← Consts.toExpr (← elaborateConst p name (type.subst types))
           expression p depth [] body
+  | .update paths children => return .update (paths.map (List.map (UpdateStep.subst types))) (← children.mapM (expression p depth types))
   | .record head children => return .record (head.subst types) (← children.mapM (expression p depth types))
   | .member child field => return .member (← expression p depth types child) (field.subst types)
   | .tuple children => return .tuple (← children.mapM (expression p depth types))

@@ -81,6 +81,15 @@ syntax (name := recordPattern) ident "{" aiur_record_patterns "}" : aiur_pattern
 syntax (name := genericRecordPattern) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">"
   "{" aiur_record_patterns "}" : aiur_pattern
 
+declare_syntax_cat aiur_update_step (behavior := symbol)
+declare_syntax_cat aiur_update_entry (behavior := symbol)
+syntax (name := updateMember) "." ident : aiur_update_step
+syntax (name := updateProject) "." num : aiur_update_step
+syntax (name := updateIndex) "[" num "]" : aiur_update_step
+syntax (name := updateEntry) aiur_update_step+ "=" aiur_expr : aiur_update_entry
+syntax:15 (name := updateExpr) aiur_expr:15 &"with" "{"
+  sepBy(aiur_update_entry, ",", ",", allowTrailingSep) "}" : aiur_expr
+
 private def readName (s : Syntax) : Except String String :=
   match s.getId with
   | .str .anonymous n => .ok n
@@ -219,6 +228,15 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
       let value ← if entry.getKind == ``recordValueShorthand then pure (.var name) else expr params entry[2]
       return (name, value)
     return .record { type := .named (← readName s[0]) args, fields := named.map Prod.fst } (named.map Prod.snd)
+  else if k == ``updateExpr then
+    let entries ← s[3].getSepArgs.toList.mapM fun entry => do
+      let path ← entry[0].getArgs.toList.mapM fun step => do
+        if step.getKind == ``updateMember then return UpdateStep.member { name := ← readName step[1] }
+        else if step.getKind == ``updateProject then return UpdateStep.project (step[1].isNatLit?.getD 0)
+        else if step.getKind == ``updateIndex then return UpdateStep.index (step[1].isNatLit?.getD 0)
+        else throw "expected a field or static index in an update path"
+      return (path, ← expr params entry[2])
+    return .update (entries.map Prod.fst) ((← expr params s[0]) :: entries.map Prod.snd)
   else if k == ``memberExpr then return .member (← expr params s[0]) { name := ← readName s[2] }
   else if k == ``project then return .project (← expr params s[0]) (s[2].isNatLit?.getD 0)
   else if k == ``letValue then return .letValue (← pattern params s[1]) (← expr params s[3]) (← expr params s[5])

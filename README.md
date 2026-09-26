@@ -22,6 +22,7 @@ lake env lean Examples/Consts.lean
 lake env lean Examples/Arrays.lean
 lake env lean Examples/Control.lean
 lake env lean Examples/Structs.lean
+lake env lean Examples/Updates.lean
 ```
 
 ## Use from Lean
@@ -107,6 +108,13 @@ transparent aliases, consts, pointers, tables, and hints. Initializers evaluate
 once in written order; patterns inspect declaration order. Their native semantics
 and late circuit lowering are proved. See [structs](design/structs.md) and
 [the example](Examples/Structs.lean).
+
+Functional updates use `p with { .x = 3 }`, `t with { .0 = value }`, and
+`a with { [2] = value }`, including nested paths such as `.items[2].x`.
+They evaluate the base and replacements once in written order, preserving
+unspecified components. Updates remain explicit in source semantics and have
+proved late lowering. See [updates](design/updates.md) and
+[the example](Examples/Updates.lean).
 
 Named blocks use `'label: { ... }`, with `break 'label value` returning the
 block's value. `return value` exits the current function. Both work in expression

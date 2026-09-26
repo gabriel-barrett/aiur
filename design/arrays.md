@@ -149,8 +149,9 @@ There are no proof admissions or new axioms.
 
 An implementation guard rejects individual lengths exceeding 65,536 before
 unrolling. Existing inference, specialization, and enum-size limits also apply.
-Functional array updates, bounded compile-time folds, and symbolic lengths are
-separate future extensions.
+Functional updates use `a with { [2] = value }`, with native evaluation and
+proved late reconstruction; see [updates](updates.md). Bounded compile-time folds,
+rest patterns, and symbolic lengths remain separate future extensions.
 
 `AiurTests/Arrays.lean` covers homogeneous typing, static bounds, nested shapes,
 repetition effects, const/pointer patterns, aliases/generics, tables/maps,

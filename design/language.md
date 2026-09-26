@@ -54,7 +54,7 @@ semantic role. See [consts](consts.md) for the allowed forms and cycle checks.
 
 Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
 store `&x`, load `*p`, tuple/array and qualified enum construction, named struct construction and field access (`p.x`), zero-based projection (`p.0`, `p.1.0`), static array access (`a[0]`, `a[1..3]`), blocks, `let`, and
-`match`, named blocks, `break`, and `return`. Arithmetic requires field operands. There is no implicit componentwise
+`match`, functional updates with `with`, named blocks, `break`, and `return`. Arithmetic requires field operands. There is no implicit componentwise
 arithmetic or tuple flattening.
 
 Arrays use `[a, b, c]` or `[value; n]`, which evaluates `value` once and copies
@@ -70,6 +70,14 @@ inferred. Initializers execute in written order. Patterns such as
 `Point { x: first, .. }` inspect declaration order and preserve first-match
 behavior; omitted fields require `..`. See [structs](structs.md) for native
 semantics and circuit layout.
+
+Functional updates use `p with { .x = 3 }`, `t with { .0 = value }`, or
+`a with { [2] = value }`. Paths can combine selectors, such as `.items[2].x`.
+The base and replacement expressions execute once in written order; the result
+preserves the base's type and unspecified components. Duplicate/overlapping
+paths, dynamic or out-of-bounds indices, and paths through pointers are rejected.
+Updates remain explicit in source evaluation and lower only on the circuit path.
+See [updates](updates.md).
 
 ```rust
 fn combine(p: (Field, (Field, Field))) -> (Field, Field) {

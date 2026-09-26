@@ -44,6 +44,50 @@ def member (types : List (String × Ty)) (value : Aiur.Expr α) (field : FieldRe
 
 end StructLowering
 
+namespace UpdateLowering
+
+def shape (types : List (String × Ty)) (step : UpdateStep) : Aiur.Pattern α :=
+  match step.owner with
+  | none => .tuple (List.replicate step.width .wildcard)
+  | some type => .construct (StructLowering.nominalName types type) structConstructor
+      (List.replicate step.width .wildcard)
+
+def product (types : List (String × Ty)) (step : UpdateStep) (items : List (Aiur.Expr α)) : Aiur.Expr α :=
+  match step.owner with
+  | none => .tuple items
+  | some type => .construct (StructLowering.nominalName types type) structConstructor items
+
+def component (types : List (String × Ty)) (step : UpdateStep) (index : Nat) : Aiur.Expr α :=
+  match step.owner with
+  | none => .project (.var "$withBase") index
+  | some type => StructLowering.member types (.var "$withBase")
+      { name := "", owner := some type, index, arity := step.width }
+
+/-- Only generated code occurs inside these fixed temporary scopes. -/
+def path (types : List (String × Ty)) : UpdatePath → Aiur.Expr α → Aiur.Expr α
+  | [], input => .letValue .wildcard input (.var "$withNew")
+  | step :: rest, input =>
+      .letValue (.bind "$withBase") input
+        (.letValue (shape types step) (.var "$withBase")
+          (product types step ((List.range step.width).map fun i =>
+            if i == step.position then path types rest (component types step i)
+            else component types step i)))
+
+def sequence (types : List (String × Ty)) : List UpdatePath → Nat → Aiur.Expr α
+  | [], _ => .var "$withCurrent"
+  | target :: targets, index =>
+      .letValue (.bind "$withNew") (.project (.var "$withInputs") index)
+        (.letValue (.bind "$withCurrent") (path types target (.var "$withCurrent"))
+          (sequence types targets (index + 1)))
+
+def expression (types : List (String × Ty)) (paths : List UpdatePath) (operands : List (Aiur.Expr α)) : Aiur.Expr α :=
+  .letValue (.bind "$withInputs") (.tuple operands)
+    (.letValue (.tuple (List.replicate (paths.length + 1) .wildcard)) (.var "$withInputs")
+      (.letValue (.bind "$withCurrent") (.project (.var "$withInputs") 0)
+        (sequence types paths 1)))
+
+end UpdateLowering
+
 /-- Inference has filled in every call/constructor's type arguments before
 circuit lowering. Source evaluation uses the original body with a type
 environment and never calls this translation. -/
@@ -62,6 +106,7 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .constructAs _ t c xs =>
       let name := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
       .construct name c (xs.map (Expr.lower env))
+  | .update paths xs => UpdateLowering.expression env paths (xs.map (Expr.lower env))
   | .record head xs => StructLowering.record env head (xs.map (Expr.lower env))
   | .member x field => StructLowering.member env (x.lower env) field
   | .project x i => .project (x.lower env) i

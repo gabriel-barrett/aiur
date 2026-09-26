@@ -1,3 +1,4 @@
+import Aiur.Generic.UpdateSubstitution
 import Aiur.Generic.ConstScopeFacts
 import Aiur.Generic.ControlNoExit
 
@@ -210,6 +211,16 @@ theorem expression_preparation_open_iff [Field F] [DecidableEq F]
         | constructAs ev =>
             simpa only [names] using (OpenSource.EvalExpr.constructAs (params := params) (t := t)
               (ctor := ctor) ((ih _ _ _ _).mpr ev))
+  | update paths es =>
+      simp only [expression, except_bind_ok, except_pure_ok] at expanded
+      obtain ⟨qs, hqs, rfl⟩ := expanded
+      have rel := children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega) hqs
+      have ih := args_congr rel
+      constructor
+      · intro h; cases h with
+        | update ev op => exact .update ((ih _ _ _ _).mp ev) (by simpa only [Update.value_subst] using op)
+      · intro h; cases h with
+        | update ev op => exact .update ((ih _ _ _ _).mpr ev) (by simpa only [Update.value_subst] using op)
   | record head es =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qs, hqs, rfl⟩ := expanded
@@ -406,7 +417,7 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
           · intro h; cases h with
             | exit ev => exact .exit ((ihn _ _ _ _).mpr ev)
             | exitPayload ev => exact .exitPayload ((ihe _ _ _ _ _).mpr ev)
-  | record _ es | tuple es | array es | construct _ _ _ es | constructAs _ _ _ es | call _ _ es =>
+  | update _ es | record _ es | tuple es | array es | construct _ _ _ es | constructAs _ _ _ es | call _ _ es =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qs, hqs, rfl⟩ := expanded
       have ih := args_exit_congr (children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega) hqs)
@@ -416,6 +427,7 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
           | exact .fromTuple ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromArray ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromConstruct ((ih _ _ _ _ _).mp ‹_›)
+          | exact .fromUpdate ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromRecord ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromConstructAs ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromCall ((ih _ _ _ _ _).mp ‹_›)
@@ -424,6 +436,7 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
           | exact .fromTuple ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromArray ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromConstruct ((ih _ _ _ _ _).mpr ‹_›)
+          | exact .fromUpdate ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromRecord ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromConstructAs ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromCall ((ih _ _ _ _ _).mpr ‹_›)

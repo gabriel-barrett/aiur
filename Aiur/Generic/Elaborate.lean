@@ -219,6 +219,35 @@ private def pattern (p : Program α) (rigid : List String) (pat : Pattern α) (t
   if let some n := findDuplicate (bindings.map Prod.fst) [] then throw s!"duplicate pattern binding '{n}'"
   return (pat, bindings)
 
+private def inferUpdatePath (p : Program α) : Ty → UpdatePath → Infer (Ty × UpdatePath)
+  | type, [] => pure (type, [])
+  | type, step :: rest => do
+      let type ← zonk type
+      let (target, step) ← match step, type with
+        | .member field, .named name types => do
+            let some decl := p.findStruct? name | throw "update field requires a struct"
+            let some index := decl.fields.findIdx? (fun pair => pair.1 == field.name) |
+              throw s!"unknown update field '{field.name}' in struct '{name}'"
+            let some target := decl.fields.lookup field.name | throw "unknown update field"
+            let env ← liftM (arguments decl.typeParams types)
+            pure (target.subst env, UpdateStep.member { field with owner := some type, index, arity := decl.fields.length })
+        | .project index _, .tuple fields => do
+            let some target := fields[index]? | throw "tuple update index out of bounds"
+            pure (target, UpdateStep.project index fields.length)
+        | .index index _, .array element length => do
+            if index >= length then throw "array update index out of bounds"
+            pure (element, UpdateStep.index index length)
+        | _, .ptr _ => throw "update paths cannot follow pointers; load the value explicitly"
+        | .member _, _ => throw "update field requires a struct"
+        | .project _ _, _ => throw "tuple update requires a tuple"
+        | .index _ _, _ => throw "array update requires an array"
+      let (result, rest) ← inferUpdatePath p target rest
+      return (result, step :: rest)
+
+private def updateOverlap : UpdatePath → UpdatePath → Bool
+  | [], _ | _, [] => true
+  | a :: as, b :: bs => a.position == b.position && updateOverlap as bs
+
 private def infer (p : Program α) (rigid : List String) :
     Nat → List (String × Ty) → Expr α → Option Ty → Infer (Ty × Expr α)
   | 0, _, _, _ => throw "expression depth limit exceeded"
@@ -243,6 +272,20 @@ private def infer (p : Program α) (rigid : List String) :
             | none => fresh
           modify fun s => { s with dead := t.parameters ++ s.dead }
           pure (t, .control (.exit target) value)
+      | .update paths operands => do
+          let base :: replacements := operands | throw "update requires a base value"
+          if paths.length != replacements.length then throw "update path/replacement count mismatch"
+          let (type, base) ← infer p rigid fuel locals base expected
+          let mut checkedPaths := []
+          let mut checkedValues := []
+          for (path, replacement) in paths.zip replacements do
+            if path.isEmpty then throw "update paths cannot be empty"
+            let (target, path) ← inferUpdatePath p type path
+            if checkedPaths.any (updateOverlap path) then throw "duplicate or overlapping update targets"
+            let (_, replacement) ← infer p rigid fuel locals replacement (some target)
+            checkedPaths := checkedPaths ++ [path]
+            checkedValues := checkedValues ++ [replacement]
+          pure (type, .update checkedPaths (base :: checkedValues))
       | .record head xs => do
           if head.rest then throw "struct values must specify every field"
           let (head, types) ← inferRecordHead p rigid head xs.length expected
@@ -399,6 +442,11 @@ private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
   | .slice x start stop => return .slice (← finishExpr s x) start stop
   | .construct n ts c xs => return .construct n (some (← (ts.getD []).mapM (finishType s))) c (← xs.mapM (finishExpr s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor template"
+  | .update paths xs => do
+      let paths ← paths.mapM fun path => path.mapM fun step => match step with
+        | .member field => return .member { field with owner := ← field.owner.mapM (finishType s) }
+        | step => pure step
+      return .update paths (← xs.mapM (finishExpr s))
   | .record head xs => return .record { head with type := ← finishType s head.type } (← xs.mapM (finishExpr s))
   | .member x field => return .member (← finishExpr s x) { field with owner := ← field.owner.mapM (finishType s) }
   | .project x i => return .project (← finishExpr s x) i
@@ -437,7 +485,7 @@ Consts cannot contain calls, so a reference introduces no function dependency. -
 def sourceCalls (types : List (String × Ty)) : Expr α → List Instance
   | .call name supplied args =>
       ⟨name, (supplied.getD []).map (Ty.subst types)⟩ :: args.flatMap (sourceCalls types)
-  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
+  | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
   | .member x _ | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => sourceCalls types x
   | .letValue _ x b | .binary _ x b => sourceCalls types x ++ sourceCalls types b
   | .matchValue x arms => sourceCalls types x ++ arms.flatMap (fun a => sourceCalls types a.2)

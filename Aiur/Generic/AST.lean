@@ -98,6 +98,33 @@ structure FieldRef where
 def FieldRef.subst (types : List (String × Ty)) (field : FieldRef) : FieldRef :=
   { field with owner := field.owner.map (Ty.subst types) }
 
+/-- A source update selector. Widths and nominal owners are checker annotations;
+indices remain natural numbers, never field literals. -/
+inductive UpdateStep where
+  | member (field : FieldRef)
+  | project (index : Nat) (arity : Nat := 0)
+  | index (index : Nat) (length : Nat := 0)
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
+def UpdateStep.subst (types : List (String × Ty)) : UpdateStep → UpdateStep
+  | .member field => .member (field.subst types)
+  | .project i n => .project i n
+  | .index i n => .index i n
+
+def UpdateStep.position : UpdateStep → Nat
+  | .member field => field.index
+  | .project i _ | .index i _ => i
+
+def UpdateStep.width : UpdateStep → Nat
+  | .member field => field.arity
+  | .project _ n | .index _ n => n
+
+def UpdateStep.owner : UpdateStep → Option Ty
+  | .member field => some (field.owner.getD (.named "$invalid" []))
+  | .project _ _ | .index _ _ => none
+
+abbrev UpdatePath := List UpdateStep
+
 /-- Internal semantic constructor for a nominal product. -/
 def structConstructor : String := "$struct"
 
@@ -148,6 +175,9 @@ inductive Expr (α : Type) where
   | constructAs (params : List String) (type : Ty) (constructor : String) (args : List (Expr α))
   | record (head : RecordHead) (items : List (Expr α))
   | member (value : Expr α) (field : FieldRef)
+  /-- Functional updates retain their paths. Operands are the base followed by
+  replacements in written order; checking enforces one operand per path. -/
+  | update (paths : List UpdatePath) (operands : List (Expr α))
   | project (value : Expr α) (index : Nat)
   | letValue (pattern : Pattern α) (value body : Expr α)
   | store (value : Expr α)
@@ -304,6 +334,7 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .construct n ts c xs => .construct n ts c (xs.map (Expr.map f))
   | .constructAs ps t c xs => .constructAs ps t c (xs.map (Expr.map f))
   | .record head xs => .record head (xs.map (Expr.map f))
+  | .update paths xs => .update paths (xs.map (Expr.map f))
   | .member x field => .member (x.map f) field
   | .project x i => .project (x.map f) i
   | .letValue p x b => .letValue (p.map f) (x.map f) (b.map f)

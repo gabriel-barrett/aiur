@@ -1,3 +1,4 @@
+import Aiur.Generic.UpdateFacts
 import Aiur.Generic.PatternLoweringFacts
 import Aiur.Generic.OpenSource
 import Aiur.Generic.ArrayFacts
@@ -44,6 +45,9 @@ theorem lowering_complete [Field F] [DecidableEq F]
           rw [Expr.lower]
           exact ArrayLowering.sliceValue_iff.mpr
             ⟨input, values, ih safe.2, projected, rfl⟩
+  | update _ updated ih =>
+      rw [Expr.lower]
+      exact UpdateLowering.expression_iff.mpr ⟨_, ih (by simpa only [Expr.lowerSafe] using safe), updated⟩
   | record _ ih =>
       rw [Expr.lower]
       exact StructLowering.record_iff.mpr ⟨_, ih (by simpa only [Expr.lowerSafe] using safe), rfl⟩

@@ -1,3 +1,4 @@
+import Aiur.Generic.Update
 import Aiur.Generic.Consts
 import Aiur.EvalCorrectness
 
@@ -150,6 +151,9 @@ mutual
     | slice (value : EvalExpr world types locals expr before input after)
         (sliced : sliceValue input start stop = .ok result) :
         EvalExpr world types locals (.slice expr start stop) before result after
+    | update (items : EvalArgs world types locals exprs before values after)
+        (updated : Update.value types paths values = .ok result) :
+        EvalExpr world types locals (.update paths exprs) before result after
     | record (items : EvalArgs world types locals exprs before values after) :
         EvalExpr world types locals (.record head exprs) before
           (.construct (constructorName types head.type) structConstructor (head.order values (.tuple []))) after
@@ -231,6 +235,8 @@ mutual
         EvalExit world types locals (.index expr index) before target result after
     | fromSlice (value : EvalExit world types locals expr before target result after) :
         EvalExit world types locals (.slice expr start stop) before target result after
+    | fromUpdate (items : EvalArgsExit world types locals exprs before target result after) :
+        EvalExit world types locals (.update paths exprs) before target result after
     | fromRecord (items : EvalArgsExit world types locals exprs before target result after) :
         EvalExit world types locals (.record head exprs) before target result after
     | fromMember (value : EvalExit world types locals expr before target result after) :

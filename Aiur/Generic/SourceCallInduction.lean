@@ -36,6 +36,7 @@ theorem EvalExpr.openCalls [Field F] [DecidableEq F]
   | index _ op ih => intro h; exact .index (ih (by simpa [inScope] using h)) op
   | slice _ op ih => intro h; exact .slice (ih (by simpa [inScope] using h)) op
   | constructAs _ ih => intro h; exact .constructAs (ih (by simpa [inScope] using h))
+  | update _ op ih => intro h; exact .update (ih (by simpa [inScope] using h)) op
   | record _ ih => intro h; exact .record (ih (by simpa [inScope] using h))
   | construct _ ih => intro h; exact .construct (ih (by simpa [inScope] using h))
   | project _ op ih => intro h; exact .project (ih (by simpa [inScope] using h)) op
@@ -85,6 +86,7 @@ theorem EvalExpr.openCalls [Field F] [DecidableEq F]
   | fromIndex _ ih => rename_i h; exact .fromIndex (ih (by simpa [inScope] using h))
   | fromSlice _ ih => rename_i h; exact .fromSlice (ih (by simpa [inScope] using h))
   | fromConstructAs _ ih => rename_i h; exact .fromConstructAs (ih (by simpa [inScope] using h))
+  | fromUpdate _ ih => rename_i h; exact .fromUpdate (ih (by simpa [inScope] using h))
   | fromRecord _ ih => rename_i h; exact .fromRecord (ih (by simpa [inScope] using h))
   | fromConstruct _ ih => rename_i h; exact .fromConstruct (ih (by simpa [inScope] using h))
   | fromProject _ ih => rename_i h; exact .fromProject (ih (by simpa [inScope] using h))
@@ -158,6 +160,7 @@ theorem EvalExit.openCalls [Field F] [DecidableEq F]
   | index _ op ih => rename_i h; exact .index (ih (by simpa [inScope] using h)) op
   | slice _ op ih => rename_i h; exact .slice (ih (by simpa [inScope] using h)) op
   | constructAs _ ih => rename_i h; exact .constructAs (ih (by simpa [inScope] using h))
+  | update _ op ih => rename_i h; exact .update (ih (by simpa [inScope] using h)) op
   | record _ ih => rename_i h; exact .record (ih (by simpa [inScope] using h))
   | construct _ ih => rename_i h; exact .construct (ih (by simpa [inScope] using h))
   | project _ op ih => rename_i h; exact .project (ih (by simpa [inScope] using h)) op
@@ -207,6 +210,7 @@ theorem EvalExit.openCalls [Field F] [DecidableEq F]
   | fromIndex _ ih => intro h; exact .fromIndex (ih (by simpa [inScope] using h))
   | fromSlice _ ih => intro h; exact .fromSlice (ih (by simpa [inScope] using h))
   | fromConstructAs _ ih => intro h; exact .fromConstructAs (ih (by simpa [inScope] using h))
+  | fromUpdate _ ih => intro h; exact .fromUpdate (ih (by simpa [inScope] using h))
   | fromRecord _ ih => intro h; exact .fromRecord (ih (by simpa [inScope] using h))
   | fromConstruct _ ih => intro h; exact .fromConstruct (ih (by simpa [inScope] using h))
   | fromProject _ ih => intro h; exact .fromProject (ih (by simpa [inScope] using h))
