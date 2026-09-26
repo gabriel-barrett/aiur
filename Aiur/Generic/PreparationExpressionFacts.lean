@@ -42,15 +42,16 @@ decreasing_by exact smaller
 end Aiur.Generic.Preparation
 
 namespace Aiur.Generic.SourceSemantics
+variable {calls : CallRelation F}
 open Preparation
 
 private theorem args_congr [Field F] [DecidableEq F] {world : World F}
     {left right : Types} {xs ys : List (Expr F)}
     (related : List.Forall₂ (fun x y => ∀ locals before result after,
-      EvalExpr world left locals x before result after ↔
-        EvalExpr world right locals y before result after) xs ys)
+      OpenSource.EvalExpr world calls left locals x before result after ↔
+        OpenSource.EvalExpr world calls right locals y before result after) xs ys)
     (locals before values after) :
-    EvalArgs world left locals xs before values after ↔ EvalArgs world right locals ys before values after := by
+    OpenSource.EvalArgs world calls left locals xs before values after ↔ OpenSource.EvalArgs world calls right locals ys before values after := by
   induction related generalizing before values with
   | nil => constructor <;> intro h <;> cases h <;> exact .nil
   | cons h _ ih =>
@@ -86,7 +87,7 @@ private theorem select_transfer [DecidableEq F] {world : World F}
 /-- Compiler preparation preserves and reflects the independent source
 predicate. Calls retain their ordinary source semantics; only type metadata
 and checked declaration references change in this pass. -/
-theorem expression_preparation_iff [Field F] [DecidableEq F]
+theorem expression_preparation_open_iff [Field F] [DecidableEq F]
     (program : Program F) (world : World F)
     (lookup : ∀ n t, world.constant n t = (elaborateConst program n t).mapError
       (fun _ => EvalError.unboundVariable ("::" ++ n)))
@@ -94,16 +95,16 @@ theorem expression_preparation_iff [Field F] [DecidableEq F]
     (depth : Nat) (types : Types) (expr : Expr F) {prepared : Expr F}
     (expanded : expression program depth types expr = .ok prepared)
     (locals before result after) :
-    EvalExpr world types locals expr before result after ↔
-      EvalExpr world [] locals prepared before result after := by
+    OpenSource.EvalExpr world calls types locals expr before result after ↔
+      OpenSource.EvalExpr world calls [] locals prepared before result after := by
   have sub (d ts e) (smaller : Prod.Lex (· < ·) (· < ·) (d, sizeOf e) (depth, sizeOf expr))
       {q : Expr F} (h : expression program d ts e = .ok q) (ls b v a) :
-      EvalExpr world ts ls e b v a ↔ EvalExpr world [] ls q b v a :=
-    expression_preparation_iff program world lookup constDepth d ts e h ls b v a
+      OpenSource.EvalExpr world calls ts ls e b v a ↔ OpenSource.EvalExpr world calls [] ls q b v a :=
+    expression_preparation_open_iff program world lookup constDepth d ts e h ls b v a
   have children (es : List (Expr F)) (smaller : ∀ e ∈ es, sizeOf e < sizeOf expr)
       {qs : List (Expr F)} (mapped : es.mapM (expression program depth types) = .ok qs) :
       List.Forall₂ (fun e q => ∀ ls b v a,
-        EvalExpr world types ls e b v a ↔ EvalExpr world [] ls q b v a) es qs := by
+        OpenSource.EvalExpr world calls types ls e b v a ↔ OpenSource.EvalExpr world calls [] ls q b v a) es qs := by
     have rel := mapM_relation mapped
     have both : List.Forall₂ (fun e q => e ∈ es ∧ expression program depth types e = .ok q) es qs :=
       (List.forall₂_and_left _ _).mpr ⟨fun _ h => h, rel⟩
@@ -138,9 +139,9 @@ theorem expression_preparation_iff [Field F] [DecidableEq F]
                     cases Except.ok.inj same
                     have same := interpreted'.symm.trans interpreted
                     cases Except.ok.inj same
-                    exact preparedClosed.changeLocals (ih.mp ev) locals
+                    exact preparedClosed.openChangeLocals (ih.mp ev) locals
               · intro h
-                exact .global resolved interpreted (ih.mpr (preparedClosed.changeLocals h []))
+                exact .global resolved interpreted (ih.mpr (preparedClosed.openChangeLocals h []))
   | tuple es | array es =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qs, hqs, rfl⟩ := expanded
@@ -161,11 +162,11 @@ theorem expression_preparation_iff [Field F] [DecidableEq F]
       constructor
       · intro h; cases h with
         | constructAs ev =>
-            simpa only [names] using (EvalExpr.constructAs (params := params) (t := t.subst types)
+            simpa only [names] using (OpenSource.EvalExpr.constructAs (params := params) (t := t.subst types)
               (ctor := ctor) ((ih _ _ _ _).mp ev))
       · intro h; cases h with
         | constructAs ev =>
-            simpa only [names] using (EvalExpr.constructAs (params := params) (t := t)
+            simpa only [names] using (OpenSource.EvalExpr.constructAs (params := params) (t := t)
               (ctor := ctor) ((ih _ _ _ _).mpr ev))
   | construct n ts ctor es =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
@@ -177,11 +178,11 @@ theorem expression_preparation_iff [Field F] [DecidableEq F]
       constructor
       · intro h; cases h with
         | construct ev =>
-            simpa only [names] using (EvalExpr.construct (name := n) (args := some ((ts.getD []).map (Ty.subst types)))
+            simpa only [names] using (OpenSource.EvalExpr.construct (name := n) (args := some ((ts.getD []).map (Ty.subst types)))
               (ctor := ctor) ((ih _ _ _ _).mp ev))
       · intro h; cases h with
         | construct ev =>
-            simpa only [names] using (EvalExpr.construct (name := n) (args := ts)
+            simpa only [names] using (OpenSource.EvalExpr.construct (name := n) (args := ts)
               (ctor := ctor) ((ih _ _ _ _).mpr ev))
   | «repeat» e n | index e i | project e i | slice e start stop | store e | load e | hint t e | neg e =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
@@ -249,7 +250,7 @@ theorem expression_preparation_iff [Field F] [DecidableEq F]
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qvalue, hv, others, ho, rfl⟩ := expanded
       have ihv := sub depth types operand (by apply Prod.Lex.right; simp_wf; omega) hv
-      let R := fun e q => ∀ ls b v a, EvalExpr world types ls e b v a ↔ EvalExpr world [] ls q b v a
+      let R := fun e q => ∀ ls b v a, OpenSource.EvalExpr world calls types ls e b v a ↔ OpenSource.EvalExpr world calls [] ls q b v a
       have rel : List.Forall₂ (fun a b =>
           (∀ heap value, world.matchPattern types heap a.1 value = world.matchPattern [] heap b.1 value) ∧
           R a.2 b.2) arms others := by
@@ -280,5 +281,18 @@ theorem expression_preparation_iff [Field F] [DecidableEq F]
             exact .matchValue ((ihv _ _ _ _).mpr ev) selected' ((bodyRel _ _ _ _).mpr branch)
 termination_by (depth, sizeOf expr)
 decreasing_by exact smaller
+
+theorem expression_preparation_iff [Field F] [DecidableEq F]
+    (program : Program F) (world : World F)
+    (lookup : ∀ n t, world.constant n t = (elaborateConst program n t).mapError
+      (fun _ => EvalError.unboundVariable ("::" ++ n)))
+    (constDepth : world.constDepth = program.consts.length + 1)
+    (depth : Nat) (types : Types) (expr : Expr F) {prepared : Expr F}
+    (expanded : expression program depth types expr = .ok prepared)
+    (locals before result after) :
+    EvalExpr world types locals expr before result after ↔
+      EvalExpr world [] locals prepared before result after := by
+  simpa only [OpenSource.closed_iff] using expression_preparation_open_iff
+    (calls := EvalFn world) program world lookup constDepth depth types expr expanded locals before result after
 
 end Aiur.Generic.SourceSemantics

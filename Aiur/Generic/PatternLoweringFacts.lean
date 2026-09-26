@@ -4,6 +4,9 @@ import Aiur.Generic.PatternTranslation
 import Aiur.Generic.EngineInversion
 
 namespace Aiur.Generic.PatternLowering
+
+variable {calls : CallRelation F}
+
 open SourceSemantics
 
 variable [Field F] [DecidableEq F] {world : Engine.World F}
@@ -22,19 +25,19 @@ private theorem match_load_iff {pat : Pattern F} :
 
 /-- The full let-pattern translation preserves the native, heap-reading match.
 The finite safety check accounts for all compiler-generated local names. -/
-theorem lowerLet_iff (types : Types) (pat : Pattern F) (value body : Aiur.Expr F)
+theorem lowerLet_open_iff (types : Types) (pat : Pattern F) (value body : Aiur.Expr F)
     (safe : LetSafe types pat value body)
     (constant : String → Ty → Except EvalError (Pattern F)) (depth : Nat)
     (locals : Environment F Nat) (before after : Heap F) (result : SourceValue F) :
-    Engine.EvalExpr world locals (lowerLet types pat value body) before result after ↔
-      ∃ input middle bindings, Engine.EvalExpr world locals value before input middle ∧
+    OpenCore.EvalExpr world calls locals (lowerLet types pat value body) before result after ↔
+      ∃ input middle bindings, OpenCore.EvalExpr world calls locals value before input middle ∧
         matchPatternWith constant depth types middle pat input = .ok (some bindings) ∧
-        Engine.EvalExpr world (bindings ++ locals) body middle result after := by
+        OpenCore.EvalExpr world calls (bindings ++ locals) body middle result after := by
   cases pat with
   | load pat =>
-      rw [lowerLet_load, lowerLet_iff types pat (.load value) body (by simpa only [LetSafe] using safe)
+      rw [lowerLet_load, lowerLet_open_iff types pat (.load value) body (by simpa only [LetSafe] using safe)
         constant depth locals before after result]
-      simp only [Engine.load_iff, match_load_iff]
+      simp only [OpenCore.load_iff, match_load_iff]
       constructor
       · rintro ⟨loaded, middle, bs, ⟨input, ev, read⟩, matched, eb⟩
         exact ⟨input, middle, bs, ev, ⟨loaded, read, matched⟩, eb⟩
@@ -44,7 +47,7 @@ theorem lowerLet_iff (types : Types) (pat : Pattern F) (value body : Aiur.Expr F
       unfold lowerLet
       split
       · rename_i core lowered
-        rw [Engine.letValue_iff]
+        rw [OpenCore.letValue_iff]
         apply exists_congr; intro input
         apply exists_congr; intro middle
         apply exists_congr; intro bindings
@@ -54,7 +57,7 @@ theorem lowerLet_iff (types : Types) (pat : Pattern F) (value body : Aiur.Expr F
         simp only [LetSafe, lowered] at safe
         obtain ⟨resolved, unique, fresh⟩ := safe
         simp only [plan, StateT.run, state_map_result]
-        rw [Engine.bind_iff]
+        rw [OpenCore.bind_iff]
         apply exists_congr; intro input
         apply exists_congr; intro middle
         rw [exists_and_left]
@@ -64,7 +67,7 @@ theorem lowerLet_iff (types : Types) (pat : Pattern F) (value body : Aiur.Expr F
         rw [← planTree_match _ resolved types _ 1 constant depth middle input]
         apply exists_congr; intro bindings
         apply and_congr_right; intro _
-        apply Engine.evalExpr_env_iff
+        apply OpenCore.evalExpr_env_iff
         apply Engine.EnvAgrees.prepend
         exact env_cons_fresh (fun n hn eq => fresh n hn (by simp [eq]))
 termination_by sizeOf pat
@@ -101,6 +104,41 @@ theorem choose_member {arms : List (Pattern F × B)}
       · obtain ⟨pat, hp⟩ := ih selected
         exact ⟨pat, by simp [hp]⟩
 
+theorem choose_matched {arms : List (Pattern F × B)}
+    (selected : choose constant depth types heap input arms = .ok (some (bindings, body))) :
+    ∃ pat, (pat, body) ∈ arms ∧
+      matchPatternWith constant depth types heap pat input = .ok (some bindings) := by
+  induction arms with
+  | nil => simp [choose, pure, Except.pure] at selected
+  | cons arm arms ih =>
+      rcases arm with ⟨pat, head⟩
+      rcases choose_cons_iff.mp selected with ⟨matched, rfl⟩ | ⟨_, selected⟩
+      · exact ⟨pat, by simp, matched⟩
+      · obtain ⟨pat, hp, matched⟩ := ih selected
+        exact ⟨pat, by simp [hp], matched⟩
+
+theorem choose_map (f : A → B) (arms : List (Pattern F × A)) :
+    choose constant depth types heap input (arms.map fun arm => (arm.1, f arm.2)) =
+      (choose constant depth types heap input arms).map (Option.map fun selected => (selected.1, f selected.2)) := by
+  induction arms with
+  | nil => rfl
+  | cons arm arms ih =>
+      rcases arm with ⟨pat, body⟩
+      cases h : matchPatternWith constant depth types heap pat input with
+      | error e => simp [choose, h, bind, Except.bind, Except.map]
+      | ok result => cases result <;> simp [choose, h, ih, bind, Except.bind, Except.map, pure, Except.pure]
+
+theorem choose_source (source : SourceSemantics.World F) (types heap input)
+    (arms : List (Pattern F × Expr F)) :
+    choose source.constant source.constDepth types heap input arms =
+      SourceSemantics.selectArm source types heap input arms := by
+  induction arms with
+  | nil => rfl
+  | cons arm arms ih =>
+      rcases arm with ⟨pat, body⟩
+      simp only [choose, SourceSemantics.selectArm, SourceSemantics.World.matchPattern, ih]
+      rfl
+
 theorem matchArms_iff (types : Types) (stem root : String)
     (arms : List (Pattern F × Aiur.Expr F)) (state : Nat)
     (safe : ArmsSafe types stem root arms state)
@@ -108,9 +146,9 @@ theorem matchArms_iff (types : Types) (stem root : String)
     (heap : Heap F) (input : SourceValue F) (locals : Environment F Nat)
     (found : locals.find? (·.1 == root) = some (root, input)) :
     (∃ body, (matchArms types stem root arms state).1 = some body ∧
-      Engine.EvalExpr world locals body heap result after) ↔
+      OpenCore.EvalExpr world calls locals body heap result after) ↔
     ∃ bindings body, choose constant depth types heap input arms = .ok (some (bindings, body)) ∧
-      Engine.EvalExpr world (bindings ++ locals) body heap result after := by
+      OpenCore.EvalExpr world calls (bindings ++ locals) body heap result after := by
   induction arms generalizing state with
   | nil => simp [matchArms, choose, pure, StateT.pure, Except.pure]
   | cons arm arms ih =>
@@ -169,18 +207,18 @@ private theorem choose_core (types : Types) (arms : List (Pattern F × Aiur.Expr
 
 /-- Ordered source matching and its circuit-language expression have exactly
 the same successful branch, bindings, result, and heap. -/
-theorem lowerMatch_iff (types : Types) (value : Aiur.Expr F) (arms : List (Pattern F × Aiur.Expr F))
+theorem lowerMatch_open_iff (types : Types) (value : Aiur.Expr F) (arms : List (Pattern F × Aiur.Expr F))
     (safe : MatchSafe types value arms)
     (constant : String → Ty → Except EvalError (Pattern F)) (depth : Nat)
     (locals : Environment F Nat) (before after : Heap F) (result : SourceValue F) :
-    Engine.EvalExpr world locals (lowerMatch types value arms) before result after ↔
-      ∃ input middle bindings body, Engine.EvalExpr world locals value before input middle ∧
+    OpenCore.EvalExpr world calls locals (lowerMatch types value arms) before result after ↔
+      ∃ input middle bindings body, OpenCore.EvalExpr world calls locals value before input middle ∧
         choose constant depth types middle input arms = .ok (some (bindings, body)) ∧
-        Engine.EvalExpr world (bindings ++ locals) body middle result after := by
+        OpenCore.EvalExpr world calls (bindings ++ locals) body middle result after := by
   unfold lowerMatch
   split
   · rename_i core lowered
-    rw [Engine.matchValue_iff]
+    rw [OpenCore.matchValue_iff]
     apply exists_congr; intro input
     apply exists_congr; intro middle
     apply exists_congr; intro bindings
@@ -189,21 +227,21 @@ theorem lowerMatch_iff (types : Types) (value : Aiur.Expr F) (arms : List (Patte
     simp only [Except.ok.injEq]
   · rename_i lowered
     simp only [MatchSafe, lowered] at safe
-    rw [Engine.bind_iff]
+    rw [OpenCore.bind_iff]
     apply exists_congr; intro input
     apply exists_congr; intro middle
     simp only [exists_and_left]
     apply and_congr_right; intro _
     let stem := freshPrefix (exprNames value ++ arms.flatMap (fun arm => arm.1.bindingNames ++ exprNames arm.2))
     let root := stem ++ "0"
-    have body_iff : Engine.EvalExpr world ((root, input) :: locals)
+    have body_iff : OpenCore.EvalExpr world calls ((root, input) :: locals)
         ((matchArms types stem root arms 1).1.getD (.matchValue (.var root) [])) middle result after ↔
         ∃ body, (matchArms types stem root arms 1).1 = some body ∧
-          Engine.EvalExpr world ((root, input) :: locals) body middle result after := by
+          OpenCore.EvalExpr world calls ((root, input) :: locals) body middle result after := by
       cases generated : (matchArms types stem root arms 1).1 with
       | some body => simp only [Option.getD_some, Option.some.injEq, exists_eq_left']
       | none =>
-          simp only [Option.getD_none, reduceCtorEq, false_and, exists_const, Engine.matchValue_iff, Aiur.selectArm]
+          simp only [Option.getD_none, reduceCtorEq, false_and, exists_const, OpenCore.matchValue_iff, Aiur.selectArm]
           simp
     simp only [StateT.run]
     rw [body_iff, matchArms_iff types stem root arms 1 safe constant depth middle input _ (by simp)]
@@ -211,6 +249,28 @@ theorem lowerMatch_iff (types : Types) (value : Aiur.Expr F) (arms : List (Patte
     apply exists_congr; intro body
     apply and_congr_right; intro selected
     obtain ⟨pat, member⟩ := choose_member selected
-    exact Engine.evalExpr_env_iff ((env_cons_fresh (armsSafe_fresh safe member)).prepend bindings)
+    exact OpenCore.evalExpr_env_iff ((env_cons_fresh (armsSafe_fresh safe member)).prepend bindings)
+
+theorem lowerLet_iff (types : Types) (pat : Pattern F) (value body : Aiur.Expr F)
+    (safe : LetSafe types pat value body)
+    (constant : String → Ty → Except EvalError (Pattern F)) (depth : Nat)
+    (locals : Environment F Nat) (before after : Heap F) (result : SourceValue F) :
+    Engine.EvalExpr world locals (lowerLet types pat value body) before result after ↔
+      ∃ input middle bindings, Engine.EvalExpr world locals value before input middle ∧
+        matchPatternWith constant depth types middle pat input = .ok (some bindings) ∧
+        Engine.EvalExpr world (bindings ++ locals) body middle result after := by
+  simpa only [OpenCore.closed_iff] using lowerLet_open_iff (world := world) (calls := Engine.EvalFn world)
+    types pat value body safe constant depth locals before after result
+
+theorem lowerMatch_iff (types : Types) (value : Aiur.Expr F) (arms : List (Pattern F × Aiur.Expr F))
+    (safe : MatchSafe types value arms)
+    (constant : String → Ty → Except EvalError (Pattern F)) (depth : Nat)
+    (locals : Environment F Nat) (before after : Heap F) (result : SourceValue F) :
+    Engine.EvalExpr world locals (lowerMatch types value arms) before result after ↔
+      ∃ input middle bindings body, Engine.EvalExpr world locals value before input middle ∧
+        choose constant depth types middle input arms = .ok (some (bindings, body)) ∧
+        Engine.EvalExpr world (bindings ++ locals) body middle result after := by
+  simpa only [OpenCore.closed_iff] using lowerMatch_open_iff (world := world) (calls := Engine.EvalFn world)
+    types value arms safe constant depth locals before after result
 
 end Aiur.Generic.PatternLowering

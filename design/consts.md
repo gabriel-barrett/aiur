@@ -130,9 +130,10 @@ templates. These results have no admitted proof steps or new axioms.
 The source predicate has an explicit const-reference rule. Successful execution
 and finite source-cache equivalence are proved with this rule, including nested
 references, closed declaration scope, and pointer patterns. The compiler may
-inline declarations after this semantic boundary. Connecting that transformation
-and the complete pattern/array lowering to circuits remains part of the
-[source-to-core bridge](source-semantics.md#proof-boundary).
+inline declarations after this semantic boundary. `expression_preparation_iff`
+proves that transformation preserves and reflects evaluation, including heaps
+and declaration scope. It composes with the complete pattern/array translation
+and circuit proofs in the [source-to-core bridge](source-semantics.md#proof-boundary).
 
 `AiurTests/Consts.lean` covers name resolution, capitalization, shadowing,
 forward references, shared dependencies, unused cycles and invalid templates,

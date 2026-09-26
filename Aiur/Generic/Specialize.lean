@@ -3,6 +3,7 @@ import Aiur.Generic.Equality
 import Aiur.Generic.ValueTyping
 import Aiur.Generic.Simulation
 import Aiur.Generic.SourceSimulation
+import Aiur.Generic.LoweringTypes
 
 namespace Aiur.Generic
 
@@ -35,12 +36,32 @@ instance [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Decidable (Source
   unfold SourceClosed
   infer_instance
 
+/-- Source functions and maps must retain the same lookup priority. This is a
+finite syntax check, including for manually constructed `Source` values. -/
+def LoweringReady [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Prop :=
+  ∀ n ∈ callableNames p,
+    (s.program.sourceFunction? n).isSome = (s.compilerFunction? n).isSome
+
+instance [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Decidable (LoweringReady s p) := by
+  unfold LoweringReady; infer_instance
+
+def TypedLowering [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Prop :=
+  ∀ n ∈ callableNames p, ((s.program.sourceFunction? n).all fun fn =>
+    match Preparation.expression s.program (s.program.consts.length + 1) fn.types fn.body with
+    | .error _ => false
+    | .ok body => (body.checkLowerTypes p [] fn.params).isSome) = true
+
+instance [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Decidable (TypedLowering s p) := by
+  unfold TypedLowering; infer_instance
+
 /-- The artifact retains its public entrypoint whitelist. Reachable helpers
 are deliberately not made public merely by being present in `program`. -/
 structure Specialized [DecidableEq F] (s : Source F) (entries : List String) where
   program : Aiur.Program F
   valid : Valid s program entries
   sourceClosed : SourceClosed s program
+  loweringReady : LoweringReady s program
+  typedLowering : TypedLowering s program
 
 structure Limits where
   instances : Nat := 1024
@@ -102,7 +123,11 @@ def specialize [DecidableEq F] (s : Source F) (entries : List String) (limits : 
   -- ordinary typing all belong to the existing core checker.
   (typecheck p).mapError toString
   if valid : Valid s p entries then
-    if closed : SourceClosed s p then return ⟨p, valid, closed⟩
+    if closed : SourceClosed s p then
+      if ready : LoweringReady s p then
+        if typed : TypedLowering s p then return ⟨p, valid, closed, ready, typed⟩
+        else throw "specialization failed its source-scope typing check"
+      else throw "specialization changed a source function lookup"
     else throw "specialization failed its source dependency check"
   else throw "specialization failed its structural certificate check"
 

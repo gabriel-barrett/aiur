@@ -1,7 +1,10 @@
 import Aiur.Generic.PatternLowering
-import Aiur.Generic.Engine
+import Aiur.Generic.OpenCore
 
 namespace Aiur.Generic.PatternLowering
+
+variable {calls : CallRelation F}
+
 
 /-- Removing one pointer-pattern layer is exactly an ordinary load, even when
 the remaining pattern contains further loads. -/
@@ -41,11 +44,11 @@ variable [Field F] [DecidableEq F] {world : Engine.World F}
 and evaluates the body with the contents bound to `name`. -/
 theorem load_bind_iff {env} {name : String} {locals : Environment F Nat}
     {pointer body : Aiur.Expr F} {before after : Heap F} {result : SourceValue F} :
-    Engine.EvalExpr world locals (lowerLet env (.load (.bind name)) pointer body) before result after ↔
+    OpenCore.EvalExpr world calls locals (lowerLet env (.load (.bind name)) pointer body) before result after ↔
       ∃ address middle value,
-        Engine.EvalExpr world locals pointer before address middle ∧
+        OpenCore.EvalExpr world calls locals pointer before address middle ∧
         loadValue middle address = .ok value ∧
-        Engine.EvalExpr world ((name, value) :: locals) body middle result after := by
+        OpenCore.EvalExpr world calls ((name, value) :: locals) body middle result after := by
   rw [lowerLet_load_bind]
   constructor
   · intro h
@@ -64,9 +67,9 @@ theorem load_bind_iff {env} {name : String} {locals : Environment F Nat}
 followed by evaluation of the body. Pattern steps do not change the heap. -/
 theorem letSteps_iff {steps : List (Step F)} {locals : Environment F Nat}
     {body : Aiur.Expr F} {before after : Heap F} {result : SourceValue F} :
-    Engine.EvalExpr world locals (letSteps steps body) before result after ↔
+    OpenCore.EvalExpr world calls locals (letSteps steps body) before result after ↔
       ∃ final, Attempt before steps locals true final ∧
-        Engine.EvalExpr world final body before result after := by
+        OpenCore.EvalExpr world calls final body before result after := by
   induction steps generalizing locals with
   | nil =>
       constructor
@@ -107,20 +110,20 @@ theorem letSteps_iff {steps : List (Step F)} {locals : Environment F Nat}
 
 /-- The selected continuation of a match attempt; no fallback means a partial
 match cannot finish after a failed test. -/
-def Continuation (world : Engine.World F) (accepted : Bool) (locals : Environment F Nat)
+def Continuation (world : Engine.World F) (calls : CallRelation F) (accepted : Bool) (locals : Environment F Nat)
     (body : Aiur.Expr F) (failure : Option (Aiur.Expr F))
     (before : Heap F) (result : SourceValue F) (after : Heap F) : Prop :=
-  if accepted then Engine.EvalExpr world locals body before result after
-  else ∃ fallback, failure = some fallback ∧ Engine.EvalExpr world locals fallback before result after
+  if accepted then OpenCore.EvalExpr world calls locals body before result after
+  else ∃ fallback, failure = some fallback ∧ OpenCore.EvalExpr world calls locals fallback before result after
 
 /-- Ordered match desugaring executes exactly the chosen plan continuation.
 In particular, a failed earlier test bypasses all subsequent loads. -/
 theorem matchSteps_iff {steps : List (Step F)} {locals : Environment F Nat}
     {body : Aiur.Expr F} {failure : Option (Aiur.Expr F)}
     {before after : Heap F} {result : SourceValue F} :
-    Engine.EvalExpr world locals (matchSteps steps body failure) before result after ↔
+    OpenCore.EvalExpr world calls locals (matchSteps steps body failure) before result after ↔
       ∃ accepted final, Attempt before steps locals accepted final ∧
-        Continuation world accepted final body failure before result after := by
+        Continuation world calls accepted final body failure before result after := by
   induction steps generalizing locals with
   | nil =>
       constructor

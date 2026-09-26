@@ -3,7 +3,7 @@ import Aiur.TypecheckFacts
 
 namespace Aiur
 
-private theorem parameterTypes (params : List (String × Ty)) (args : List (Value F A))
+theorem parameterTypes (params : List (String × Ty)) (args : List (Value F A))
     (types : params.map Prod.snd = args.map Value.type) :
     environmentTypes ((params.map Prod.fst).zip args) = params := by
   induction params generalizing args with

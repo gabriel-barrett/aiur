@@ -1,4 +1,4 @@
-import Aiur.Generic.SourceSemantics
+import Aiur.Generic.OpenSource
 import Aiur.Generic.PreparationPatternFacts
 
 namespace Aiur.Generic.Consts
@@ -63,14 +63,13 @@ decreasing_by exact smaller
 
 /-- A const expression has the same value and allocation history in any
 surrounding local scope. In particular, inlining cannot capture caller names. -/
-theorem Closed.changeLocals [Field F] [DecidableEq F] {world : World F}
+theorem Closed.openChangeLocals [Field F] [DecidableEq F] {world : World F} {calls : CallRelation F}
     {expr : Expr F} (closed : Closed expr)
-    (evaluated : SourceSemantics.EvalExpr world types locals expr before result after)
-    (other : Environment F Nat) : SourceSemantics.EvalExpr world types other expr before result after := by
-  induction evaluated using SourceSemantics.EvalExpr.rec
+    (evaluated : OpenSource.EvalExpr world calls types locals expr before result after)
+    (other : Environment F Nat) : OpenSource.EvalExpr world calls types other expr before result after := by
+  induction evaluated using OpenSource.EvalExpr.rec
     (motive_2 := fun ts ls es b vs a _ =>
-      (∀ e ∈ es, Closed e) → ∀ other, SourceSemantics.EvalArgs world ts other es b vs a)
-    (motive_3 := fun _ _ _ _ _ _ => True) generalizing other with
+      (∀ e ∈ es, Closed e) → ∀ other, OpenSource.EvalArgs world calls ts other es b vs a) generalizing other with
   | literal => exact .literal
   | global lookup interpreted ev _ => exact .global lookup interpreted ev
   | tuple _ ih => cases closed with | tuple h => exact .tuple (ih h other)
@@ -83,8 +82,19 @@ theorem Closed.changeLocals [Field F] [DecidableEq F] {world : World F}
   | cons _ _ ih1 ih2 =>
       rename_i h other
       exact .cons (ih1 (h _ (by simp)) other) (ih2 (fun e he => h e (by simp [he])) other)
-  | intro => trivial
   | _ => cases closed
+
+theorem Closed.openLocals_iff [Field F] [DecidableEq F] {world : World F} {calls : CallRelation F}
+    {expr : Expr F} (closed : Closed expr) :
+    OpenSource.EvalExpr world calls types left expr before result after ↔
+      OpenSource.EvalExpr world calls types right expr before result after :=
+  ⟨fun h => closed.openChangeLocals h right, fun h => closed.openChangeLocals h left⟩
+
+theorem Closed.changeLocals [Field F] [DecidableEq F] {world : World F}
+    {expr : Expr F} (closed : Closed expr)
+    (evaluated : SourceSemantics.EvalExpr world types locals expr before result after)
+    (other : Environment F Nat) : SourceSemantics.EvalExpr world types other expr before result after :=
+  (closed.openChangeLocals (OpenSource.of_closed evaluated) other).close
 
 theorem Closed.locals_iff [Field F] [DecidableEq F] {world : World F}
     {expr : Expr F} (closed : Closed expr) :

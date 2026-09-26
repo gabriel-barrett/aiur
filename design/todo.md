@@ -39,7 +39,7 @@ not an outstanding TODO.
 - [x] **Generic functions and enums.** Implement inferred/explicit type arguments,
   direct generic evaluation, external entry selection, and conservative finite
   specialization. Source evaluation equivalence is proved for finite instance
-  selection. The source-to-core compilation bridge is tracked below. See [generics](generics.md).
+  selection and compilation to the monomorphic core. See [generics](generics.md).
 
 - [ ] **OR patterns.** Support alternatives such as `p1 | p2`, checking that
   alternatives bind the same names at compatible types. Preserve first-match
@@ -109,10 +109,12 @@ without admitted proof steps.
 - [x] Define native generic-source execution and its fuel-free predicate,
   preserving arrays and pointer patterns. Prove executor correspondence and
   equivalence with finite source specialization.
-- [ ] Prove the complete native-source to lowered-core equivalence, including
+- [x] Prove the complete native-source to lowered-core equivalence, including
   recursive pattern matching versus read/test plans, temporary-variable scope,
   first-match continuations, and slice shape/bounds. Compose it with the existing
-  core circuit and row-checker theorems. See [proof status](source-semantics.md).
+  core circuit and row-checker theorems. Completeness covers both checkers;
+  weighted soundness requires an acyclic support graph. See
+  [proof status](source-semantics.md).
 - [ ] Provide executable circuit-witness generation, with correctness against
   the existing row and derivation definitions.
 - [x] Prove both directions between the executable unit balance checker and

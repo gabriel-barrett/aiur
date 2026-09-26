@@ -33,7 +33,13 @@
   runtime simulation, agreement of enum validation, and bidirectional specialization
   correctness. `Generic/Circuit.lean` retains the core tree, memoized, and
   integer-checker compositions and provides the compiled entrypoint wrapper.
-  The native source-to-core bridge is [pending](source-semantics.md#proof-boundary).
+- `Aiur/Generic/LoweringCompleteness.lean`, `LoweringSoundness.lean`, and
+  `LoweringTypes.lean`: bidirectional expression translation and its finite
+  scope/type certificates, including empty slices and nested pointer patterns.
+- `Aiur/Generic/NativeCompleteness.lean`, `NativeSoundness.lean`, and
+  `NativeCircuit.lean`: recursive source/core equivalence and its composition
+  with trees, acyclic memoized graphs, and the integer row checkers. See the
+  [theorem assumptions](source-semantics.md#proof-boundary).
 
 - `Aiur/AST.lean`: recursive field, tuple, enum, and pointer types, values, patterns, expressions, explicitly typed
   signatures, constant tables, map references, and field specialization.

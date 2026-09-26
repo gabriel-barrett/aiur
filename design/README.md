@@ -12,7 +12,7 @@ design, and keep proposals and unanswered questions explicitly separate.
 - [Language](language.md): initial scope, operations, pattern matching, and open
   semantic questions.
 - [Source semantics](source-semantics.md): native evaluation, preparation order,
-  the circuit compilation boundary, and the remaining lowering proof.
+  the circuit compilation boundary, and the completed source/checker proofs.
 - [Generics](generics.md): inferred type arguments, generic functions and enums,
   external entry selection, direct evaluation, and proved specialization.
 - [Type aliases](type-aliases.md): transparent parameterized aliases, type normalization
@@ -53,4 +53,4 @@ design, and keep proposals and unanswered questions explicitly separate.
 The circuit pipeline begins with one chip per function and abstracts channel
 interactions independently of the eventual cryptographic protocol.
 
-- [Source pipeline](source-pipeline.md): retained source declarations and the end-to-end proof target.
+- [Source pipeline](source-pipeline.md): retained source declarations and the end-to-end correctness theorems.

@@ -7,13 +7,16 @@ reference snapshots in `Aiur.Scalar` and `Aiur.Tuple`.
 Generic source has independent native relations in `Generic.SourceSemantics`.
 `Generic.Source.run_spec` proves successful-run correctness, and
 `Generic.Specialized.evalCall_iff` proves equivalence with finite source
-specialization. Their full connection to the lowered core is pending; see the
+specialization. `native_entry_iff` and `native_evalCall_iff` prove the full
+equivalence with the lowered circuit core. `Generic/NativeCircuit.lean` composes
+it with both integer checkers, including acyclic memoized soundness; see the
 [semantic boundary](source-semantics.md#proof-boundary).
 
 The remainder of this document describes the completed correctness results for
 the monomorphic `Aiur.Program` core. `Generic/Circuit.lean` retains the core-level
-composition under explicit `core_*` names. These results do not yet establish
-correctness of every transformation from native `Generic.Expr`.
+composition under explicit `core_*` names. `Generic/NativeCircuit.lean` extends
+the endpoints to the original `Generic.Expr` evaluation predicate, with the same
+allocation-capacity and acyclicity conditions as the core results.
 
 ## Core evaluation with source allocation addresses
 

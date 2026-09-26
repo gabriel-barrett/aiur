@@ -157,10 +157,16 @@ retains its composition with the compiler under explicit `core_*` names:
 - `core_checker_run_complete`, `core_checkerMemo_run_complete`, and
   `core_checker_heap_sound`.
 
-These remain theorems about the lowered core. The complete preservation and
-reflection theorem connecting native source evaluation to that core is pending.
-Existing plan and array lemmas are useful parts of it, but do not establish
-correctness of the entire lowering. See [the exact proof boundary](source-semantics.md#proof-boundary).
+`Specialized.native_entry_iff` now proves the full native-source/core equivalence
+for selected entries, preserving the exact result and allocation heap.
+`native_evalCall_iff` states this for public claim predicates. The proof combines
+const preparation, pattern/array translation, and induction on finite recursive
+evaluations; its certificates are finite syntax/type checks.
+`NativeCircuit.lean` composes this equivalence with the lower-level proofs:
+`checker_heap_complete`, `checkerMemo_heap_complete`, `checker_heap_sound`, and
+`checkerMemo_acyclic_heap_sound` connect the original source to the integer
+checkers. The last theorem requires the recovered graph to be acyclic; neither
+soundness theorem assumes totality. See [the exact proof boundary](source-semantics.md#proof-boundary).
 No proof admissions or new axioms have been added.
 
 `AiurTests/Generics.lean` covers inference, independent and recursive instances,

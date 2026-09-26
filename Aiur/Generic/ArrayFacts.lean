@@ -1,7 +1,10 @@
 import Aiur.Generic.Lower
-import Aiur.Generic.Engine
+import Aiur.Generic.OpenCore
 
 namespace Aiur.Generic
+
+variable {calls : CallRelation F}
+
 
 @[simp] theorem array_toCore (element : Ty) (length : Nat) :
     (Ty.array element length).toCore = .tuple (List.replicate length element.toCore) := by rw [Ty.toCore]
@@ -23,7 +26,7 @@ variable [Field F] [DecidableEq F] {world : Engine.World F}
 
 theorem repeatArgs_iff {locals : Environment F Nat} {name : String} {value : SourceValue F}
     {length : Nat} {before after : Heap F} {values : List (SourceValue F)} :
-    Engine.EvalArgs world ((name, value) :: locals) (List.replicate length (.var name)) before values after ↔
+    OpenCore.EvalArgs world calls ((name, value) :: locals) (List.replicate length (.var name)) before values after ↔
       values = List.replicate length value ∧ after = before := by
   induction length generalizing before values with
   | zero =>
@@ -49,8 +52,8 @@ theorem repeatArgs_iff {locals : Environment F Nat} {name : String} {value : Sou
 and nondeterministic result. This includes length zero and preserves the heap. -/
 theorem repeatValue_iff {locals : Environment F Nat} {operand : Aiur.Expr F}
     {length : Nat} {before after : Heap F} {result : SourceValue F} :
-    Engine.EvalExpr world locals (repeatValue operand length) before result after ↔
-      ∃ value, Engine.EvalExpr world locals operand before value after ∧
+    OpenCore.EvalExpr world calls locals (repeatValue operand length) before result after ↔
+      ∃ value, OpenCore.EvalExpr world calls locals operand before value after ∧
         result = .tuple (List.replicate length value) := by
   constructor
   · intro h
@@ -68,7 +71,7 @@ theorem repeatValue_iff {locals : Environment F Nat} {operand : Aiur.Expr F}
 
 theorem projectArgs_iff {locals : Environment F Nat} {name : String} {value : SourceValue F}
     {indices : List Nat} {before after : Heap F} {values : List (SourceValue F)} :
-    Engine.EvalArgs world ((name, value) :: locals)
+    OpenCore.EvalArgs world calls ((name, value) :: locals)
         (indices.map (fun i => .project (.var name) i)) before values after ↔
       indices.mapM (projectValue value) = .ok values ∧ after = before := by
   induction indices generalizing before values with
@@ -108,8 +111,8 @@ theorem projectArgs_iff {locals : Environment F Nat} {name : String} {value : So
 The projection sequence itself leaves the heap unchanged, including empty slices. -/
 theorem sliceValue_iff {locals : Environment F Nat} {operand : Aiur.Expr F}
     {start stop : Nat} {before after : Heap F} {result : SourceValue F} :
-    Engine.EvalExpr world locals (sliceValue operand start stop) before result after ↔
-      ∃ value values, Engine.EvalExpr world locals operand before value after ∧
+    OpenCore.EvalExpr world calls locals (sliceValue operand start stop) before result after ↔
+      ∃ value values, OpenCore.EvalExpr world calls locals operand before value after ∧
         ((List.range (stop - start)).map (start + ·)).mapM (projectValue value) = .ok values ∧
         result = .tuple values := by
   have indices : ((List.range (stop - start)).map (start + ·)).map
@@ -128,8 +131,8 @@ theorem sliceValue_iff {locals : Environment F Nat} {operand : Aiur.Expr F}
             obtain ⟨projected, rfl⟩ := projectArgs_iff.mp items
             exact ⟨_, _, value, projected, rfl⟩
   · rintro ⟨value, values, evaluated, projected, rfl⟩
-    apply Engine.EvalExpr.letValue (bindings := [("$array", value)]) evaluated (by simp [Aiur.Pattern.bindings])
-    apply Engine.EvalExpr.tuple
+    apply OpenCore.EvalExpr.letValue (bindings := [("$array", value)]) evaluated (by simp [Aiur.Pattern.bindings])
+    apply OpenCore.EvalExpr.tuple
     rw [← indices]
     exact projectArgs_iff.mpr ⟨projected, rfl⟩
 

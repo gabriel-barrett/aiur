@@ -11,3 +11,5 @@ import Aiur.Generic.PreparationExpressionFacts
 import Aiur.Generic.ArrayFacts
 import Aiur.Generic.SliceFacts
 import Aiur.Generic.Circuit
+import Aiur.Generic.NativeCircuit
+import Aiur.Generic.LoweringTypeFacts
