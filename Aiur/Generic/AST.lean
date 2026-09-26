@@ -128,6 +128,14 @@ abbrev UpdatePath := List UpdateStep
 /-- Internal semantic constructor for a nominal product. -/
 def structConstructor : String := "$struct"
 
+/-- Binding layout for an ordered pattern alternative. The left alternative
+sets the canonical order; the checker records the right alternative's positions.
+Renaming bindings leaves these positions unchanged. -/
+structure OrBindings where
+  names : List String
+  rightOrder : List Nat := []
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
 inductive Pattern (α : Type) where
   | literal (value : α)
   | wildcard
@@ -136,6 +144,8 @@ inductive Pattern (α : Type) where
   | global (name : String) (type : Option Ty := none)
   /-- Load the matched pointer, then match its contents. -/
   | load (pattern : Pattern α)
+  /-- Ordered alternatives. Each alternative binds the same names and types. -/
+  | orElse (left right : Pattern α) (bindings : OrBindings)
   | tuple (items : List (Pattern α))
   | array (items : List (Pattern α))
   | repeat (item : Pattern α) (length : Nat)
@@ -289,10 +299,23 @@ def Program.nominals (p : Program α) : List EnumDecl := p.enums ++ p.structs.ma
 def Program.findStruct? (p : Program α) (name : String) := p.structs.find? (·.name == name)
 def Program.findEnum? (p : Program α) (name : String) := p.nominals.find? (·.name == name)
 
+/-- Gather binding values using checker-recorded positions, assigning their
+canonical names. No value comparison or memory read occurs here. -/
+def reorderBindings (names : List String) (positions : List Nat) (bindings : List (String × V)) :
+    Option (List (String × V)) :=
+  match names, positions with
+  | [], [] => some []
+  | name :: names, index :: positions => do
+      let (_, value) ← bindings[index]?
+      return (name, value) :: (← reorderBindings names positions bindings)
+  | _, _ => none
+
+
 def Pattern.bindingNames : Pattern α → List String
   | .literal _ | .wildcard | .global _ _ => []
   | .bind n => [n]
   | .record head ps => (head.order (ps.map Pattern.bindingNames) []).flatten
+  | .orElse _ _ layout => layout.names
   | .load p => p.bindingNames
   | .repeat p n => (List.replicate n p.bindingNames).flatten
   | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap Pattern.bindingNames
@@ -300,6 +323,7 @@ termination_by p => sizeOf p
 
 def Pattern.hasLoads : Pattern α → Bool
   | .literal _ | .wildcard | .bind _ | .global _ _ => false
+  | .orElse left right _ => left.hasLoads || right.hasLoads
   | .load _ => true
   | .record head ps => (head.order (ps.map Pattern.hasLoads) false).any id
   | .repeat p n => n != 0 && p.hasLoads
@@ -310,6 +334,7 @@ def Pattern.irrefutable (enums : List EnumDecl) : Pattern α → Bool
   | .literal _ | .global _ _ => false
   | .record head ps => (head.order (ps.map (Pattern.irrefutable enums)) true).all id
   | .wildcard | .bind _ => true
+  | .orElse left right _ => left.irrefutable enums || right.irrefutable enums
   | .load p => p.irrefutable enums
   | .tuple ps | .array ps => (ps.map (Pattern.irrefutable enums)).all id
   | .repeat p n => n == 0 || p.irrefutable enums
@@ -324,6 +349,7 @@ def Pattern.condition : Pattern α → Pattern α
   | .literal x => .literal x
   | .global n t => .global n t
   | .wildcard | .bind _ => .wildcard
+  | .orElse left right _ => .orElse left.condition right.condition ⟨[], []⟩
   | .load p => .load p.condition
   | .record head ps => .construct head.type structConstructor (head.order (ps.map Pattern.condition) .wildcard)
   | .tuple ps | .array ps => .tuple (ps.map Pattern.condition)
@@ -337,6 +363,7 @@ def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .wildcard => .wildcard
   | .bind n => .bind n
   | .global n t => .global n t
+  | .orElse left right names => .orElse (left.map f) (right.map f) names
   | .load p => .load (p.map f)
   | .record head xs => .record head (xs.map (Pattern.map f))
   | .tuple xs => .tuple (xs.map (Pattern.map f))

@@ -55,6 +55,13 @@ def matchPatternWith [DecidableEq F] (constant : String → Ty → Except EvalEr
       | depth + 1 =>
           let body ← constant name (type.subst types)
           matchPatternWith constant depth [] heap body value
+  | .orElse left right layout, value => do
+      let (selected, positions) ← match ← matchPatternWith constant depth types heap left value with
+        | some bindings => pure (some bindings, List.range layout.names.length)
+        | none => (matchPatternWith constant depth types heap right value).map (fun result => (result, layout.rightOrder))
+      let some bindings := selected | return none
+      let some ordered := reorderBindings layout.names positions bindings | throw .patternMismatch
+      return some ordered
   | .load pat, value => do matchPatternWith constant depth types heap pat (← loadValue heap value)
   | .tuple ps, value | .array ps, value => do
       let .tuple values := value | return none

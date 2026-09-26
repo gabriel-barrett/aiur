@@ -51,6 +51,9 @@ theorem substitute_map (f : α → β) (pat : Pattern α)
   cases pat with
   | global n ann => simpa only [Pattern.map, substitute] using agree n
   | literal | wildcard | bind => simp [Pattern.map, substitute, Except.map, pure, Except.pure]
+  | orElse a b names =>
+      simp only [Pattern.map, substitute, sub a (by simp_wf; omega), sub b (by simp_wf; omega)]
+      cases substitute left a <;> cases substitute left b <;> simp [Except.map, bind, Except.bind, pure, Except.pure, Pattern.map]
   | load p | «repeat» p _ =>
       simp only [Pattern.map, substitute, sub p (by simp_wf <;> omega)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Pattern.map]
@@ -116,7 +119,7 @@ theorem toExpr_map (f : α → β) (pat : Pattern α) :
       (ps.map (Pattern.map f)).mapM toExpr = (ps.mapM toExpr).map (List.map (Expr.map f)) :=
     traverse_map ps _ _ _ _ (fun q hq => toExpr_map f q)
   cases pat with
-  | literal | wildcard | bind | global =>
+  | literal | wildcard | bind | global | orElse =>
       simp [Pattern.map, toExpr, Expr.map, Except.map, pure, Except.pure]
   | load p | «repeat» p _ =>
       simp only [Pattern.map, toExpr, sub p (by simp_wf <;> omega)]
@@ -136,7 +139,7 @@ decreasing_by all_goals first | exact h q hq | exact hsize
 theorem bindingNames_map (f : α → β) (pat : Pattern α) :
     (pat.map f).bindingNames = pat.bindingNames := by
   cases pat with
-  | literal | wildcard | bind | global => simp [Pattern.map, Pattern.bindingNames]
+  | literal | wildcard | bind | global | orElse => simp [Pattern.map, Pattern.bindingNames]
   | load p => simpa only [Pattern.map, Pattern.bindingNames] using bindingNames_map f p
   | «repeat» p n => simp only [Pattern.map, Pattern.bindingNames, bindingNames_map f p]
   | record head ps =>

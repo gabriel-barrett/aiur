@@ -121,6 +121,12 @@ trailing semicolons are supported. See [control flow](control-flow.md).
 
 ## Matching
 
+Ordered alternatives use `p1 | p2`, including inside other patterns. Both
+alternatives bind the same names at compatible types; their written order can
+differ. The first successful alternative wins, and invalid pointer loads remain
+errors. Exact duplicates are rejected, including after field conversion.
+See [or-patterns](or-patterns.md) for native semantics and proved late lowering.
+
 A pattern is a field literal, `_`, a binding name, a tuple or array of patterns, a
 qualified constructor with payload patterns, or `&pattern` to load a pointer
 and match its contents. `let &a = p` is equivalent to `let a = *p`. Pointer

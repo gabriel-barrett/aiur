@@ -43,6 +43,7 @@ def renamePattern (env : Renaming) : Pattern α → Pattern α
   | .wildcard => .wildcard
   | .bind name => .bind (rename env name)
   | .global name type => .global name type
+  | .orElse left right names => .orElse (renamePattern env left) (renamePattern env right) { names with names := names.names.map (rename env) }
   | .load p => .load (renamePattern env p)
   | .record head ps => .record head (ps.map (renamePattern env))
   | .tuple ps => .tuple (ps.map (renamePattern env))

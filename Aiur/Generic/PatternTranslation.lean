@@ -77,7 +77,7 @@ theorem Pattern.toCore_match [DecidableEq F] (pat : Pattern F) {core : Aiur.Patt
       simp only [Pattern.toCore?, Option.some.injEq] at lowered
       subst core
       simp only [matchPatternWith, Aiur.Pattern.bindings, pure, Except.pure]
-  | global | load => simp [Pattern.toCore?] at lowered
+  | global | load | orElse => simp [Pattern.toCore?] at lowered
   | tuple ps | array ps =>
       cases mapped : ps.mapM (Pattern.toCore? types) with
       | none => simp [Pattern.toCore?, mapped] at lowered

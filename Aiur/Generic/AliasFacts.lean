@@ -39,7 +39,9 @@ theorem checkPatternTypes_map (enums aliases rigid) (f : α → β) (pat : Patte
   cases pat <;> simp only [Pattern.map, checkPatternTypes]
   all_goals try rw [children _ (by intros; simp_all only [Pattern.tuple.sizeOf_spec, Pattern.array.sizeOf_spec,
     Pattern.record.sizeOf_spec, Pattern.construct.sizeOf_spec, Pattern.constructAs.sizeOf_spec]; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
-  all_goals exact sub _ (by simp_wf <;> omega)
+  all_goals first
+    | exact sub _ (by simp_wf <;> omega)
+    | rw [sub _ (by simp_wf; omega), sub _ (by simp_wf; omega)]
 termination_by sizeOf pat
 decreasing_by all_goals first | exact h q hq | exact hsize
 
@@ -54,6 +56,9 @@ theorem expandPattern_map (aliases) (f : α → β) (pat : Pattern α) :
     traverse_map ps _ _ _ _ (fun q hq => expandPattern_map aliases f q)
   cases pat with
   | literal | wildcard | bind | global => simp [Pattern.map, expandPattern, map_pure]
+  | orElse left right names =>
+      simp only [Pattern.map, expandPattern, sub left (by simp_wf; omega), sub right (by simp_wf; omega)]
+      cases expandPattern aliases left <;> cases expandPattern aliases right <;> simp [Except.map, bind, Except.bind, pure, Except.pure, Pattern.map]
   | load p | «repeat» p _ =>
       simp only [Pattern.map, expandPattern, sub p (by simp_wf <;> omega)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Pattern.map]

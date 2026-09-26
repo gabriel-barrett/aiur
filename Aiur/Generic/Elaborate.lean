@@ -174,6 +174,21 @@ private def inferPattern (p : Program α) (rigid : List String) : Nat → Patter
           let (_, bindings) ← inferPattern p rigid fuel body expected
           if !bindings.isEmpty then throw s!"const '::{n}' contains a binder"
           return (.global n (some expected), [])
+      | .orElse left right _ =>
+          let (left, leftBindings) ← inferPattern p rigid fuel left expected
+          let (right, rightBindings) ← inferPattern p rigid fuel right expected
+          for bindings in [leftBindings, rightBindings] do
+            if let some n := findDuplicate (bindings.map Prod.fst) [] then
+              throw s!"duplicate pattern binding '{n}'"
+          if leftBindings.length != rightBindings.length then
+            throw "or-pattern alternatives must bind the same names"
+          for (name, type) in leftBindings do
+            let some other := rightBindings.lookup name |
+              throw s!"or-pattern alternative does not bind '{name}'"
+            agree type other
+          let names := leftBindings.map Prod.fst
+          let rightOrder := names.map fun name => rightBindings.findIdx (·.1 == name)
+          return (.orElse left right ⟨names, rightOrder⟩, leftBindings)
       | .load pat =>
           let target ← fresh
           agree (.ptr target) expected
@@ -440,6 +455,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .bind n => pure (.bind n)
   | .global n t => return .global n (← t.mapM (finishType s))
   | .record head ps => return .record { head with type := ← finishType s head.type } (← ps.mapM (finishPattern s))
+  | .orElse left right names => return .orElse (← finishPattern s left) (← finishPattern s right) names
   | .load p => return .load (← finishPattern s p)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
   | .array ps => return .array (← ps.mapM (finishPattern s))
@@ -610,6 +626,7 @@ def inspectPattern (p : Program α) : Nat → Pattern α → Except String (Patt
     | .global name (some type) => do inspectPattern p fuel (← elaborateConst p name type)
     | .global name none => throw s!"missing type information for const '::{name}'"
     | .record head ps => return .record head (← ps.mapM (inspectPattern p fuel))
+    | .orElse left right names => return .orElse (← inspectPattern p fuel left) (← inspectPattern p fuel right) names
     | .load pat => return .load (← inspectPattern p fuel pat)
     | .tuple ps => return .tuple (← ps.mapM (inspectPattern p fuel))
     | .array ps => return .array (← ps.mapM (inspectPattern p fuel))

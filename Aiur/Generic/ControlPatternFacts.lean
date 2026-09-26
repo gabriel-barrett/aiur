@@ -1,4 +1,5 @@
 import Aiur.Generic.ControlEnvironment
+import Aiur.Generic.BindingOrderFacts
 import Mathlib.Data.List.Nodup
 
 namespace Aiur.Generic.ControlLower
@@ -67,6 +68,29 @@ theorem matchPattern_rename [DecidableEq F]
       cases value <;> simp [renamePattern, matchPatternWith, Aiur.Pattern.bindings, renameBindings, pure, Except.pure, Except.map]
   | wildcard | bind => simp [renamePattern, matchPatternWith, renameBindings, pure, Except.pure, Except.map]
   | global => simp [Consts.dependencies] at plain
+  | orElse left right layout =>
+      have plain := plain
+      simp only [Consts.dependencies, List.append_eq_nil_iff] at plain
+      simp only [renamePattern, matchPatternWith,
+        sub left (by simp_wf; omega) plain.1, sub right (by simp_wf; omega) plain.2]
+      cases hl : matchPatternWith constant depth types heap left value with
+      | error e => rfl
+      | ok selected =>
+          cases selected with
+          | some bs =>
+              simp only [Except.map, Option.map, bind, Except.bind, pure, Except.pure,
+                List.length_map, renameBindings, reorderBindings_rename]
+              cases reorderBindings layout.names (List.range layout.names.length) bs <;> rfl
+          | none =>
+              cases hr : matchPatternWith constant depth types heap right value with
+              | error e => rfl
+              | ok selected =>
+                  cases selected with
+                  | none => rfl
+                  | some bs =>
+                      simp only [Except.map, Option.map, bind, Except.bind, pure, Except.pure,
+                        List.length_map, renameBindings, reorderBindings_rename]
+                      cases reorderBindings layout.names layout.rightOrder bs <;> rfl
   | load p =>
       simp only [renamePattern, matchPatternWith]
       cases loaded : loadValue heap value with
@@ -158,6 +182,34 @@ theorem matchPattern_names [DecidableEq F]
       subst bs
       simp [Pattern.bindingNames]
   | global => simp [Consts.dependencies] at plain
+  | orElse left right layout =>
+      simp only [Pattern.bindingNames]
+      cases hl : matchPatternWith constant depth types heap left value with
+      | error e => simp [matchPatternWith, hl, bind, Except.bind] at matched
+      | ok selected =>
+          cases selected with
+          | some first =>
+              simp only [matchPatternWith, hl, bind, Except.bind, pure, Except.pure] at matched
+              cases ordered : reorderBindings layout.names (List.range layout.names.length) first with
+              | none => simp [ordered] at matched
+              | some result =>
+                  simp only [ordered, Except.ok.injEq, Option.some.injEq] at matched
+                  subst bs
+                  exact reorderBindings_names ordered
+          | none =>
+              cases hr : matchPatternWith constant depth types heap right value with
+              | error e => simp [matchPatternWith, hl, hr, bind, Except.bind, pure, Except.pure, Except.map] at matched
+              | ok selected =>
+                  cases selected with
+                  | none => simp [matchPatternWith, hl, hr, bind, Except.bind, pure, Except.pure, Except.map] at matched
+                  | some second =>
+                      simp only [matchPatternWith, hl, hr, bind, Except.bind, pure, Except.pure, Except.map] at matched
+                      cases ordered : reorderBindings layout.names layout.rightOrder second with
+                      | none => simp [ordered] at matched
+                      | some result =>
+                          simp only [ordered, Except.ok.injEq, Option.some.injEq] at matched
+                          subst bs
+                          exact reorderBindings_names ordered
   | load p =>
       simp only [matchPatternWith, except_bind_ok] at matched
       obtain ⟨v, _, matched⟩ := matched

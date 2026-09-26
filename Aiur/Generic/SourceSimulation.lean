@@ -47,7 +47,7 @@ theorem const_inScope (pattern : Pattern F) {expr : Expr F}
       simp only [Consts.toExpr, except_pure_ok] at interpreted
       subst expr
       simp only [inScope]
-  | wildcard | bind => simp [Consts.toExpr] at interpreted
+  | wildcard | bind | orElse => simp [Consts.toExpr] at interpreted
   | load p | «repeat» p n =>
       simp only [Consts.toExpr, except_bind_ok, except_pure_ok] at interpreted
       obtain ⟨e, he, rfl⟩ := interpreted

@@ -117,6 +117,7 @@ def expandPattern (aliases : List AliasDecl) : Pattern α → Except String (Pat
   | .bind n => pure (.bind n)
   | .global n t => pure (.global n t)
   | .record head ps => return .record (← expandRecordHead aliases head) (← ps.mapM (expandPattern aliases))
+  | .orElse left right names => return .orElse (← expandPattern aliases left) (← expandPattern aliases right) names
   | .load p => return .load (← expandPattern aliases p)
   | .tuple ps => return .tuple (← ps.mapM (expandPattern aliases))
   | .array ps => return .array (← ps.mapM (expandPattern aliases))
@@ -186,6 +187,9 @@ def checkPatternHead (enums : List EnumDecl) (aliases : List AliasDecl) (rigid :
 
 def checkPatternTypes (enums : List EnumDecl) (aliases : List AliasDecl) (rigid : List String) : Pattern α → Except String Unit
   | .literal _ | .wildcard | .bind _ | .global _ _ => pure ()
+  | .orElse left right _ => do
+      checkPatternTypes enums aliases rigid left
+      checkPatternTypes enums aliases rigid right
   | .load p | .repeat p _ => checkPatternTypes enums aliases rigid p
   | .tuple ps | .array ps => do
       let _ ← ps.mapM (checkPatternTypes enums aliases rigid)

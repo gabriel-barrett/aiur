@@ -192,11 +192,11 @@ def run : IO Unit := do
 #guard_msgs in
 #print axioms Aiur.Generic.PatternLowering.load_bind_iff
 
-/-- info: 'Aiur.Generic.PatternLowering.letSteps_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Aiur.Generic.PatternLowering.letSteps_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.Generic.PatternLowering.letSteps_iff
 
-/-- info: 'Aiur.Generic.PatternLowering.matchSteps_iff' depends on axioms: [propext, Quot.sound] -/
+/-- info: 'Aiur.Generic.PatternLowering.matchSteps_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Aiur.Generic.PatternLowering.matchSteps_iff
 

@@ -19,6 +19,7 @@ def pattern (p : Program F) (depth : Nat) (types : SourceSemantics.Types) :
       match depth with
       | 0 => throw "const dependency depth exceeded"
       | depth + 1 => pattern p depth [] (← elaborateConst p name (type.subst types))
+  | .orElse left right names => return .orElse (← pattern p depth types left) (← pattern p depth types right) names
   | .load child => return .load (← pattern p depth types child)
   | .record head children => return .record (head.subst types) (← children.mapM (pattern p depth types))
   | .tuple children => return .tuple (← children.mapM (pattern p depth types))

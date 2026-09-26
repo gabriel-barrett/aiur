@@ -1,5 +1,7 @@
-import Aiur.Generic.PatternFacts
-import Aiur.Generic.PreparationPatternFacts
+import Aiur.Generic.PatternLowering
+import Aiur.Generic.OpenCore
+import Aiur.Generic.BindingOrderFacts
+import Mathlib.Data.List.Forall2
 
 namespace Aiur.Generic.PatternLowering
 
@@ -28,6 +30,24 @@ theorem resolveBindings_cons (user temp : String) (links : List (String × Strin
   cases locals.find? (·.1 == temp) with
   | none => rfl
   | some pair => cases lookupValues locals (links.map Prod.snd) <;> rfl
+
+theorem resolveBindings_names {links : List (String × String)}
+    {locals bindings : Environment F Nat} (found : resolveBindings links locals = some bindings) :
+    bindings.map Prod.fst = links.map Prod.fst := by
+  induction links generalizing bindings with
+  | nil => simp_all
+  | cons link links ih =>
+      rcases link with ⟨user, temp⟩
+      rw [resolveBindings_cons] at found
+      cases head : locals.find? (·.1 == temp) with
+      | none => simp [head] at found
+      | some pair =>
+          cases tail : resolveBindings links locals with
+          | none => simp [head, tail] at found
+          | some rest =>
+              simp [head, tail] at found
+              subst bindings
+              simp only [List.map_cons, ih tail]
 
 theorem resolveBindings_append (left right : List (String × String)) (locals : Environment F Nat) :
     resolveBindings (left ++ right) locals = do
