@@ -67,6 +67,40 @@ def Ty.toCore : Ty → Aiur.Ty
   | .named name args => .enum (Instance.symbol ⟨name, args⟩)
 termination_by type => sizeOf type
 
+/-- Named fields stay in source order. The checker records their positions in
+  declaration order as type/layout information; `none` slots are omitted fields
+  in a pattern with `..`. An unannotated head is used only before checking. -/
+structure RecordHead where
+  type : Ty
+  fields : List String
+  rest : Bool := false
+  params : List String := []
+  slots : Option (List (Option Nat)) := none
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
+def RecordHead.positions (head : RecordHead) (length : Nat) : List (Option Nat) :=
+  head.slots.getD ((List.range length).map some)
+
+def RecordHead.order (head : RecordHead) (items : List A) (fallback : A) : List A :=
+  (head.positions items.length).map fun slot => (slot.bind (items[·]?)).getD fallback
+
+def RecordHead.subst (types : List (String × Ty)) (head : RecordHead) : RecordHead :=
+  { head with type := head.type.subst types }
+
+/-- A checked named projection retains its source spelling and nominal owner. -/
+structure FieldRef where
+  name : String
+  owner : Option Ty := none
+  index : Nat := 0
+  arity : Nat := 0
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
+def FieldRef.subst (types : List (String × Ty)) (field : FieldRef) : FieldRef :=
+  { field with owner := field.owner.map (Ty.subst types) }
+
+/-- Internal semantic constructor for a nominal product. -/
+def structConstructor : String := "$struct"
+
 inductive Pattern (α : Type) where
   | literal (value : α)
   | wildcard
@@ -78,6 +112,7 @@ inductive Pattern (α : Type) where
   | tuple (items : List (Pattern α))
   | array (items : List (Pattern α))
   | repeat (item : Pattern α) (length : Nat)
+  | record (head : RecordHead) (items : List (Pattern α))
   | construct (type : Ty) (constructor : String) (args : List (Pattern α))
   /-- An expanded constructor qualifier; `params` bind inference slots in `type`.
   Elaboration replaces this with an ordinary nominal constructor pattern. -/
@@ -111,6 +146,8 @@ inductive Expr (α : Type) where
   | construct (name : String) (types : Option (List Ty)) (constructor : String) (args : List (Expr α))
   /-- Alias-free constructor template, consumed by generic inference. -/
   | constructAs (params : List String) (type : Ty) (constructor : String) (args : List (Expr α))
+  | record (head : RecordHead) (items : List (Expr α))
+  | member (value : Expr α) (field : FieldRef)
   | project (value : Expr α) (index : Nat)
   | letValue (pattern : Pattern α) (value body : Expr α)
   | store (value : Expr α)
@@ -143,6 +180,17 @@ structure EnumDecl where
   constructors : List ConstructorDecl
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
+structure StructDecl where
+  name : String
+  typeParams : List String := []
+  fields : List (String × Ty)
+  deriving Repr, BEq, Inhabited, Lean.ToExpr
+
+/-- Struct signatures reuse the nominal-product part of the type/layout model.
+The source declaration itself remains a `StructDecl`. -/
+def StructDecl.signature (decl : StructDecl) : EnumDecl :=
+  ⟨decl.name, decl.typeParams, [⟨structConstructor, decl.fields.map Prod.snd⟩]⟩
+
 structure Table (α : Type) where
   name : String
   rowType : Ty
@@ -173,6 +221,7 @@ structure ConstDecl (α : Type) where
 structure Program (α : Type) where
   functions : List (Function α)
   enums : List EnumDecl := []
+  structs : List StructDecl := []
   tables : List (Table α) := []
   maps : List MapDecl := []
   /-- Transparent type declarations retained in the source program. -/
@@ -182,11 +231,14 @@ structure Program (α : Type) where
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 def Program.findFunction? (p : Program α) (name : String) := p.functions.find? (·.name == name)
-def Program.findEnum? (p : Program α) (name : String) := p.enums.find? (·.name == name)
+def Program.nominals (p : Program α) : List EnumDecl := p.enums ++ p.structs.map StructDecl.signature
+def Program.findStruct? (p : Program α) (name : String) := p.structs.find? (·.name == name)
+def Program.findEnum? (p : Program α) (name : String) := p.nominals.find? (·.name == name)
 
 def Pattern.bindingNames : Pattern α → List String
   | .literal _ | .wildcard | .global _ _ => []
   | .bind n => [n]
+  | .record head ps => (head.order (ps.map Pattern.bindingNames) []).flatten
   | .load p => p.bindingNames
   | .repeat p n => (List.replicate n p.bindingNames).flatten
   | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => ps.flatMap Pattern.bindingNames
@@ -195,12 +247,14 @@ termination_by p => sizeOf p
 def Pattern.hasLoads : Pattern α → Bool
   | .literal _ | .wildcard | .bind _ | .global _ _ => false
   | .load _ => true
+  | .record head ps => (head.order (ps.map Pattern.hasLoads) false).any id
   | .repeat p n => n != 0 && p.hasLoads
   | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => (ps.map Pattern.hasLoads).any id
 termination_by p => sizeOf p
 
 def Pattern.irrefutable (enums : List EnumDecl) : Pattern α → Bool
   | .literal _ | .global _ _ => false
+  | .record head ps => (head.order (ps.map (Pattern.irrefutable enums)) true).all id
   | .wildcard | .bind _ => true
   | .load p => p.irrefutable enums
   | .tuple ps | .array ps => (ps.map (Pattern.irrefutable enums)).all id
@@ -217,6 +271,7 @@ def Pattern.condition : Pattern α → Pattern α
   | .global n t => .global n t
   | .wildcard | .bind _ => .wildcard
   | .load p => .load p.condition
+  | .record head ps => .construct head.type structConstructor (head.order (ps.map Pattern.condition) .wildcard)
   | .tuple ps | .array ps => .tuple (ps.map Pattern.condition)
   | .repeat p n => .tuple (List.replicate n p.condition)
   | .construct t c ps => .construct t c (ps.map Pattern.condition)
@@ -229,6 +284,7 @@ def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .bind n => .bind n
   | .global n t => .global n t
   | .load p => .load (p.map f)
+  | .record head xs => .record head (xs.map (Pattern.map f))
   | .tuple xs => .tuple (xs.map (Pattern.map f))
   | .array xs => .array (xs.map (Pattern.map f))
   | .repeat p n => .repeat (p.map f) n
@@ -247,6 +303,8 @@ def Expr.map (f : α → β) : Expr α → Expr β
   | .slice x start stop => .slice (x.map f) start stop
   | .construct n ts c xs => .construct n ts c (xs.map (Expr.map f))
   | .constructAs ps t c xs => .constructAs ps t c (xs.map (Expr.map f))
+  | .record head xs => .record head (xs.map (Expr.map f))
+  | .member x field => .member (x.map f) field
   | .project x i => .project (x.map f) i
   | .letValue p x b => .letValue (p.map f) (x.map f) (b.map f)
   | .store x => .store (x.map f)
@@ -269,6 +327,7 @@ def ConstDecl.map (f : α → β) (d : ConstDecl α) : ConstDecl β :=
 def Program.map (f : α → β) (p : Program α) : Program β := {
   functions := p.functions.map fun fn => { fn with body := fn.body.map f }
   enums := p.enums
+  structs := p.structs
   tables := p.tables.map fun table => { table with rows := table.rows.map (Expr.map f) }
   maps := p.maps
   aliases := p.aliases

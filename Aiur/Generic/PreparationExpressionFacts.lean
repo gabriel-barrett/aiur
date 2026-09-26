@@ -29,7 +29,7 @@ theorem expression_closed (program : Program F) (depth : Nat) (types) (expr : Ex
       obtain ⟨q, hq, rfl⟩ := expanded
       constructor
       exact sub _ _ _ (by apply Prod.Lex.right; simp_wf <;> omega) hc hq
-  | tuple hc | array hc | construct hc | constructAs hc =>
+  | record hc | tuple hc | array hc | construct hc | constructAs hc =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qs, hqs, rfl⟩ := expanded
       constructor
@@ -210,6 +210,20 @@ theorem expression_preparation_open_iff [Field F] [DecidableEq F]
         | constructAs ev =>
             simpa only [names] using (OpenSource.EvalExpr.constructAs (params := params) (t := t)
               (ctor := ctor) ((ih _ _ _ _).mpr ev))
+  | record head es =>
+      simp only [expression, except_bind_ok, except_pure_ok] at expanded
+      obtain ⟨qs, hqs, rfl⟩ := expanded
+      have rel := children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega) hqs
+      have ih := args_congr rel
+      have names : constructorName [] (head.subst types).type = constructorName types head.type := by
+        simp only [RecordHead.subst, constructorName, Ty.subst_nil]
+      constructor
+      · intro h; cases h with
+        | record ev =>
+            simpa only [names, RecordHead.order_subst] using (OpenSource.EvalExpr.record (head := head.subst types) ((ih _ _ _ _).mp ev))
+      · intro h; cases h with
+        | record ev =>
+            simpa only [names, RecordHead.order_subst] using (OpenSource.EvalExpr.record (head := head) ((ih _ _ _ _).mpr ev))
   | construct n ts ctor es =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qs, hqs, rfl⟩ := expanded
@@ -226,6 +240,15 @@ theorem expression_preparation_open_iff [Field F] [DecidableEq F]
         | construct ev =>
             simpa only [names] using (OpenSource.EvalExpr.construct (name := n) (args := ts)
               (ctor := ctor) ((ih _ _ _ _).mpr ev))
+  | member e field =>
+      simp only [expression, except_bind_ok, except_pure_ok] at expanded
+      obtain ⟨q, hq, rfl⟩ := expanded
+      have ih := sub depth types e (by apply Prod.Lex.right; simp_wf; omega) hq
+      constructor
+      · intro h; cases h with
+        | member ev op => exact .member ((ih _ _ _ _).mp ev) (by simpa only [memberValue_subst] using op)
+      · intro h; cases h with
+        | member ev op => exact .member ((ih _ _ _ _).mpr ev) (by simpa only [memberValue_subst] using op)
   | «repeat» e n | index e i | project e i | slice e start stop | store e | load e | hint t e | neg e =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨q, hq, rfl⟩ := expanded
@@ -383,7 +406,7 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
           · intro h; cases h with
             | exit ev => exact .exit ((ihn _ _ _ _).mpr ev)
             | exitPayload ev => exact .exitPayload ((ihe _ _ _ _ _).mpr ev)
-  | tuple es | array es | construct _ _ _ es | constructAs _ _ _ es | call _ _ es =>
+  | record _ es | tuple es | array es | construct _ _ _ es | constructAs _ _ _ es | call _ _ es =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨qs, hqs, rfl⟩ := expanded
       have ih := args_exit_congr (children es (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega) hqs)
@@ -393,6 +416,7 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
           | exact .fromTuple ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromArray ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromConstruct ((ih _ _ _ _ _).mp ‹_›)
+          | exact .fromRecord ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromConstructAs ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromCall ((ih _ _ _ _ _).mp ‹_›)
       · intro h; cases h
@@ -400,9 +424,10 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
           | exact .fromTuple ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromArray ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromConstruct ((ih _ _ _ _ _).mpr ‹_›)
+          | exact .fromRecord ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromConstructAs ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromCall ((ih _ _ _ _ _).mpr ‹_›)
-  | «repeat» e n | index e i | project e i | slice e start stop | store e | load e | hint t e | neg e =>
+  | member e field | «repeat» e n | index e i | project e i | slice e start stop | store e | load e | hint t e | neg e =>
       simp only [expression, except_bind_ok, except_pure_ok] at expanded
       obtain ⟨q, hq, rfl⟩ := expanded
       have ih := sub depth types e (by apply Prod.Lex.right; simp_wf <;> omega) hq
@@ -411,6 +436,7 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
         first
           | exact .fromRepeat ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromIndex ((ih _ _ _ _ _).mp ‹_›)
+          | exact .fromMember ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromProject ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromSlice ((ih _ _ _ _ _).mp ‹_›)
           | exact .fromStore ((ih _ _ _ _ _).mp ‹_›)
@@ -421,6 +447,7 @@ theorem exit_preparation_open_iff [Field F] [DecidableEq F]
         first
           | exact .fromRepeat ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromIndex ((ih _ _ _ _ _).mpr ‹_›)
+          | exact .fromMember ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromProject ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromSlice ((ih _ _ _ _ _).mpr ‹_›)
           | exact .fromStore ((ih _ _ _ _ _).mpr ‹_›)

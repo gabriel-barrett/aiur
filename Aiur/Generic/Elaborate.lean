@@ -135,10 +135,36 @@ private def instantiateTemplate (p : Program α) (rigid params : List String) (t
   let ts ← params.mapM fun _ => fresh
   return target.subst (params.zip ts)
 
+private def inferRecordHead (p : Program α) (rigid : List String)
+    (head : RecordHead) (count : Nat) (expected : Option Ty) : Infer (RecordHead × List Ty) := do
+  let type : Ty ← if head.params.isEmpty then do
+      let .named name supplied := head.type | throw "struct construction requires a nominal struct type"
+      let some decl := p.findStruct? name | throw s!"unknown struct '{name}'"
+      pure (Ty.named name (← typeArgs p rigid decl.typeParams (if supplied.isEmpty then none else some supplied)))
+    else instantiateTemplate p rigid head.params head.type
+  if let some expected := expected then agree type expected
+  let .named name types ← zonk type | throw "expected a known struct type"
+  let some decl := p.findStruct? name | throw s!"unknown struct '{name}'"
+  let env ← liftM (arguments decl.typeParams types)
+  if head.fields.length != count then throw "struct field/value count mismatch"
+  if let some field := findDuplicate head.fields [] then throw s!"duplicate struct field '{field}'"
+  let fieldTypes ← head.fields.mapM fun field => do
+    let some type := decl.fields.lookup field | throw s!"unknown field '{field}' in struct '{name}'"
+    pure (type.subst env)
+  if !head.rest then
+    for (field, _) in decl.fields do
+      if !head.fields.contains field then throw s!"missing field '{field}' in struct '{name}'"
+  let slots := decl.fields.map fun (field, _) => head.fields.findIdx? (· == field)
+  return ({ head with type := .named name types, params := [], slots := some slots }, fieldTypes)
+
 private def inferPattern (p : Program α) (rigid : List String) : Nat → Pattern α → Ty → Infer (Pattern α × List (String × Ty))
   | 0, _, _ => throw "pattern depth limit exceeded"
   | fuel + 1, pat, expected => do
       match pat with
+      | .record head ps =>
+          let (head, types) ← inferRecordHead p rigid head ps.length (some expected)
+          let pairs ← (ps.zip types).mapM fun (pat, type) => inferPattern p rigid fuel pat type
+          return (.record head (pairs.map Prod.fst), (head.order (pairs.map Prod.snd) []).flatten)
       | .literal x => agree .field expected; return (.literal x, [])
       | .wildcard => return (.wildcard, [])
       | .bind n => return (.bind n, [(n, expected)])
@@ -217,6 +243,21 @@ private def infer (p : Program α) (rigid : List String) :
             | none => fresh
           modify fun s => { s with dead := t.parameters ++ s.dead }
           pure (t, .control (.exit target) value)
+      | .record head xs => do
+          if head.rest then throw "struct values must specify every field"
+          let (head, types) ← inferRecordHead p rigid head xs.length expected
+          let pairs ← (xs.zip types).mapM fun (expr, type) => infer p rigid fuel locals expr (some type)
+          pure (head.type, .record head (pairs.map Prod.snd))
+      | .member value field => do
+          let (type, value) ← infer p rigid fuel locals value none
+          let .named name types ← zonk type | throw "named field access requires a struct"
+          let some decl := p.findStruct? name | throw "named field access requires a struct"
+          let some index := decl.fields.findIdx? (fun pair => pair.1 == field.name) |
+            throw s!"unknown field '{field.name}' in struct '{name}'"
+          let some type := decl.fields.lookup field.name | throw "unknown struct field"
+          let env ← liftM (arguments decl.typeParams types)
+          pure (type.subst env, .member value
+            { field with owner := some (.named name types), index, arity := decl.fields.length })
       | .literal x => pure (.field, .literal x)
       | .var n =>
           match locals.lookup n with
@@ -337,6 +378,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
   | .wildcard => pure .wildcard
   | .bind n => pure (.bind n)
   | .global n t => return .global n (← t.mapM (finishType s))
+  | .record head ps => return .record { head with type := ← finishType s head.type } (← ps.mapM (finishPattern s))
   | .load p => return .load (← finishPattern s p)
   | .tuple ps => return .tuple (← ps.mapM (finishPattern s))
   | .array ps => return .array (← ps.mapM (finishPattern s))
@@ -357,6 +399,8 @@ private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
   | .slice x start stop => return .slice (← finishExpr s x) start stop
   | .construct n ts c xs => return .construct n (some (← (ts.getD []).mapM (finishType s))) c (← xs.mapM (finishExpr s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor template"
+  | .record head xs => return .record { head with type := ← finishType s head.type } (← xs.mapM (finishExpr s))
+  | .member x field => return .member (← finishExpr s x) { field with owner := ← field.owner.mapM (finishType s) }
   | .project x i => return .project (← finishExpr s x) i
   | .letValue p x b => return .letValue (← finishPattern s p) (← finishExpr s x) (← finishExpr s b)
   | .store x => return .store (← finishExpr s x)
@@ -393,8 +437,8 @@ Consts cannot contain calls, so a reference introduces no function dependency. -
 def sourceCalls (types : List (String × Ty)) : Expr α → List Instance
   | .call name supplied args =>
       ⟨name, (supplied.getD []).map (Ty.subst types)⟩ :: args.flatMap (sourceCalls types)
-  | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
-  | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => sourceCalls types x
+  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
+  | .member x _ | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => sourceCalls types x
   | .letValue _ x b | .binary _ x b => sourceCalls types x ++ sourceCalls types b
   | .matchValue x arms => sourceCalls types x ++ arms.flatMap (fun a => sourceCalls types a.2)
   | _ => []
@@ -429,6 +473,18 @@ def elaborate (p : Program α) : Except String (Program α) := do
   if let some n := findDuplicate (p.functions.map (·.name) ++ p.maps.map (·.name)) [] then
     throw s!"duplicate function/map '{n}'"
   if let some n := findDuplicate (p.enums.map (·.name)) [] then throw s!"duplicate enum '{n}'"
+  for d in p.structs do
+    checkIdentifier d.name
+    if d.name == "Field" then throw "Field is a reserved type name"
+    checkParams d.typeParams
+    if let some field := findDuplicate (d.fields.map Prod.fst) [] then throw s!"duplicate struct field '{field}'"
+    for (name, type) in d.fields do
+      checkIdentifier name
+      checkType p d.typeParams type
+    checkInlineType p 1024 [] (.named d.name (d.typeParams.map Ty.param))
+    let name := (Instance.mk d.name (d.typeParams.map Ty.param)).symbol
+    let decls ← collectEnums p d.typeParams 1024 [] [name]
+    (checkDeclarations decls).mapError toString
   for d in p.enums do
     checkIdentifier d.name
     if d.name == "Field" then throw "Field is a reserved type name"
@@ -486,6 +542,7 @@ def inspectPattern (p : Program α) : Nat → Pattern α → Except String (Patt
   | fuel + 1, pat => match pat with
     | .global name (some type) => do inspectPattern p fuel (← elaborateConst p name type)
     | .global name none => throw s!"missing type information for const '::{name}'"
+    | .record head ps => return .record head (← ps.mapM (inspectPattern p fuel))
     | .load pat => return .load (← inspectPattern p fuel pat)
     | .tuple ps => return .tuple (← ps.mapM (inspectPattern p fuel))
     | .array ps => return .array (← ps.mapM (inspectPattern p fuel))

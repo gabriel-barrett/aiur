@@ -156,6 +156,17 @@ theorem exec_project : Exec world calls types locals (.project expr i) normal ab
       exact .inl ⟨_, _, .project ev operation, post⟩
     · exact .inr ⟨_, _, _, .fromProject ev, post⟩
 
+theorem exec_member : Exec world calls types locals (.member expr field) normal abrupt heap ↔
+    Exec world calls types locals expr (fun v h => ∃ result, memberValue types field v = .ok result ∧ normal result h) abrupt heap := by
+  constructor
+  · rintro (⟨v, h, ev, post⟩ | ⟨t, v, h, ev, post⟩)
+    · cases ev with | member value operation => exact .inl ⟨_, _, value, _, operation, post⟩
+    · cases ev with | fromMember ev => exact .inr ⟨_, _, _, ev, post⟩
+  · rintro (⟨v, h, ev, post⟩ | ⟨t, v, h, ev, post⟩)
+    · rcases post with ⟨result, operation, post⟩
+      exact .inl ⟨_, _, .member ev operation, post⟩
+    · exact .inr ⟨_, _, _, .fromMember ev, post⟩
+
 theorem exec_slice : Exec world calls types locals (.slice expr start stop) normal abrupt heap ↔
     Exec world calls types locals expr (fun v h => ∃ result, sliceValue v start stop = .ok result ∧ normal result h) abrupt heap := by
   constructor
@@ -239,6 +250,16 @@ theorem exec_constructAs : Exec world calls types locals (.constructAs params ty
   · rintro (⟨vs, h, ev, post⟩ | ⟨t, v, h, ev, post⟩)
     · exact .inl ⟨_, _, .constructAs ev, post⟩
     · exact .inr ⟨_, _, _, .fromConstructAs ev, post⟩
+
+theorem exec_record : Exec world calls types locals (.record head exprs) normal abrupt heap ↔
+    ExecArgs world calls types locals exprs (fun vs h => normal (.construct (constructorName types head.type) structConstructor (head.order vs (.tuple []))) h) abrupt heap := by
+  constructor
+  · rintro (⟨v, h, ev, post⟩ | ⟨t, v, h, ev, post⟩)
+    · cases ev with | record ev => exact .inl ⟨_, _, ev, post⟩
+    · cases ev with | fromRecord ev => exact .inr ⟨_, _, _, ev, post⟩
+  · rintro (⟨vs, h, ev, post⟩ | ⟨t, v, h, ev, post⟩)
+    · exact .inl ⟨_, _, .record ev, post⟩
+    · exact .inr ⟨_, _, _, .fromRecord ev, post⟩
 
 theorem exec_call : Exec world calls types locals (.call name typeArgs exprs) normal abrupt heap ↔
     ExecArgs world calls types locals exprs

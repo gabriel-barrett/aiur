@@ -54,7 +54,7 @@ theorem substitute_map (f : α → β) (pat : Pattern α)
   | load p | «repeat» p _ =>
       simp only [Pattern.map, substitute, sub p (by simp_wf <;> omega)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Pattern.map]
-  | tuple ps | array ps | construct _ _ ps | constructAs _ _ _ ps =>
+  | record _ ps | tuple ps | array ps | construct _ _ ps | constructAs _ _ _ ps =>
       simp only [Pattern.map, substitute]
       rw [children ps (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Pattern.map]
@@ -121,7 +121,7 @@ theorem toExpr_map (f : α → β) (pat : Pattern α) :
   | load p | «repeat» p _ =>
       simp only [Pattern.map, toExpr, sub p (by simp_wf <;> omega)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
-  | tuple ps | array ps | constructAs _ _ _ ps =>
+  | record _ ps | tuple ps | array ps | constructAs _ _ _ ps =>
       simp only [Pattern.map, toExpr]
       rw [children ps (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
@@ -139,6 +139,12 @@ theorem bindingNames_map (f : α → β) (pat : Pattern α) :
   | literal | wildcard | bind | global => simp [Pattern.map, Pattern.bindingNames]
   | load p => simpa only [Pattern.map, Pattern.bindingNames] using bindingNames_map f p
   | «repeat» p n => simp only [Pattern.map, Pattern.bindingNames, bindingNames_map f p]
+  | record head ps =>
+      simp only [Pattern.map, Pattern.bindingNames, List.map_map]
+      congr 2
+      apply List.map_congr_left
+      intro p member
+      exact bindingNames_map f p
   | tuple ps | array ps | construct _ _ ps | constructAs _ _ _ ps =>
       simp only [Pattern.map, Pattern.bindingNames, List.flatMap_map]
       apply List.flatMap_congr
@@ -179,11 +185,11 @@ theorem expandExpr_map (f : α → β) (decls : List (ConstDecl α)) (locals) (e
       simp only [Expr.map, expandExpr, List.any_map, Function.comp_def, ConstDecl.map]
       split <;> simp [expression_map, Except.map, pure, Except.pure, Expr.map]
   | global n ann => simpa only [Expr.map, expandExpr] using expression_map f decls n
-  | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
+  | record _ xs | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, expandExpr]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
-  | control _ x | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
+  | member x _ | control _ x | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
       simp only [Expr.map, expandExpr, sub x (by simp_wf <;> omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
   | binary _ x b =>

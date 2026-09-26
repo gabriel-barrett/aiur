@@ -33,13 +33,19 @@ not an outstanding TODO.
 - [x] **Type aliases.** Named and parameterized declarations are retained;
   checking normalizes their type information while literals are natural numbers. Forward references,
   qualified constructors/patterns, cycle checks, and canonical specialization
-  preserve the distinction between transparent aliases and nominal enums.
+  preserve the distinction between transparent aliases and nominal types.
   See [type aliases](type-aliases.md).
 
-- [x] **Generic functions and enums.** Implement inferred/explicit type arguments,
+- [x] **Generic functions, enums, and structs.** Implement inferred/explicit type arguments,
   direct generic evaluation, external entry selection, and conservative finite
   specialization. Source evaluation equivalence is proved for finite instance
   selection and compilation to the monomorphic core. See [generics](generics.md).
+
+- [x] **Nominal structs.** Named fields, inferred/explicit generic arguments,
+  field projection, destructuring with `..`, aliases, consts, pointers, tables,
+  and hints. Native evaluation and late lowering are proved through both row
+  checkers, with the existing acyclicity condition for memoized soundness.
+  See [structs](structs.md).
 
 - [ ] **OR patterns.** Support alternatives such as `p1 | p2`, checking that
   alternatives bind the same names at compatible types. Preserve first-match

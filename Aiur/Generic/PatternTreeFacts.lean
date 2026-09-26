@@ -117,6 +117,51 @@ theorem planTree_match [DecidableEq F] (pat : Pattern F)
         rw [← units, matchList_map]
         exact Preparation.matchList_congr rel vs
       · simp [← lengths, equal, Ne.symm equal]
+  | record head ps =>
+      have hp : ∀ p ∈ ps, Consts.dependencies p = [] := by
+        simpa only [Consts.dependencies, List.flatMap_eq_nil_iff] using resolved
+      let selected : List (Option { p // p ∈ ps }) := head.order (ps.attach.map some) none
+      let parts : List (String × PlanTree F) := (selected.mapM (fun (child : Option { p // p ∈ ps }) => do
+        let name ← fresh stem
+        let tree ← match child with
+          | some p => planTree types stem p.val
+          | none => pure (PlanTree.wildcard : PlanTree F)
+        return (name, tree)) state).1
+      have rel : List.Forall₂ (fun child part => ∀ v,
+          (match child with
+            | some p => matchPatternWith constant depth types heap p.val v
+            | none => pure (some [])) =
+          matchPatternWith constant depth [] heap part.2.erase v) selected parts := by
+        apply state_mapM_relation
+        intro child _ s v
+        cases child with
+        | none => simp [state_bind_run, state_pure_run, fresh_run, PlanTree.erase, matchPatternWith]
+        | some p =>
+            simp only [state_bind_run, state_pure_run, fresh_run]
+            exact sub p.val (by simp_wf; have := List.sizeOf_lt_of_mem p.property; omega) (hp _ p.property) _ v
+      have lengths := rel.length_eq
+      simp only [planTree, state_map_result, PlanTree.erase]
+      change matchPatternWith constant depth types heap (.record head ps) value =
+        matchPatternWith constant depth [] heap
+          (.construct (.named (constructorName types head.type) []) structConstructor
+            (parts.map fun part => part.2.erase)) value
+      cases value <;> simp only [matchPatternWith, Preparation.matchList_attach,
+        constructorName, Ty.subst, Ty.toCore, Instance.symbol, List.map_nil, List.isEmpty_nil,
+        ↓reduceIte, pure, Except.pure, bind, Except.bind, List.length_map, matchList_map]
+      rename_i n c vs
+      change (if _ then _ else if selected.length != vs.length then _ else _) = _
+      rw [lengths]
+      by_cases names : n = constructorName types head.type ∧ c = structConstructor
+      · obtain ⟨rfl, rfl⟩ := names
+        simp only [constructorName, bne_self_eq_false, Bool.false_or, Bool.false_eq_true, ↓reduceIte]
+        split
+        · rfl
+        · exact Preparation.matchList_congr rel _
+      · have no : (n != constructorName types head.type || c != structConstructor) = true := by
+          simp only [Bool.or_eq_true, bne_iff_ne]
+          tauto
+        simp only [constructorName] at no
+        simp only [no, Bool.true_or, ↓reduceIte]
   | construct t c ps | constructAs params t c ps =>
       have hp : ∀ p ∈ ps, Consts.dependencies p = [] := by
         simpa only [Consts.dependencies, List.flatMap_eq_nil_iff] using resolved

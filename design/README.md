@@ -15,7 +15,7 @@ design, and keep proposals and unanswered questions explicitly separate.
   the circuit compilation boundary, and the completed source/checker proofs.
 - [Control flow](control-flow.md): named blocks, lexical breaks, function returns,
   native exit semantics, guarded compilation, and end-to-end proofs.
-- [Generics](generics.md): inferred type arguments, generic functions and enums,
+- [Generics](generics.md): inferred type arguments, generic functions, enums, and structs,
   external entry selection, direct evaluation, and proved specialization.
 - [Type aliases](type-aliases.md): transparent parameterized aliases, type normalization
   during generic inference, constructor qualification, and cycle checks.
@@ -29,6 +29,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   heterogeneous table, allocation bounds, and source/circuit correspondence.
 - [Pointer patterns](pointer-patterns.md): `&pattern` as a load, nested ordered
   matching, scope hygiene, and lowering to existing ROM operations.
+- [Structs](structs.md): nominal named products, generic construction and patterns,
+  field access, initializer order, and proved late circuit lowering.
 - [Enums](enums.md): payloads, recursion through pointers, semantic values,
   canonical circuit layouts, root validity, and proved correspondence.
 - [Tables and maps](tables.md): shared precommitted traces, typed constants,

@@ -24,12 +24,14 @@ theorem EvalExpr.changeLocals (ev : EvalExpr world calls types locals expr befor
       exact .var (by rw [← agree _ (by simp [ControlLower.names])]; exact lookup)
   | array _ ih => intro other agree; exact .array (ih other (by simpa only [ControlLower.names] using agree))
   | constructAs _ ih => intro other agree; exact .constructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | record _ ih => intro other agree; exact .record (ih other (by simpa only [ControlLower.names] using agree))
   | «repeat» _ ih => intro other agree; exact .repeat (ih other (by simpa only [ControlLower.names] using agree))
   | index _ op ih => intro other agree; exact .index (ih other (by simpa only [ControlLower.names] using agree)) op
   | slice _ op ih => intro other agree; exact .slice (ih other (by simpa only [ControlLower.names] using agree)) op
   | tuple _ ih => intro other agree; exact .tuple (ih other (by simpa only [ControlLower.names] using agree))
   | construct _ ih => intro other agree; exact .construct (ih other (by simpa only [ControlLower.names] using agree))
   | project _ projected ih => intro other agree; exact .project (ih other (by simpa only [ControlLower.names] using agree)) projected
+  | member _ membered ih => intro other agree; exact .member (ih other (by simpa only [ControlLower.names] using agree)) membered
   | letValue _ matched _ ih1 ih2 =>
       intro other agree
       apply EvalExpr.letValue (ih1 other (agree.mono ?_)) matched
@@ -92,9 +94,15 @@ theorem EvalExpr.changeLocals (ev : EvalExpr world calls types locals expr befor
   | fromConstructAs _ ih =>
       rename_i other agree
       exact .fromConstructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | fromRecord _ ih =>
+      rename_i other agree
+      exact .fromRecord (ih other (by simpa only [ControlLower.names] using agree))
   | fromProject _ ih =>
       rename_i other agree
       exact .fromProject (ih other (by simpa only [ControlLower.names] using agree))
+  | fromMember _ ih =>
+      rename_i other agree
+      exact .fromMember (ih other (by simpa only [ControlLower.names] using agree))
   | fromStore _ ih =>
       rename_i other agree
       exact .fromStore (ih other (by simpa only [ControlLower.names] using agree))
@@ -166,12 +174,14 @@ theorem EvalExit.changeLocals (ev : EvalExit world calls types locals expr befor
       exact .var (by rw [← agree _ (by simp [ControlLower.names])]; exact lookup)
   | array _ ih => rename_i other agree; exact .array (ih other (by simpa only [ControlLower.names] using agree))
   | constructAs _ ih => rename_i other agree; exact .constructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | record _ ih => rename_i other agree; exact .record (ih other (by simpa only [ControlLower.names] using agree))
   | «repeat» _ ih => rename_i other agree; exact .repeat (ih other (by simpa only [ControlLower.names] using agree))
   | index _ op ih => rename_i other agree; exact .index (ih other (by simpa only [ControlLower.names] using agree)) op
   | slice _ op ih => rename_i other agree; exact .slice (ih other (by simpa only [ControlLower.names] using agree)) op
   | tuple _ ih => rename_i other agree; exact .tuple (ih other (by simpa only [ControlLower.names] using agree))
   | construct _ ih => rename_i other agree; exact .construct (ih other (by simpa only [ControlLower.names] using agree))
   | project _ projected ih => rename_i other agree; exact .project (ih other (by simpa only [ControlLower.names] using agree)) projected
+  | member _ membered ih => rename_i other agree; exact .member (ih other (by simpa only [ControlLower.names] using agree)) membered
   | letValue _ matched _ ih1 ih2 =>
       rename_i other agree
       apply EvalExpr.letValue (ih1 other (agree.mono ?_)) matched
@@ -234,9 +244,15 @@ theorem EvalExit.changeLocals (ev : EvalExit world calls types locals expr befor
   | fromConstructAs _ ih =>
       intro other agree
       exact .fromConstructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | fromRecord _ ih =>
+      intro other agree
+      exact .fromRecord (ih other (by simpa only [ControlLower.names] using agree))
   | fromProject _ ih =>
       intro other agree
       exact .fromProject (ih other (by simpa only [ControlLower.names] using agree))
+  | fromMember _ ih =>
+      intro other agree
+      exact .fromMember (ih other (by simpa only [ControlLower.names] using agree))
   | fromStore _ ih =>
       intro other agree
       exact .fromStore (ih other (by simpa only [ControlLower.names] using agree))

@@ -3,14 +3,14 @@
 Aiur is a first-order programming language for zero-knowledge circuits, formalized
 in Lean. Source programs use arithmetic, calls, and pattern matching rather than
 gates or wires. A Lean elaborator accepts a Rust-like source string containing all
-enum declarations, type aliases, consts, function definitions, tables, and maps.
+enum and struct declarations, type aliases, consts, function definitions, tables, and maps.
 
 ## Values and signatures
 
-Types are `Field`, nominal enums, pointers `&A`, homogeneous arrays `[A; n]`, and finite tuples of types, nested to any depth. Tuples may have
+Types are `Field`, nominal enums and structs, pointers `&A`, homogeneous arrays `[A; n]`, and finite tuples of types, nested to any depth. Tuples may have
 any arity. `()` is unit; `(x,)` is a singleton tuple; `(x)` is grouping. Tuple
 shape matters: `(a, b, c)` and `(a, (b, c))` have different types. There are no
-structs or higher-order values. Generic functions and nominal enums
+higher-order values. Generic functions, enums, and structs
 accept type parameters; see [generics](generics.md).
 Transparent [type aliases](type-aliases.md) use `type Scalar = Field;` or
 `type Pair<T> = (T, T);`. Their type information normalizes during generic inference, while literals
@@ -29,7 +29,7 @@ fn sum((x, (y, z)): (Field, (Field, Field))) -> Field {
 ```
 
 Functions take any number of arguments and return one value, which may be a
-tuple, array, enum, or pointer. All signatures are available while checking every body. Forward calls and
+tuple, array, enum, struct, or pointer. All signatures are available while checking every body. Forward calls and
 mutual recursion work with tuple arguments and results. Functions are called by
 name and cannot themselves be passed or returned as values. Maps use the same
 call syntax and callable namespace, with their signatures available alongside
@@ -53,7 +53,7 @@ positions, so `const a = b;` can reference another const. Capitalization has no
 semantic role. See [consts](consts.md) for the allowed forms and cycle checks.
 
 Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
-store `&x`, load `*p`, tuple/array and qualified enum construction, zero-based projection (`p.0`, `p.1.0`), static array access (`a[0]`, `a[1..3]`), blocks, `let`, and
+store `&x`, load `*p`, tuple/array and qualified enum construction, named struct construction and field access (`p.x`), zero-based projection (`p.0`, `p.1.0`), static array access (`a[0]`, `a[1..3]`), blocks, `let`, and
 `match`, named blocks, `break`, and `return`. Arithmetic requires field operands. There is no implicit componentwise
 arithmetic or tuple flattening.
 
@@ -63,6 +63,13 @@ operand once. Lengths, indices, and range bounds are natural-number literals;
 out-of-bounds and dynamic accesses are rejected. Arrays retain a distinct,
 homogeneous source type and have native evaluation rules. They lower to tuples
 on the circuit path, after the [source semantic boundary](source-semantics.md). See [arrays](arrays.md).
+
+Structs use `struct Point { x: Field, y: Field }` and `Point { x, y: 2 }`.
+Types are nominal, fields can nest any type, and generic arguments may be
+inferred. Initializers execute in written order. Patterns such as
+`Point { x: first, .. }` inspect declaration order and preserve first-match
+behavior; omitted fields require `..`. See [structs](structs.md) for native
+semantics and circuit layout.
 
 ```rust
 fn combine(p: (Field, (Field, Field))) -> (Field, Field) {

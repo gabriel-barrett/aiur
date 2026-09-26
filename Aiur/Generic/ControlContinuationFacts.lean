@@ -144,6 +144,13 @@ theorem run_project (fresh : input ∉ next.names) :
   rw [eval_apply_exec, exec_project, exec_var_head]
   simp only [Continuation.run_add fresh, Ty.subst_nil]
 
+theorem run_member (fresh : input ∉ next.names) :
+    (Continuation.mk input (next.apply (.member (.var input) field))).run world calls locals value before result after ↔
+      ∃ output, memberValue [] field value = .ok output ∧ next.run world calls locals output before result after := by
+  change OpenSource.EvalExpr _ _ _ _ (next.apply _) _ _ _ ↔ _
+  rw [eval_apply_exec, exec_member, exec_var_head]
+  simp only [Continuation.run_add fresh, Ty.subst_nil]
+
 theorem run_slice (fresh : input ∉ next.names) :
     (Continuation.mk input (next.apply (.slice (.var input) start stop))).run world calls locals value before result after ↔
       ∃ output, sliceValue value start stop = .ok output ∧ next.run world calls locals output before result after := by
@@ -184,6 +191,13 @@ theorem run_constructAs (fresh : input ∉ next.names) :
       next.run world calls locals (.construct (constructorName [] type) ctor values) before result after := by
   change OpenSource.EvalExpr _ _ _ _ (next.apply _) _ _ _ ↔ _
   rw [eval_apply_exec, exec_constructAs, exec_projects (by simp)]
+  simp only [Continuation.run_add fresh]
+
+theorem run_record (fresh : input ∉ next.names) :
+    (Continuation.mk input (next.apply (.record head (projects input values.length)))).run world calls locals (.tuple values) before result after ↔
+      next.run world calls locals (.construct (constructorName [] head.type) structConstructor (head.order values (.tuple []))) before result after := by
+  change OpenSource.EvalExpr _ _ _ _ (next.apply _) _ _ _ ↔ _
+  rw [eval_apply_exec, exec_record, exec_projects (by simp)]
   simp only [Continuation.run_add fresh]
 
 theorem run_call (fresh : input ∉ next.names) :

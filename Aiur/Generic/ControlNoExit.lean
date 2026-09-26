@@ -9,7 +9,7 @@ theorem Consts.Closed.noControl (closed : Consts.Closed expr) :
   induction closed with
   | literal | global => simp [ControlLower.hasControl]
   | «repeat» _ ih | store _ ih => simpa only [ControlLower.hasControl] using ih
-  | tuple _ ih | array _ ih | construct _ ih | constructAs _ ih =>
+  | record _ ih | tuple _ ih | array _ ih | construct _ ih | constructAs _ ih =>
       simpa [ControlLower.hasControl, List.any_eq_false] using ih
 
 theorem selected_member [DecidableEq F] {world : World F}
@@ -48,11 +48,11 @@ theorem EvalExit.hasControl (ev : EvalExit world calls types locals expr before 
   | fromGlobal _ interpreted _ ih =>
       intro _
       exact ih (Consts.toExpr_closed _ interpreted).noControl
-  | fromTuple _ ih | fromArray _ ih | fromConstruct _ ih | fromConstructAs _ ih | fromCall _ ih =>
+  | fromRecord _ ih | fromTuple _ ih | fromArray _ ih | fromConstruct _ ih | fromConstructAs _ ih | fromCall _ ih =>
       intro h
       apply ih
       simpa [ControlLower.hasControl, List.any_eq_false] using h
-  | fromRepeat _ ih | fromIndex _ ih | fromSlice _ ih | fromProject _ ih
+  | fromMember _ ih | fromRepeat _ ih | fromIndex _ ih | fromSlice _ ih | fromProject _ ih
     | fromStore _ ih | fromLoad _ ih | fromHint _ ih | fromNeg _ ih =>
       simpa only [ControlLower.hasControl] using ih
   | fromLetValue _ ih | binaryLeft _ ih | fromMatchValue _ ih =>

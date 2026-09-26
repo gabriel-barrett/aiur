@@ -6,9 +6,9 @@ set_option linter.unusedSimpArgs false
 def inScope (names : List String) (hintType : Aiur.Ty → Bool) (types : Types) : Expr α → Bool
   | .literal _ | .var _ => true
   | .global _ _ => true
-  | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => (xs.map (inScope names hintType types)).all id
+  | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => (xs.map (inScope names hintType types)).all id
   | .call n ts xs => names.contains (instanceName types n ts) && (xs.map (inScope names hintType types)).all id
-  | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .neg x => inScope names hintType types x
+  | .member x _ | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .neg x => inScope names hintType types x
   | .hint t x => hintType (t.subst types).toCore && inScope names hintType types x
   | .letValue _ x b | .binary _ x b => inScope names hintType types x && inScope names hintType types b
   | .matchValue x arms => inScope names hintType types x && (arms.map fun a => inScope names hintType types a.2).all id
@@ -52,7 +52,7 @@ theorem const_inScope (pattern : Pattern F) {expr : Expr F}
       simp only [Consts.toExpr, except_bind_ok, except_pure_ok] at interpreted
       obtain ⟨e, he, rfl⟩ := interpreted
       simpa only [inScope] using sub p (by simp_wf <;> omega) he
-  | tuple ps | array ps | constructAs _ _ _ ps =>
+  | record _ ps | tuple ps | array ps | constructAs _ _ _ ps =>
       simp only [Consts.toExpr, except_bind_ok, except_pure_ok] at interpreted
       obtain ⟨es, mapped, rfl⟩ := interpreted
       simp only [inScope, List.all_map, List.all_eq_true, Function.comp_def, id_eq]
@@ -138,8 +138,10 @@ theorem EvalExpr.transfer [Field F] [DecidableEq F]
   | index _ op ih => intro h; exact .index (ih (by simpa [inScope] using h)) op
   | slice _ op ih => intro h; exact .slice (ih (by simpa [inScope] using h)) op
   | constructAs _ ih => intro h; exact .constructAs (ih (by simpa [inScope] using h))
+  | record _ ih => intro h; exact .record (ih (by simpa [inScope] using h))
   | construct _ ih => intro h; exact .construct (ih (by simpa [inScope] using h))
   | project _ op ih => intro h; exact .project (ih (by simpa [inScope] using h)) op
+  | member _ op ih => intro h; exact .member (ih (by simpa [inScope] using h)) op
   | letValue _ matched _ ih1 ih2 =>
       intro h
       simp only [inScope, Bool.and_eq_true] at h
@@ -185,8 +187,10 @@ theorem EvalExpr.transfer [Field F] [DecidableEq F]
   | fromIndex _ ih => rename_i h; exact .fromIndex (ih (by simpa [inScope] using h))
   | fromSlice _ ih => rename_i h; exact .fromSlice (ih (by simpa [inScope] using h))
   | fromConstructAs _ ih => rename_i h; exact .fromConstructAs (ih (by simpa [inScope] using h))
+  | fromRecord _ ih => rename_i h; exact .fromRecord (ih (by simpa [inScope] using h))
   | fromConstruct _ ih => rename_i h; exact .fromConstruct (ih (by simpa [inScope] using h))
   | fromProject _ ih => rename_i h; exact .fromProject (ih (by simpa [inScope] using h))
+  | fromMember _ ih => rename_i h; exact .fromMember (ih (by simpa [inScope] using h))
   | fromStore _ ih => rename_i h; exact .fromStore (ih (by simpa [inScope] using h))
   | fromLoad _ ih => rename_i h; exact .fromLoad (ih (by simpa [inScope] using h))
   | fromNeg _ ih => rename_i h; exact .fromNeg (ih (by simpa [inScope] using h))
@@ -250,8 +254,10 @@ theorem EvalExit.transfer [Field F] [DecidableEq F]
   | index _ op ih => rename_i h; exact .index (ih (by simpa [inScope] using h)) op
   | slice _ op ih => rename_i h; exact .slice (ih (by simpa [inScope] using h)) op
   | constructAs _ ih => rename_i h; exact .constructAs (ih (by simpa [inScope] using h))
+  | record _ ih => rename_i h; exact .record (ih (by simpa [inScope] using h))
   | construct _ ih => rename_i h; exact .construct (ih (by simpa [inScope] using h))
   | project _ op ih => rename_i h; exact .project (ih (by simpa [inScope] using h)) op
+  | member _ op ih => rename_i h; exact .member (ih (by simpa [inScope] using h)) op
   | letValue _ matched _ ih1 ih2 =>
       rename_i h
       simp only [inScope, Bool.and_eq_true] at h
@@ -297,8 +303,10 @@ theorem EvalExit.transfer [Field F] [DecidableEq F]
   | fromIndex _ ih => intro h; exact .fromIndex (ih (by simpa [inScope] using h))
   | fromSlice _ ih => intro h; exact .fromSlice (ih (by simpa [inScope] using h))
   | fromConstructAs _ ih => intro h; exact .fromConstructAs (ih (by simpa [inScope] using h))
+  | fromRecord _ ih => intro h; exact .fromRecord (ih (by simpa [inScope] using h))
   | fromConstruct _ ih => intro h; exact .fromConstruct (ih (by simpa [inScope] using h))
   | fromProject _ ih => intro h; exact .fromProject (ih (by simpa [inScope] using h))
+  | fromMember _ ih => intro h; exact .fromMember (ih (by simpa [inScope] using h))
   | fromStore _ ih => intro h; exact .fromStore (ih (by simpa [inScope] using h))
   | fromLoad _ ih => intro h; exact .fromLoad (ih (by simpa [inScope] using h))
   | fromNeg _ ih => intro h; exact .fromNeg (ih (by simpa [inScope] using h))

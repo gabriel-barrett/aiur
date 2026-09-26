@@ -2,6 +2,7 @@ import Aiur.Generic.PatternLoweringFacts
 import Aiur.Generic.OpenSource
 import Aiur.Generic.ArrayFacts
 import Aiur.Generic.SliceFacts
+import Aiur.Generic.StructFacts
 
 namespace Aiur.Generic
 open SourceSemantics PatternLowering
@@ -43,6 +44,13 @@ theorem lowering_complete [Field F] [DecidableEq F]
           rw [Expr.lower]
           exact ArrayLowering.sliceValue_iff.mpr
             ⟨input, values, ih safe.2, projected, rfl⟩
+  | record _ ih =>
+      rw [Expr.lower]
+      exact StructLowering.record_iff.mpr ⟨_, ih (by simpa only [Expr.lowerSafe] using safe), rfl⟩
+  | member _ projected ih =>
+      rw [Expr.lowerSafe] at safe
+      rw [Expr.lower]
+      exact (StructLowering.member_iff safe.2).mpr ⟨_, ih safe.1, projected⟩
   | construct _ ih =>
       rw [Expr.lower]
       exact OpenCore.EvalExpr.construct (ih (by simpa only [Expr.lowerSafe] using safe))

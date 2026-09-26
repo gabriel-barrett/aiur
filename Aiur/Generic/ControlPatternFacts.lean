@@ -72,6 +72,26 @@ theorem matchPattern_rename [DecidableEq F]
       cases loaded : loadValue heap value with
       | error e => rfl
       | ok v => exact sub p (by simp_wf <;> omega) (by simpa [Consts.dependencies] using plain) v
+  | record head ps =>
+      have noGlobals : ∀ p ∈ ps, Consts.dependencies p = [] := by
+        simpa [Consts.dependencies, List.flatMap_eq_nil_iff] using plain
+      have rel : List.Forall₂ (fun p q => ∀ v,
+          matchPatternWith constant depth types heap q v =
+          (matchPatternWith constant depth types heap p v).map (Option.map (renameBindings env)))
+          ps (ps.map (renamePattern env)) := by
+        apply List.forall₂_map_right_iff.mpr
+        apply List.forall₂_same.mpr
+        intro p hp
+        exact sub p (by simp_wf; have := List.sizeOf_lt_of_mem hp; omega) (noGlobals p hp)
+      have ordered := head.order_rel rel (a := Pattern.wildcard) (b := Pattern.wildcard)
+        (by intro v; simp [matchPatternWith, renameBindings, pure, Except.pure, Except.map])
+      cases value <;> simp only [renamePattern, match_record, ordered.length_eq]
+      all_goals first | rfl | skip
+      split
+      · rfl
+      · split
+        · rfl
+        · exact matchList_rename ordered _
   | tuple ps | array ps | construct _ _ ps | constructAs _ _ _ ps =>
       have noGlobals : ∀ p ∈ ps, Consts.dependencies p = [] := by
         simpa [Consts.dependencies, List.flatMap_eq_nil_iff] using plain
@@ -142,6 +162,24 @@ theorem matchPattern_names [DecidableEq F]
       simp only [matchPatternWith, except_bind_ok] at matched
       obtain ⟨v, _, matched⟩ := matched
       simpa only [Pattern.bindingNames] using sub p (by simp_wf <;> omega) (by simpa [Consts.dependencies] using plain) matched
+  | record head ps =>
+      have noGlobals : ∀ p ∈ ps, Consts.dependencies p = [] := by
+        simpa [Consts.dependencies, List.flatMap_eq_nil_iff] using plain
+      cases value <;> simp only [match_record] at matched
+      all_goals try simp only [Except.ok.injEq, reduceCtorEq] at matched
+      split at matched
+      · simp at matched
+      · split at matched
+        · simp at matched
+        · rw [record_bindingNames]
+          apply matchList_names Pattern.bindingNames _ matched
+          refine head.order_mem (P := fun x => ∀ v result, matchPatternWith constant depth types heap x v = .ok (some result) → result.map Prod.fst = x.bindingNames) ps Pattern.wildcard ?_ ?_
+          · intro p hp v bindings h
+            exact sub p (by simp_wf; have := List.sizeOf_lt_of_mem hp; omega) (noGlobals p hp) h
+          · intro v bindings h
+            simp only [matchPatternWith, except_pure_ok, Option.some.injEq] at h
+            subst bindings
+            simp [Pattern.bindingNames]
   | tuple ps | array ps | construct _ _ ps | constructAs _ _ _ ps =>
       have noGlobals : ∀ p ∈ ps, Consts.dependencies p = [] := by
         simpa [Consts.dependencies, List.flatMap_eq_nil_iff] using plain

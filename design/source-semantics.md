@@ -1,7 +1,7 @@
 # Source semantics and the compilation boundary
 
 The evaluation predicate defines the language on `Generic.Expr`, with explicit
-arrays, repetition, static indexing/slicing, pointer patterns, and lexical exits. It must not
+arrays, repetition, static indexing/slicing, structs, named fields, pointer patterns, and lexical exits. It must not
 be defined by evaluating an expression after circuit lowering. Adding a source
 construct requires its own evaluation rule and a correctness argument for its
 compilation.
@@ -13,7 +13,8 @@ retains const references and const/alias declarations. It follows const
 references when inferring their use types and checks the dependency graph
 without inlining bodies. Alias targets normalize type information; they do not
 replace executable code. Inference fills type arguments and omitted slice
-endpoints and preserves array operations and repeated patterns. Field conversion
+endpoints, annotates named struct fields with checked positions, and preserves
+array operations, named construction, field projection, and repeated patterns. Field conversion
 changes field literals in expressions, patterns, and const declarations. Lengths
 and indices stay natural numbers. See [the pipeline](source-pipeline.md).
 
@@ -23,7 +24,7 @@ the same type arguments. This is a compilation restriction, not a termination
 requirement for ordinary or mutual recursion.
 
 Parameter destructuring is still represented by a source let at the beginning
-of the body. No array or pointer-pattern compiler runs during source execution.
+of the body. No array, struct, or pointer-pattern compiler runs during source execution.
 Entry checking examines signatures and no longer lowers the body.
 
 ## Direct execution and relational evaluation
@@ -50,6 +51,12 @@ bindings without modifying the heap or the outer environment. It stops on the
 first failed test. A bad load is an error, and source bindings are installed
 only after the entire pattern succeeds.
 
+Struct initializers evaluate once in written order, then their values are stored
+in declaration order under a nominal product constructor. Named projections
+evaluate their operand once. Struct patterns inspect declaration order, including
+nested loads. These operations have native rules, independent of their later
+translation to constructor patterns and fixed projections. See [structs](structs.md).
+
 The interpreter reuses the existing structured `SourceValue` and heap. Arrays
 and tuples share its sequence constructor, while their source types remain
 distinct and array operations remain explicit in the AST and predicate. This
@@ -71,12 +78,12 @@ syntactic calls, including inactive arms.
 
 `Specialized.evalFn_iff` and `evalCall_iff` prove preservation and reflection
 between unrestricted generic source evaluation and this finite source runtime.
-The proof covers arrays, pointer patterns, lexical exits, nondeterministic hints, and exact
+The proof covers arrays, structs, pointer patterns, lexical exits, nondeterministic hints, and exact
 heaps, with no totality assumption. `Specialized.run_spec` proves successful
 execution against its source relation.
 
 The same specialization operation produces `Specialized.program`, the existing
-monomorphic core used for circuit compilation. Array and pointer-pattern lowering
+monomorphic core used for circuit compilation. Array, struct, and pointer-pattern lowering
 belongs here, after the source semantic boundary. `Specialized.coreRun` provides
 reference execution of that core. It is useful for independent regression tests.
 `Preparation.expression` instantiates type metadata and unfolds const references
