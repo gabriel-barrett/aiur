@@ -2,7 +2,8 @@
 
 Status: implemented, including executor soundness, compiler completeness, closed
 tree soundness, and acyclic memoized soundness. Provider state and dedicated
-internal or external hint-function declarations remain future work.
+internal or external hint functions remain future executor work. A separate
+external-I/O feature is not needed for the language formalization.
 
 ## Source syntax and typing
 
@@ -76,6 +77,12 @@ No provider, lookup table, failure policy, or repeated-key consistency condition
 appears in these relations. Identical requests may choose different answers in
 a derivation. The executor's provider is solely a means of finding such choices.
 Properties of a witness follow from subsequent program checks, not its key.
+
+Buffers, streams, provider state, and other mechanisms for finding witnesses
+belong to the executor. They add no state or I/O rules to the evaluation predicate
+or circuit model. The formal semantics needs only the typed nondeterministic
+choice and the program's checks on it. The key's ordinary Aiur computation
+continues to have its normal semantics, including calls and allocations.
 
 `evalExpr_spec` proves successful execution for every provider yields a finite
 `EvalExpr`, preserving the exact result and final heap. `eval_spec` proves:
