@@ -1,4 +1,5 @@
 import Aiur.Generic.Runtime
+import Aiur.Generic.LoweringChecks
 
 /-! Compiler preparation begins after the source semantics boundary. It
 instantiates type metadata and unfolds checked const references using the same
@@ -76,6 +77,7 @@ def function (p : Program F) (key : Instance) : Except String (Aiur.Function F) 
   let some fn := p.findFunction? key.name | throw s!"unknown function '{key.name}'"
   let types ← arguments fn.typeParams key.types
   let body ← expression p (p.consts.length + 1) types fn.body
+  if !decide (body.lowerSafe []) then throw "lowering failed its syntax and temporary-scope checks"
   return {
     name := key.symbol
     params := fn.params.map fun (name, type) => (name, (type.subst types).toCore)

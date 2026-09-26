@@ -110,6 +110,21 @@ example [Field F] [DecidableEq F] {s : Generic.Source F}
 /-- info: 'Aiur.Generic.Preparation.pattern_match' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Generic.Preparation.pattern_match
+/-- info: 'Aiur.Generic.PatternLowering.PlanTree.attempt_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.PatternLowering.PlanTree.attempt_sound
+/-- info: 'Aiur.Generic.PatternLowering.PlanTree.attempt_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.PatternLowering.PlanTree.attempt_complete
+/-- info: 'Aiur.Generic.PatternLowering.PlanTree.match_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.PatternLowering.PlanTree.match_iff
+/-- info: 'Aiur.Generic.PatternLowering.lowerLet_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.PatternLowering.lowerLet_iff
+/-- info: 'Aiur.Generic.PatternLowering.lowerMatch_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Generic.PatternLowering.lowerMatch_iff
 
 -- Const expansion is a compiler operation with a proof on the independent
 -- native predicate, including the exact resulting heap.

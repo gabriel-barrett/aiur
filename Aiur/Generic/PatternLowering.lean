@@ -46,7 +46,7 @@ lowered subexpressions. This also protects programmatically constructed ASTs. -/
 def freshPrefix (names : List String) : String :=
   "$pattern" ++ String.ofList (List.replicate (names.foldl (fun n s => max n s.length) 0 + 1) '_') ++ ":"
 
-private def fresh (stem : String) : StateM Nat String := do
+def fresh (stem : String) : StateM Nat String := do
   let n ← get
   set (n + 1)
   return stem ++ toString n
@@ -61,48 +61,105 @@ structure Plan (α : Type) where
   bindings : List (String × String) := []
   deriving Repr
 
-/-- Decompose from left to right. A constructor test precedes every read of
-its payload, and a load precedes all tests of its contents. -/
-def plan (env : List (String × Ty)) (stem : String) :
-    Pattern α → String → StateM Nat (Plan α)
-  | .literal x, input => return ⟨[.test (.literal x) input], []⟩
-  | .global n _, input => return ⟨[.test (.construct ("$const:" ++ n) "$unexpanded" []) input], []⟩
-  | .wildcard, _ => return {}
-  | .bind n, input => return ⟨[], [(n, input)]⟩
-  | .load p, input => do
+/-- The tree records the nesting of a pattern before its read/test steps are
+flattened. Names belong only to the compiler; `erase` recovers the pattern's
+matching condition and user bindings. -/
+inductive PlanTree (α : Type) where
+  | literal (value : α)
+  | wildcard
+  | bind (name : String)
+  | load (name : String) (child : PlanTree α)
+  | tuple (children : List (String × PlanTree α))
+  | construct (name ctor : String) (children : List (String × PlanTree α))
+  deriving Repr
+
+def PlanTree.erase : PlanTree α → Pattern α
+  | .literal x => .literal x
+  | .wildcard => .wildcard
+  | .bind n => .bind n
+  | .load _ child => .load child.erase
+  | .tuple children => .tuple (children.map fun part => part.2.erase)
+  | .construct n c children => .construct (.named n []) c (children.map fun part => part.2.erase)
+termination_by tree => sizeOf tree
+decreasing_by
+  all_goals simp_wf
+  all_goals first | omega | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›
+  all_goals try cases ‹String × PlanTree α›
+  all_goals simp_all only [Prod.mk.sizeOf_spec] <;> omega
+
+def PlanTree.temps : PlanTree F → List String
+  | .literal _ | .wildcard | .bind _ => []
+  | .load name child => name :: child.temps
+  | .tuple parts | .construct _ _ parts =>
+      parts.map Prod.fst ++ parts.flatMap (fun part => part.2.temps)
+termination_by tree => sizeOf tree
+decreasing_by
+  all_goals simp_wf
+  all_goals first | omega | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›
+  all_goals try cases ‹String × PlanTree F›
+  all_goals simp_all only [Prod.mk.sizeOf_spec] <;> omega
+
+
+def PlanTree.toPlan : PlanTree α → String → Plan α
+  | .literal x, input => ⟨[.test (.literal x) input], []⟩
+  | .wildcard, _ => {}
+  | .bind n, input => ⟨[], [(n, input)]⟩
+  | .load n child, input =>
+      let next := child.toPlan n
+      { next with steps := .load n input :: next.steps }
+  | .tuple children, input =>
+      let parts := children.map fun part => (part.1, part.2.toPlan part.1)
+      { steps := .test (.tuple (parts.map (fun part => .bind part.1))) input :: parts.flatMap (·.2.steps)
+        bindings := parts.flatMap (·.2.bindings) }
+  | .construct n c children, input =>
+      let parts := children.map fun part => (part.1, part.2.toPlan part.1)
+      { steps := .test (.construct n c (parts.map (fun part => .bind part.1))) input :: parts.flatMap (·.2.steps)
+        bindings := parts.flatMap (·.2.bindings) }
+termination_by tree _ => sizeOf tree
+decreasing_by
+  all_goals simp_wf
+  all_goals first | omega | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›
+  all_goals try cases ‹String × PlanTree α›
+  all_goals simp_all only [Prod.mk.sizeOf_spec] <;> omega
+
+/-- Decompose from left to right. Constructor shape tests will precede payload
+reads when the tree is flattened. Arrays retain the same ordered tuple shape. -/
+def planTree (env : List (String × Ty)) (stem : String) : Pattern α → StateM Nat (PlanTree α)
+  | .literal x => return .literal x
+  | .global n _ => return .construct ("$const:" ++ n) "$unexpanded" []
+  | .wildcard => return .wildcard
+  | .bind n => return .bind n
+  | .load p => do
       let name ← fresh stem
-      let next ← plan env stem p name
-      return { next with steps := .load name input :: next.steps }
-  | .tuple ps, input | .array ps, input => do
+      return .load name (← planTree env stem p)
+  | .tuple ps | .array ps => do
       let parts ← ps.mapM fun p => do
         let name ← fresh stem
-        return (name, ← plan env stem p name)
-      return {
-        steps := .test (.tuple (parts.map (fun part => .bind part.1))) input :: parts.flatMap (·.2.steps)
-        bindings := parts.flatMap (·.2.bindings) }
-  | .repeat p n, input => do
+        return (name, ← planTree env stem p)
+      return .tuple parts
+  | .repeat p n => do
       let parts ← (List.range n).mapM fun _ => do
         let name ← fresh stem
-        return (name, ← plan env stem p name)
-      return {
-        steps := .test (.tuple (parts.map (fun part => .bind part.1))) input :: parts.flatMap (·.2.steps)
-        bindings := parts.flatMap (·.2.bindings) }
-  | .construct t c ps, input | .constructAs _ t c ps, input => do
+        return (name, ← planTree env stem p)
+      return .tuple parts
+  | .construct t c ps | .constructAs _ t c ps => do
       let parts ← ps.mapM fun p => do
         let name ← fresh stem
-        return (name, ← plan env stem p name)
+        return (name, ← planTree env stem p)
       let n := match (t.subst env).toCore with | .enum n => n | _ => "$invalid"
-      return {
-        steps := .test (.construct n c (parts.map (fun part => .bind part.1))) input :: parts.flatMap (·.2.steps)
-        bindings := parts.flatMap (·.2.bindings) }
-termination_by p _ => sizeOf p
+      return .construct n c parts
+termination_by p => sizeOf p
 decreasing_by
   all_goals simp_wf
   all_goals try have := List.sizeOf_lt_of_mem ‹_ ∈ _›
   all_goals omega
 
+def plan (env : List (String × Ty)) (stem : String) (pat : Pattern α) (input : String) :
+    StateM Nat (Plan α) := do return (← planTree env stem pat).toPlan input
+
 def bindUsers (bindings : List (String × String)) (body : Aiur.Expr α) : Aiur.Expr α :=
-  bindings.foldr (fun (name, source) body => .letValue (.bind name) (.var source) body) body
+  .letValue (.tuple (bindings.map fun binding => .bind binding.1))
+    (.tuple (bindings.map fun binding => .var binding.2)) body
 
 def letSteps (steps : List (Step α)) (body : Aiur.Expr α) : Aiur.Expr α :=
   steps.foldr (fun step body => match step with
@@ -129,7 +186,14 @@ def lowerLet (env : List (String × Ty)) : Pattern α → Aiur.Expr α → Aiur.
           .letValue (.bind root) value (letSteps result.steps (bindUsers result.bindings body))
 termination_by p _ _ => sizeOf p
 
-private def matchArms (env : List (String × Ty)) (stem root : String) :
+/-- A vacuous final test keeps the next arm syntactically visible even when
+this arm's pattern cannot fail. It adds no semantic requirement. -/
+def Plan.retainedSteps (p : Plan α) (root : String) : List (Step α) :=
+  if p.steps.any (fun step => match step with
+    | .test _ _ => true | .load _ _ => false) then p.steps
+  else p.steps ++ [.test .wildcard root]
+
+def matchArms (env : List (String × Ty)) (stem root : String) :
     List (Pattern α × Aiur.Expr α) → StateM Nat (Option (Aiur.Expr α))
   | [] => return none
   | (pat, body) :: arms => do
@@ -137,9 +201,7 @@ private def matchArms (env : List (String × Ty)) (stem root : String) :
       let next ← matchArms env stem root arms
       -- Keep even unreachable alternatives syntactically visible to the
       -- specialization dependency check. The core compiler discards them.
-      let steps := if current.steps.any (fun step => match step with
-          | .test _ _ => true | .load _ _ => false) then current.steps
-        else current.steps ++ [.test .wildcard root]
+      let steps := current.retainedSteps root
       return some (matchSteps steps (bindUsers current.bindings body) next)
 
 def lowerMatch (env : List (String × Ty)) (value : Aiur.Expr α)
