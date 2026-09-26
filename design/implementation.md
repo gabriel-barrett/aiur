@@ -8,8 +8,9 @@
   expansion before inference, constructor templates, and a proof that expansion
   commutes with literal conversion. The frontend runs this pass on `Program Nat`.
 - `Aiur/Generic/Consts.lean` and `ConstFacts.lean`: fully specified value/pattern
-  templates, checked dependencies, lexical name resolution and substitution
-  before alias expansion and generic inference, with field-independence proofs.
+  declarations, acyclic dependency checking, and lexical name resolution.
+  Source references retain inferred use types; substitution is a compiler tool
+  with field-independence proofs.
 - `Aiur/Generic/ArrayLowering.lean` and `ArrayFacts.lean`: fixed-size homogeneous
   arrays lowered to tuples, single-evaluation repetition and static slicing,
   and bidirectional relational rules preserving values and heaps. Source

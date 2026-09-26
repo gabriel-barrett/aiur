@@ -49,7 +49,7 @@ theorem substitute_map (f : α → β) (pat : Pattern α)
         (ps.mapM (substitute left)).map (List.map (Pattern.map f)) :=
     traverse_map ps _ _ _ _ (fun q hq => substitute_map f q left right agree)
   cases pat with
-  | global n => simpa only [Pattern.map, substitute] using agree n
+  | global n ann => simpa only [Pattern.map, substitute] using agree n
   | literal | wildcard | bind => simp [Pattern.map, substitute, Except.map, pure, Except.pure]
   | load p | «repeat» p _ =>
       simp only [Pattern.map, substitute, sub p (by simp_wf <;> omega)]
@@ -178,7 +178,7 @@ theorem expandExpr_map (f : α → β) (decls : List (ConstDecl α)) (locals) (e
   | var n =>
       simp only [Expr.map, expandExpr, List.any_map, Function.comp_def, ConstDecl.map]
       split <;> simp [expression_map, Except.map, pure, Except.pure, Expr.map]
-  | global n => simpa only [Expr.map, expandExpr] using expression_map f decls n
+  | global n ann => simpa only [Expr.map, expandExpr] using expression_map f decls n
   | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, expandExpr]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]

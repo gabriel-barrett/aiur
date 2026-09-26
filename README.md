@@ -78,12 +78,14 @@ and `Option::<Field>::Some(x)`. Signatures remain explicit, and hint result
 types must always be concrete.
 
 Transparent aliases use `type Scalar = Field;` and `type Pair<T> = (T, T);`.
-They expand before generic inference, while literals are still natural numbers.
+Their declarations remain in the source; checking normalizes type information
+for generic inference while literals are still natural numbers.
 Aliases of enums also support qualified constructors and patterns. See
 [type aliases](design/type-aliases.md) and [the example](Examples/Aliases.lean).
 
 Consts name complete value/pattern templates: `const zero = 0;` and
-`const cell = &(zero,);`. They expand early and reject dependency cycles.
+`const cell = &(zero,);`. Their references remain through source evaluation, with dependency cycles rejected.
+Inlining belongs to compiler preparation.
 Use `::cell` in a pattern to load and check its contents. A bare pattern name
 always binds; in values, bare names prefer locals, then globals. `::name` always
 resolves globally, and capitalization does not affect resolution. See

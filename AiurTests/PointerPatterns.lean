@@ -156,16 +156,11 @@ def handBuilt : Generic.Program Nat := {
 
 -- Keep all original arm dependencies visible to conservative specialization,
 -- even though the first arm makes the growing call unreachable at runtime.
-def unreachableGrowth : Generic.Program Nat := aiur% "
-fn grow<T>(x: T) -> Field { match &x { &a => 1, _ => grow((x, x)) } }
-fn main() -> Field { grow(0) }
-"
-#guard (do
-  let s ← Generic.prepare (unreachableGrowth.toField Rat)
-  s.run "main" []) == .ok (.field 1, [.field 0])
-#guard (do
-  let s ← Generic.prepare (unreachableGrowth.toField Rat)
-  return (← Generic.specialize s ["main"]).program.functions.length).toOption.isNone
+run_cmd do
+  let code := "fn grow<T>(x: T) -> Field { match &x { &a => 1, _ => grow((x, x)) } } fn main() -> Field { grow(0) }"
+  match Generic.Frontend.ofString (← Lean.getEnv) code with
+  | .error _ => pure ()
+  | .ok _ => throwError "accepted type-changing recursion in an unreachable branch"
 
 run_cmd do
   for code in [

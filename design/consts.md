@@ -1,6 +1,6 @@
 # Const declarations
 
-Consts name fully specified value/pattern templates. They expand before generic
+Consts name fully specified value/pattern declarations. They are retained during generic
 inference while literals are still natural numbers, like type aliases.
 
 ```rust
@@ -85,35 +85,32 @@ independently at each use; explicit qualifiers such as `Option::<Field>::None`
 and aliases fixing a type can supply that information. A use that leaves type
 arguments ambiguous is rejected as usual.
 
-The pipeline is:
+The pipeline retains declarations and references during source checking:
 
 1. Parse declarations and references with `Nat` literals.
-2. Check the const dependency graph and expand const references in patterns,
-   expressions, parameter destructuring, and table rows.
-3. Expand type aliases, including constructor qualifiers in the expanded const
-   templates; then check templates and infer the uses' generic arguments.
-4. Remove the const and alias declarations. The frontend returns expanded source.
-5. Choose a field, prepare static tables, and either interpret directly or
-   specialize from external entrypoints before circuit compilation.
+2. Check const and alias dependency graphs. Infer each const use's type by
+   inspecting its declaration, without substituting it into the surrounding code.
+3. Record inferred type information and retain the declarations.
+4. Convert field literals, including literals inside const declarations.
+5. Execute the source directly, or prepare it for externally selected entrypoints.
+   Const inlining belongs to this compiler preparation stage.
 
-The same passes operate on programmatically constructed `Program α` through
-`Generic.prepare`. `ConstDecl.value` stores a pattern-shaped template; raw
-programmatic binders and wildcards are rejected too. `expandConsts` retains
-resolved declarations only until elaboration checks their types and removes them.
+The same checks operate on programmatically constructed `Program α` through
+`Generic.prepare`. `ConstDecl.value` stores a pattern-shaped declaration;
+programmatic binders and wildcards are rejected too. `elaborateConst` resolves
+one declaration at a use type and leaves its nested references intact.
 
-Field conversion still acts on every inserted literal. The existing duplicate
-match-condition and table-key checks catch distinct natural literals that
-become equal in the chosen field. Parameter patterns remain irrefutable after
-expansion. Ordinary lets and matches may be refutable.
+Field-dependent duplicate patterns and table-key collisions remain checked.
+Parameter patterns remain irrefutable; ordinary lets and matches may be refutable.
 
 ## Pointers and circuits
 
-`const cell = &(0,);` does not denote a static pointer address. Each value use
-expands to `&(0,)` and allocates a fresh cell when evaluated. Two uses allocate
-twice; an inactive use does not allocate. Reusing an allocated pointer requires
-an ordinary local binding, as before.
+`const cell = &(0,);` does not denote a static pointer address. The reference evaluator follows each value use
+and allocates a fresh cell when it interprets the store. Two uses allocate
+twice; an inactive use does not allocate. A later executor may intern equal immutable values and share their addresses;
+that optimization is outside the present reference semantics.
 
-In pattern position, `::cell` expands to `&(0,)`: it loads the pointer and checks
+In pattern position, `::cell` follows its declaration: it loads the pointer and checks
 the singleton tuple's field element. It neither allocates nor compares pointer
 identity. The existing pointer-pattern lowering supplies guarded ROM lookups.
 
@@ -130,12 +127,12 @@ resolution and substitution commute with literal conversion, including lexical
 scope decisions and errors. The alias-expansion proof also covers const
 templates. These results have no admitted proof steps or new axioms.
 
-Const semantics is early expansion into the existing source language. Direct
-execution and specialization consume that same expanded source, so their
-source equivalence and evaluator correspondence apply. Circuit theorems remain
-checked for the lowered core. Const pointer patterns are interpreted directly
-before compilation; their complete lowering proof is part of the
-[pending source-to-core bridge](source-semantics.md#proof-boundary).
+The source predicate has an explicit const-reference rule. Successful execution
+and finite source-cache equivalence are proved with this rule, including nested
+references, closed declaration scope, and pointer patterns. The compiler may
+inline declarations after this semantic boundary. Connecting that transformation
+and the complete pattern/array lowering to circuits remains part of the
+[source-to-core bridge](source-semantics.md#proof-boundary).
 
 `AiurTests/Consts.lean` covers name resolution, capitalization, shadowing,
 forward references, shared dependencies, unused cycles and invalid templates,

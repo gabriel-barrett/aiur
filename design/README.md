@@ -15,9 +15,9 @@ design, and keep proposals and unanswered questions explicitly separate.
   the circuit compilation boundary, and the remaining lowering proof.
 - [Generics](generics.md): inferred type arguments, generic functions and enums,
   external entry selection, direct evaluation, and proved specialization.
-- [Type aliases](type-aliases.md): transparent parameterized aliases, expansion
-  before generic inference, constructor qualification, and cycle checks.
-- [Consts](consts.md): complete value/pattern templates, early expansion,
+- [Type aliases](type-aliases.md): transparent parameterized aliases, type normalization
+  during generic inference, constructor qualification, and cycle checks.
+- [Consts](consts.md): complete value/pattern declarations, direct reference semantics,
   cycle checks, and explicit global references in patterns.
 - [Tuples](tuples.md): nested values and patterns, explicit signatures, structured
   circuit interfaces, first-match equations, and proof boundaries.
@@ -52,3 +52,5 @@ design, and keep proposals and unanswered questions explicitly separate.
 
 The circuit pipeline begins with one chip per function and abstracts channel
 interactions independently of the eventual cryptographic protocol.
+
+- [Source pipeline](source-pipeline.md): retained source declarations and the end-to-end proof target.

@@ -13,7 +13,7 @@ def prepareFunction (enums : String → Option Aiur.EnumDecl) (fn : Aiur.Functio
   else .error (.malformedValue (.tuple (args.map Value.type)))
 
 def Source.coreWorld [DecidableEq F] (s : Source F) : Engine.World F where
-  prepare name args := match s.program.function? name with
+  prepare name args := match s.compilerTemplate.function? name with
     | some fn => prepareFunction s.program.enum? fn args
     | none => return ([], (← lookupMap s.tables name args).toExpr)
   typed t v := hasType s.program.enum? t v

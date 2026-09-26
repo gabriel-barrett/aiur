@@ -38,7 +38,7 @@ fn read(x: Field) -> Field {
 fn hinted<T>(x: T) -> Field { hint::<Field>(x) }
 fn hint_entry(x: Field) -> Field { hinted((x, x)) }
 fn grow<T>(n: Field, x: T) -> T {
-  match n { 0 => x, _ => grow(n - 1, (x, x)).0 }
+  match n { 0 => x, _ => grow(n - 1, x) }
 }
 fn grow_entry(n: Field) -> Field { grow(n, 9) }
 "
@@ -57,7 +57,7 @@ def runSpecialized (name : String) (args : List (SourceValue Rat)) := do
 #guard runSource "grow_entry" [.field 4] == .ok (.field 9, [])
 #guard (do
   let s ← Generic.prepare (source.toField Rat)
-  return (← Generic.specialize s ["grow_entry"]).program.functions.length).toOption.isNone
+  return (← Generic.specialize s ["grow_entry"]).program.functions.length).toOption.isSome
 
 #guard runSource "explicit" [.field 23] == .ok (.field 23, [])
 #guard runSpecialized "explicit" [.field 23] == .ok (.field 23, [])
@@ -88,7 +88,7 @@ fn right<A, B>(n: Field, a: A, b: B) -> B {
   match n { 0 => b, _ => left(n - 1, b, a) }
 }
 fn swapping<A, B>(n: Field, a: A, b: B) -> () {
-  match n { 0 => (), _ => swapping(n - 1, b, a) }
+  match n { 0 => (), _ => swapping(n - 1, a, b) }
 }
 fn good(n: Field) -> Field { left(n, 41, (2, 3)) }
 fn finite(n: Field) -> () { swapping(n, 1, (2, 3)) }
@@ -104,15 +104,17 @@ fn same(n: Field) -> () { swapping(n, 1, 2) }
   s.run "finite" [.field 5]) == .ok (.tuple [], [])
 #guard (do
   let s ← Generic.prepare (recursion.toField Rat)
-  return (← Generic.specialize s ["finite"]).program.functions.length).toOption.isNone
+  return (← Generic.specialize s ["finite"]).program.functions.length).toOption.isSome
 
 -- A cached f<Field> reached from f<(Field, Field)> must still be rejected.
-def cached : Generic.Program Nat := aiur% "
-fn f<T>(x: T) -> Field { g(1) }
-fn g<T>(x: T) -> Field { f(1) }
-fn first() -> Field { f(1) }
-fn second() -> Field { f((1, 2)) }
-"
+def cached : Generic.Program Nat := { functions := [
+  { name := "f", typeParams := ["T"], params := [("x", .param "T")], result := .field,
+    body := .call "g" none [.literal 1] },
+  { name := "g", typeParams := ["T"], params := [("x", .param "T")], result := .field,
+    body := .call "f" none [.literal 1] },
+  { name := "first", params := [], result := .field, body := .call "f" none [.literal 1] },
+  { name := "second", params := [], result := .field,
+    body := .call "f" none [.tuple [.literal 1, .literal 2]] }] }
 
 def cacheRejected (roots : List String) : Bool :=
   match (do
@@ -125,7 +127,7 @@ def cacheRejected (roots : List String) : Bool :=
 #guard cacheRejected ["second", "first"]
 #guard (do
   let s ← Generic.prepare (cached.toField Rat)
-  return (← Generic.specialize s ["first"]).program.functions.length).toOption.isSome
+  return (← Generic.specialize s ["first"]).program.functions.length).toOption.isNone
 
 def mapped : Generic.Program Nat := aiur% "
 enum Box<T> { New(T) }
@@ -184,6 +186,9 @@ fn main(x: Field) -> Field { unbox(expand(Box::New(x))).1 }
 run_cmd do
   let bad := [
     "fn f<T>(x: T) -> T { x + 1 }",
+    "fn grow<T>(n: Field, x: T) -> T { match n { 0 => x, _ => grow(n - 1, (x, x)).0 } }",
+    "fn swap<A, B>(n: Field, a: A, b: B) -> () { match n { 0 => (), _ => swap(n - 1, b, a) } }",
+    "fn grow<T>(x: T) -> Field { match &x { &a => 1, _ => grow((x, x)) } } fn main() -> Field { grow(0) }",
     "fn f<T>(x: T) -> T { hint::<T>(x) }",
     "enum E<T> { A(T) } fn f<T>(x: T) -> E<T> { hint::<E<T>>(x) }",
     "fn f<T>(x: T) -> T { x } fn main() -> Field { f::<(Field, Field)>(1) }",
@@ -221,7 +226,7 @@ def run : IO Unit := do
   let checks := [
     ("generic source", runSource "main" [.field 17], .ok (.field 17, [])),
     ("generic specialization", runSpecialized "main" [.field 17], .ok (.field 17, [])),
-    ("direct polymorphic recursion", runSource "grow_entry" [.field 4], .ok (.field 9, [])),
+    ("ordinary generic recursion", runSource "grow_entry" [.field 4], .ok (.field 9, [])),
     ("explicit arguments", runSpecialized "explicit" [.field 23], .ok (.field 23, [])),
     ("nested generic enum", runSpecialized "nested" [.field 7], runSource "nested" [.field 7]),
     ("generic ROM", runSpecialized "read" [.field 31], runSource "read" [.field 31])

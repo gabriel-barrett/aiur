@@ -167,9 +167,10 @@ private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
   let mut inputs := []
   let mut boundNames := []
   for (param, i) in s[3 + offset].getSepArgs.toList.zipIdx do
-    let pat ← Consts.expandPattern consts (← pattern ps param[0])
+    let pat ← pattern ps param[0]
     boundNames := boundNames ++ pat.bindingNames
-    if !(← Aliases.expandPattern aliases pat).irrefutable enums then throw "parameter patterns must be irrefutable"
+    let inspected ← Consts.expandPattern consts pat
+    if !(← Aliases.expandPattern aliases inspected).irrefutable enums then throw "parameter patterns must be irrefutable"
     let t ← type ps param[2]
     match pat with
     | .bind n => inputs := inputs ++ [(n, t)]

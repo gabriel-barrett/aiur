@@ -86,7 +86,7 @@ theorem Specialized.coreAgreement [DecidableEq F] {s : Source F} {entries : List
     have fnAgreement := functions n hn
     cases found : q.program.findFunction? n with
     | none =>
-        have absent : s.program.function? n = none := fnAgreement.trans found
+        have absent : s.compilerTemplate.function? n = none := fnAgreement.trans found
         simp only [Source.coreWorld, absent, prepareCall, found]
         simp only [except_bind_ok, except_pure_ok, Prod.mk.injEq]
         constructor
@@ -95,7 +95,7 @@ theorem Specialized.coreAgreement [DecidableEq F] {s : Source F} {entries : List
         · rintro ⟨v, hv, hl, hb⟩
           exact ⟨v, lookupMap_transfer s.tablesChecked tables maps hv, hl, hb⟩
     | some fn =>
-        have resolved : s.program.function? n = some fn := fnAgreement.trans found
+        have resolved : s.compilerTemplate.function? n = some fn := fnAgreement.trans found
         simp only [Source.coreWorld, resolved, prepareFunction_iff, prepared_function_iff found]
         by_cases ht : fn.params.map Prod.snd = args.map Value.type
         · have known := (bodies fn (List.mem_of_find?_eq_some found)).1
@@ -168,7 +168,7 @@ theorem Specialized.sourceAgreement [DecidableEq F] {s : Source F} {entries : Li
     intro n hn args
     simp only [Source.world, Specialized.world, Specialized.instances, sourceWorld,
       cached_lookup s.program.sourceFunction? hn]
-  refine ⟨fun n hn args _ _ _ => (congrArg (· = _) (prep n hn args)).to_iff,
+  refine ⟨rfl, rfl, fun n hn args _ _ _ => (congrArg (· = _) (prep n hn args)).to_iff,
     fun _ _ _ => Iff.rfl, ?_⟩
   intro n hn args types locals body prepared
   cases found : s.program.sourceFunction? n with

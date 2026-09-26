@@ -27,23 +27,21 @@ Singleton tuples retain their distinction from their component type.
 ## Pipeline
 
 1. Parse the whole source with numeric literals represented by `Nat`.
-2. Expand [const references](consts.md), then check alias definitions and expand
-   aliases throughout the program, including const constructor qualifiers.
-3. Infer generic arguments and check the expanded generic program.
-4. Convert literals to the chosen field and prepare its static tables, retaining
-   field-dependent validation.
-5. Either interpret the generic source directly, or specialize from an external
-   list of non-generic entrypoints and compile the resulting concrete program.
+2. Check const and alias dependency graphs. Retain their declarations and const
+   uses, normalizing type information for inference and comparison.
+3. Infer generic arguments and check the source program without inlining consts.
+4. Convert field literals and perform field-dependent checks.
+5. Interpret the source, or prepare selected non-generic entrypoints for circuits.
 
-In particular, `Pair<T>` becomes `(T, T)` before inference without choosing `T`.
-The frontend returns an alias-free `Generic.Program Nat`. Aliases introduce no
-runtime values, allocation, call messages, columns, or additional chips.
+For typing, `Pair<T>` is transparent to `(T, T)` without choosing `T`.
+The checked source retains alias declarations. Aliases introduce no runtime
+values, allocation, call messages, columns, or additional chips.
 `identity::<Scalar>` and `identity::<Field>` have the same specialization key.
 
-The expansion pass is also available as `Generic.expandAliases` on `Program α`.
-`Generic.elaborate` invokes it before inference, so programmatically generated
-ASTs use the same path even if their literals are already field elements.
-`Program.map`/`toField` preserve raw alias declarations until that pass runs.
+`Generic.expandAliases` remains available for normalizing type metadata. Source
+checking restores the original alias declarations after inspecting their targets;
+compiler preparation can remove them. `Program.map`/`toField` preserve alias
+declarations and change only field literals.
 
 ## Names, substitution, and cycles
 

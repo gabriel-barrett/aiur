@@ -8,12 +8,19 @@ compilation.
 
 ## Preparation
 
-The frontend parses natural literals into `Generic.Program Nat`. Const templates
-and type aliases expand before type inference/checking, including dependency
-cycle checks. Inference fills type arguments and omitted slice endpoints; it
-preserves array operations and repeated patterns. Field conversion changes field
-literals in expressions and patterns. Lengths and indices stay natural numbers.
-These are the existing preparation steps, not a new normalization phase.
+The frontend parses natural literals into `Generic.Program Nat`. Checking
+retains const references and const/alias declarations. It follows const
+references when inferring their use types and checks the dependency graph
+without inlining bodies. Alias targets normalize type information; they do not
+replace executable code. Inference fills type arguments and omitted slice
+endpoints and preserves array operations and repeated patterns. Field conversion
+changes field literals in expressions, patterns, and const declarations. Lengths
+and indices stay natural numbers. See [the pipeline](source-pipeline.md).
+
+The conservative generic-recursion check applies to the whole checked source,
+including unused functions. A recursive path may revisit a function only with
+the same type arguments. This is a compilation restriction, not a termination
+requirement for ordinary or mutual recursion.
 
 Parameter destructuring is still represented by a source let at the beginning
 of the body. No array or pointer-pattern compiler runs during source execution.
@@ -25,6 +32,13 @@ Entry checking examines signatures and no longer lowers the body.
 `SourceSemantics.EvalExpr`, `EvalArgs`, and `EvalFn` are independent fuel-free
 relations over that AST. Generic calls resolve the original function and bind
 type parameters in a separate environment; they do not rewrite its body.
+
+A const value reference looks up its declaration at the inferred use type and
+evaluates its body in an empty local environment. Nested references remain
+references. A const pattern follows the declaration while matching the candidate
+value. Matching follows at most the checked acyclic graph's reference depth;
+this is not evaluation fuel. Const pointer templates allocate in value position
+and read in pattern position.
 
 Array literals evaluate elements from left to right. Repetition evaluates once,
 including length zero. Indexing and slicing evaluate the operand once and
@@ -82,6 +96,9 @@ from ordinary source execution.
 particular, the direct recursive pattern matcher must be connected to generated
 read/test plans, including fresh-variable scope and first-match failure
 continuations. Slice lowering also needs the static array-shape/bounds facts.
+`PatternTranslation.lean` now proves that pure patterns (including arrays and
+repeated patterns) preserve matching and binding order. `EnvironmentFacts.lean`
+proves independence from compiler temporaries outside an expression's names.
 `ArrayFacts.lean` already characterizes core repetition and slicing;
 `PatternFacts.lean` characterizes core plan execution. These are component facts,
 not a proof of the complete translation. `SourceRules.lean` provides native

@@ -86,7 +86,18 @@ theorem evalExpr_spec [Field F] [DecidableEq F]
           obtain ⟨input, middle, operand, finished⟩ := Evaluation.bind_ok.mp executed
           obtain ⟨rfl, rfl⟩ := Evaluation.pure_ok.mp finished
           exact .repeat (ih operand)
-      | global name => simp [evalExprWith, Evaluation.throw_apply] at executed
+      | global name ann =>
+          cases ann with
+          | none => simp [evalExprWith, Evaluation.throw_apply] at executed
+          | some type =>
+              simp only [evalExprWith] at executed
+              obtain ⟨pattern, middle, lookup, rest⟩ := Evaluation.bind_ok.mp executed
+              obtain ⟨lookupOK, rfl⟩ := Evaluation.lift_ok.mp lookup
+              obtain ⟨body, last, interpreted, bodyRun⟩ := Evaluation.bind_ok.mp rest
+              obtain ⟨interpretOK, rfl⟩ := Evaluation.lift_ok.mp interpreted
+              have interpreted : Consts.toExpr pattern = .ok body := by
+                cases h : Consts.toExpr pattern <;> simp_all [Except.mapError]
+              exact .global lookupOK interpreted (ih bodyRun)
       | hint type key =>
           simp only [evalExprWith] at executed
           obtain ⟨input, middle, keyRun, rest⟩ := Evaluation.bind_ok.mp executed
@@ -124,11 +135,11 @@ theorem evalExpr_spec [Field F] [DecidableEq F]
           simp only [evalExprWith] at executed
           obtain ⟨input, middle, operand, rest⟩ := Evaluation.bind_ok.mp executed
           have rest' : (do
-              let some bindings ← liftM (matchPattern types middle pattern input) | throw EvalError.patternMismatch
+              let some bindings ← liftM (world.matchPattern types middle pattern input) | throw EvalError.patternMismatch
               evalExprWith world hints types (bindings ++ locals) fuel body : Evaluation F _) middle = .ok (result, after) := by
             simpa [bind, StateT.bind, Evaluation.get_apply, Except.bind] using rest
           obtain ⟨bindings, last, matched, bodyRun⟩ := Evaluation.bind_ok.mp rest'
-          obtain ⟨matchOK, rfl⟩ := (Evaluation.lift_ok (computation := matchPattern types middle pattern input)).mp matched
+          obtain ⟨matchOK, rfl⟩ := (Evaluation.lift_ok (computation := world.matchPattern types middle pattern input)).mp matched
           cases bindings with
           | none => simp [Evaluation.throw_apply] at bodyRun
           | some bindings => exact .letValue (ih operand) matchOK (ih bodyRun)
@@ -136,11 +147,11 @@ theorem evalExpr_spec [Field F] [DecidableEq F]
           simp only [evalExprWith] at executed
           obtain ⟨input, middle, operand, rest⟩ := Evaluation.bind_ok.mp executed
           have rest' : (do
-              let some (bindings, body) ← liftM (selectArm types middle input arms) | throw EvalError.noMatchingArm
+              let some (bindings, body) ← liftM (selectArm world types middle input arms) | throw EvalError.noMatchingArm
               evalExprWith world hints types (bindings ++ locals) fuel body : Evaluation F _) middle = .ok (result, after) := by
             simpa [bind, StateT.bind, Evaluation.get_apply, Except.bind] using rest
           obtain ⟨selection, last, selected, bodyRun⟩ := Evaluation.bind_ok.mp rest'
-          obtain ⟨selectionOK, rfl⟩ := (Evaluation.lift_ok (computation := selectArm types middle input arms)).mp selected
+          obtain ⟨selectionOK, rfl⟩ := (Evaluation.lift_ok (computation := selectArm world types middle input arms)).mp selected
           cases selection with
           | none => simp [Evaluation.throw_apply] at bodyRun
           | some pair =>

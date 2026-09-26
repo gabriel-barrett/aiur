@@ -71,8 +71,8 @@ inductive Pattern (α : Type) where
   | literal (value : α)
   | wildcard
   | bind (name : String)
-  /-- A rooted source reference, expanded before type inference. -/
-  | global (name : String)
+  /-- A rooted const reference. Checking records its inferred use type. -/
+  | global (name : String) (type : Option Ty := none)
   /-- Load the matched pointer, then match its contents. -/
   | load (pattern : Pattern α)
   | tuple (items : List (Pattern α))
@@ -88,7 +88,7 @@ inductive Expr (α : Type) where
   | literal (value : α)
   | var (name : String)
   /-- A rooted source reference, independent of local variable bindings. -/
-  | global (name : String)
+  | global (name : String) (type : Option Ty := none)
   | tuple (items : List (Expr α))
   | array (items : List (Expr α))
   /-- Evaluate the element once, then copy its value, including when length is zero. -/
@@ -161,9 +161,9 @@ structure Program (α : Type) where
   enums : List EnumDecl := []
   tables : List (Table α) := []
   maps : List MapDecl := []
-  /-- Surface declarations. Alias expansion removes these before inference. -/
+  /-- Transparent type declarations retained in the source program. -/
   aliases : List AliasDecl := []
-  /-- Source templates, expanded and checked before generic inference of uses. -/
+  /-- Source value/pattern declarations; references remain through evaluation. -/
   consts : List (ConstDecl α) := []
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
@@ -171,7 +171,7 @@ def Program.findFunction? (p : Program α) (name : String) := p.functions.find? 
 def Program.findEnum? (p : Program α) (name : String) := p.enums.find? (·.name == name)
 
 def Pattern.bindingNames : Pattern α → List String
-  | .literal _ | .wildcard | .global _ => []
+  | .literal _ | .wildcard | .global _ _ => []
   | .bind n => [n]
   | .load p => p.bindingNames
   | .repeat p n => (List.replicate n p.bindingNames).flatten
@@ -179,14 +179,14 @@ def Pattern.bindingNames : Pattern α → List String
 termination_by p => sizeOf p
 
 def Pattern.hasLoads : Pattern α → Bool
-  | .literal _ | .wildcard | .bind _ | .global _ => false
+  | .literal _ | .wildcard | .bind _ | .global _ _ => false
   | .load _ => true
   | .repeat p n => n != 0 && p.hasLoads
   | .tuple ps | .array ps | .construct _ _ ps | .constructAs _ _ _ ps => (ps.map Pattern.hasLoads).any id
 termination_by p => sizeOf p
 
 def Pattern.irrefutable (enums : List EnumDecl) : Pattern α → Bool
-  | .literal _ | .global _ => false
+  | .literal _ | .global _ _ => false
   | .wildcard | .bind _ => true
   | .load p => p.irrefutable enums
   | .tuple ps | .array ps => (ps.map (Pattern.irrefutable enums)).all id
@@ -200,7 +200,7 @@ termination_by p => sizeOf p
 /-- Binder spelling does not change a pattern's matching condition. -/
 def Pattern.condition : Pattern α → Pattern α
   | .literal x => .literal x
-  | .global n => .global n
+  | .global n t => .global n t
   | .wildcard | .bind _ => .wildcard
   | .load p => .load p.condition
   | .tuple ps | .array ps => .tuple (ps.map Pattern.condition)
@@ -213,7 +213,7 @@ def Pattern.map (f : α → β) : Pattern α → Pattern β
   | .literal x => .literal (f x)
   | .wildcard => .wildcard
   | .bind n => .bind n
-  | .global n => .global n
+  | .global n t => .global n t
   | .load p => .load (p.map f)
   | .tuple xs => .tuple (xs.map (Pattern.map f))
   | .array xs => .array (xs.map (Pattern.map f))
@@ -225,7 +225,7 @@ termination_by p => sizeOf p
 def Expr.map (f : α → β) : Expr α → Expr β
   | .literal x => .literal (f x)
   | .var n => .var n
-  | .global n => .global n
+  | .global n t => .global n t
   | .tuple xs => .tuple (xs.map (Expr.map f))
   | .array xs => .array (xs.map (Expr.map f))
   | .repeat x n => .repeat (x.map f) n

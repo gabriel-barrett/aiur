@@ -51,8 +51,8 @@ fn literal() -> Scalar { 108 }
 fn singleton(x: (Scalar,)) -> (Scalar,) { x }
 "
 
--- Quotations return expanded ASTs while literals are still natural numbers.
-#guard source.aliases.isEmpty
+-- Type metadata is normalized, while alias declarations and code remain.
+#guard source.aliases.length == 10
 #guard (source.findFunction? "main").map (·.params) == some [("x", .field)]
 #guard (source.findFunction? "literal").map (·.body) == some (.literal 108)
 #guard (source.findFunction? "singleton").map (·.result) == some (.tuple [.field])
