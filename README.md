@@ -2,7 +2,7 @@
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
 field arithmetic, nested tuples and fixed-size arrays, generic functions, nominal enums, type aliases, typed ROM
-pointers, mutual recursion, pattern matching, static tables and maps, and compilation
+pointers, mutual recursion, pattern matching, named blocks and early return, static tables and maps, and compilation
 to chips with polynomial equations and abstract call messages.
 
 ## Build and test
@@ -20,6 +20,7 @@ lake env lean Examples/Aliases.lean
 lake env lean Examples/PointerPatterns.lean
 lake env lean Examples/Consts.lean
 lake env lean Examples/Arrays.lean
+lake env lean Examples/Control.lean
 ```
 
 ## Use from Lean
@@ -97,6 +98,12 @@ require literal bounds checked before execution. Array patterns destructure
 with `[a, b]`; consts can use forms such as `const cell = &[0];`. Source evaluation keeps arrays and their operations explicit. On the circuit
 path they lower to tuples and fixed projections without dynamic indexing circuitry. See
 [arrays](design/arrays.md) and [the example](Examples/Arrays.lean).
+
+Named blocks use `'label: { ... }`, with `break 'label value` returning the
+block's value. `return value` exits the current function. Both work in expression
+positions and preserve earlier allocations while skipping later operations.
+Their source semantics and circuit translation are proved; see
+[control flow](design/control-flow.md) and [the example](Examples/Control.lean).
 
 `source.run` evaluates directly without collecting a finite set of instances.
 `Generic.specialize` selects non-generic entry functions externally and rejects

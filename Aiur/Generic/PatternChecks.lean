@@ -19,7 +19,7 @@ def checkLoadPatterns [DecidableEq α] (program : Program α) (caller : String) 
   | .global _ _ => pure ()
   | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs => do
       for x in xs do checkLoadPatterns program caller x
-  | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => checkLoadPatterns program caller x
+  | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => checkLoadPatterns program caller x
   | .letValue _ x b | .binary _ x b => do
       checkLoadPatterns program caller x
       checkLoadPatterns program caller b

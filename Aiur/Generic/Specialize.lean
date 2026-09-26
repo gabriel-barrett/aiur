@@ -49,7 +49,9 @@ def TypedLowering [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Prop :=
   ∀ n ∈ callableNames p, ((s.program.sourceFunction? n).all fun fn =>
     match Preparation.expression s.program (s.program.consts.length + 1) fn.types fn.body with
     | .error _ => false
-    | .ok body => (body.checkLowerTypes p [] fn.params).isSome) = true
+    | .ok prepared => match ControlLower.function prepared (fn.params.map Prod.fst) with
+      | .error _ => false
+      | .ok body => (body.checkLowerTypes p [] fn.params).isSome) = true
 
 instance [DecidableEq F] (s : Source F) (p : Aiur.Program F) : Decidable (TypedLowering s p) := by
   unfold TypedLowering; infer_instance
@@ -86,7 +88,9 @@ private def visit [DecidableEq F] (s : Source F) : Nat → List Instance → Str
         let state : Collect F ← get
         if state.remaining == 0 then throw "function instance limit exceeded"
         set ({ functions := state.functions ++ [fn], remaining := state.remaining - 1 } : Collect F)
-        for callee in coreCalls fn.body do visit s fuel (key :: path) callee
+        let some original := s.program.sourceFunction? name | throw "source closure disappeared"
+        let dependencies := (sourceCalls original.types original.body).map Instance.symbol ++ coreCalls fn.body
+        for callee in dependencies.eraseDups do visit s fuel (key :: path) callee
       else
         if !key.types.isEmpty || !(s.program.maps.any (·.name == key.name)) then
           throw s!"unknown function or map '{key.name}'"
@@ -165,7 +169,7 @@ def Specialized.run [Field F] [DecidableEq F] {s : Source F} {entries : List Str
     (hints : s.HintProvider := SourceSemantics.unavailable) : Except String (SourceValue F × Heap F) := do
   q.checkEntry name
   let (types, locals, body) ← (q.world.prepare name args).mapError reprStr
-  (SourceSemantics.evalExprWith q.world hints types locals fuel body []).mapError reprStr
+  (SourceSemantics.evalFunctionWith q.world hints types locals fuel body []).mapError reprStr
 
 def Specialized.EvalCall [Field F] [DecidableEq F] {s : Source F} {entries : List String}
     (q : Specialized s entries) (name : String) (args : List (SourceValue F)) (result : SourceValue F) : Prop :=

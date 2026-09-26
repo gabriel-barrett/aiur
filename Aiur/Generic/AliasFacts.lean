@@ -102,7 +102,7 @@ theorem checkExprTypes_map (enums aliases rigid) (f : α → β) (expr : Expr α
   | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       simp only [Expr.map, checkExprTypes]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
-  | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
+  | control _ x | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
       simp only [Expr.map, checkExprTypes, sub x (by simp_wf <;> omega)]
   | letValue _ x b | binary _ x b =>
       simp only [Expr.map, checkExprTypes, checkPatternTypes_map,
@@ -146,7 +146,7 @@ theorem expandExpr_map (aliases) (f : α → β) (expr : Expr α) :
       | some d =>
           cases resolved : constructorType aliases d ts <;>
             simp only [found, resolved, pure, Except.pure, Except.map, bind, Except.bind, Expr.map]
-  | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
+  | control _ x | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
       simp only [Expr.map, expandExpr, sub x (by simp_wf <;> omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
   | letValue _ x b | binary _ x b =>

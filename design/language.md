@@ -54,7 +54,7 @@ semantic role. See [consts](consts.md) for the allowed forms and cycle checks.
 
 Expressions include literals, variables, unary `-`, `+`, `-`, `*`, `/`, calls,
 store `&x`, load `*p`, tuple/array and qualified enum construction, zero-based projection (`p.0`, `p.1.0`), static array access (`a[0]`, `a[1..3]`), blocks, `let`, and
-`match`. Arithmetic requires field operands. There is no implicit componentwise
+`match`, named blocks, `break`, and `return`. Arithmetic requires field operands. There is no implicit componentwise
 arithmetic or tuple flattening.
 
 Arrays use `[a, b, c]` or `[value; n]`, which evaluates `value` once and copies
@@ -95,6 +95,14 @@ irrefutable pattern, tuples/arrays of irrefutable patterns, or a sole enum const
 with irrefutable payload patterns. A name may occur only once within a pattern or the complete parameter
 list. `let` bindings may shadow outer variables and are visible in their
 continuation. Match bindings are visible only in their arm.
+
+Named blocks use `'label: { ... }`; `break 'label value` supplies that block's
+result and resumes after it. `return value` exits only the current function.
+Omitting the payload supplies `()`. Labels have lexical scope and may shadow;
+exits propagate through expression positions and preserve earlier effects while
+skipping the rest. Block fallthrough and break results agree in type, and
+return payloads match the declared function result. Expression statements and
+trailing semicolons are supported. See [control flow](control-flow.md).
 
 ## Matching
 

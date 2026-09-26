@@ -18,7 +18,10 @@ theorem lowering_complete [Field F] [DecidableEq F]
   induction evaluated using OpenSource.EvalExpr.rec
     (motive_2 := fun types locals exprs before values after _ =>
       (∀ e ∈ exprs, e.lowerSafe types) →
-        OpenCore.EvalArgs core calls locals (exprs.map (Expr.lower types)) before values after) with
+        OpenCore.EvalArgs core calls locals (exprs.map (Expr.lower types)) before values after)
+    (motive_3 := fun _ _ _ _ _ _ _ _ => True)
+    (motive_4 := fun _ _ _ _ _ _ _ _ => True) with
+  | block | blockExit => simp [Expr.lowerSafe] at safe
   | literal => simpa only [Expr.lower] using (OpenCore.EvalExpr.literal (world := core) (calls := calls))
   | var found => rw [Expr.lower]; exact OpenCore.EvalExpr.var found
   | global => simp [Expr.lowerSafe] at safe
@@ -80,5 +83,6 @@ theorem lowering_complete [Field F] [DecidableEq F]
   | cons _ _ headIH tailIH =>
       rename_i safe
       exact .cons (headIH (safe _ (by simp))) (tailIH (fun e he => safe e (by simp [he])))
+  | _ => trivial
 
 end Aiur.Generic

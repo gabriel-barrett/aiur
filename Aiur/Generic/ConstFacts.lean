@@ -183,7 +183,7 @@ theorem expandExpr_map (f : α → β) (decls : List (ConstDecl α)) (locals) (e
       simp only [Expr.map, expandExpr]
       rw [children xs (by intros; simp_wf; have := List.sizeOf_lt_of_mem ‹_ ∈ _›; omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
-  | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
+  | control _ x | project x _ | index x _ | slice x _ _ | «repeat» x _ | store x | load x | hint _ x | neg x =>
       simp only [Expr.map, expandExpr, sub x (by simp_wf <;> omega)]
       all_goals simp [except_map_eq, bind_map_left, _root_.map_bind, Functor.map_map, Expr.map]
   | binary _ x b =>

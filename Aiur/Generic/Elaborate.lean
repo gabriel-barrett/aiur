@@ -53,6 +53,10 @@ def checkPointerFree (p : Program α) (context : String) : Nat → List Instance
 private structure Inference where
   next : Nat := 0
   solutions : List (String × Ty) := []
+  exits : List (ExitTarget × Ty) := []
+  /-- A jump has no ordinary value. Its otherwise unconstrained result slot
+  may default to unit without making generic value inference permissive. -/
+  dead : List String := []
 
 private abbrev Infer := StateT Inference (Except String)
 
@@ -67,7 +71,11 @@ private def normalize (s : Inference) (t : Ty) : Ty :=
 private def zonk (t : Ty) : Infer Ty := return normalize (← get) t
 
 private def finishType (s : Inference) (t : Ty) : Except String Ty := do
-  let t := normalize s t
+  let defaults := s.dead.flatMap fun name =>
+    match normalize s (.param name) with
+    | .param n => if n.startsWith "$infer" then [(n, Ty.tuple [])] else []
+    | _ => []
+  let t := (normalize s t).subst defaults
   if t.parameters.any (·.startsWith "$infer") then
     throw "cannot infer type arguments; add explicit ::<...> arguments or a result type"
   return t
@@ -190,6 +198,25 @@ private def infer (p : Program α) (rigid : List String) :
   | 0, _, _, _ => throw "expression depth limit exceeded"
   | fuel + 1, locals, e, expected => do
       let (t, e) ← match e with
+      | .control (.block label) body => do
+          liftM (checkIdentifier label)
+          let target ← match expected with | some t => pure t | none => fresh
+          let previous := (← get).exits
+          modify fun s => { s with exits := (.block label, target) :: previous }
+          let (_, body) ← infer p rigid fuel locals body (some target)
+          modify fun s => { s with exits := previous }
+          pure (target, .control (.block label) body)
+      | .control (.exit target) value => do
+          let some result := (← get).exits.lookup target |
+            throw (match target with
+              | .function => "return outside a function"
+              | .block label => s!"unknown enclosing block label '{label}'")
+          let (_, value) ← infer p rigid fuel locals value (some result)
+          let t ← match expected with
+            | some t => pure t
+            | none => fresh
+          modify fun s => { s with dead := t.parameters ++ s.dead }
+          pure (t, .control (.exit target) value)
       | .literal x => pure (.field, .literal x)
       | .var n =>
           match locals.lookup n with
@@ -319,6 +346,7 @@ private def finishPattern (s : Inference) : Pattern α → Except String (Patter
 termination_by p => sizeOf p
 
 private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
+  | .control kind body => return .control kind (← finishExpr s body)
   | .literal x => pure (.literal x)
   | .var n => pure (.var n)
   | .global n t => return .global n (← t.mapM (finishType s))
@@ -347,8 +375,9 @@ decreasing_by
   all_goals first | omega | cases ‹Pattern α × Expr α›; simp_all only [Prod.mk.sizeOf_spec]; omega
 
 def elaborateExpr (p : Program α) (rigid : List String) (locals : List (String × Ty))
-    (e : Expr α) (expected : Ty) : Except String (Expr α) := do
-  let ((_, e), state) ← infer p rigid 4096 locals e (some expected) {}
+    (e : Expr α) (expected : Ty) (inFunction : Bool := false) : Except String (Expr α) := do
+  let ((_, e), state) ← infer p rigid 4096 locals e (some expected)
+    { exits := if inFunction then [(.function, expected)] else [] }
   finishExpr state e
 
 /-- Check one const body at its use type, retaining any nested references.
@@ -365,7 +394,7 @@ def sourceCalls (types : List (String × Ty)) : Expr α → List Instance
   | .call name supplied args =>
       ⟨name, (supplied.getD []).map (Ty.subst types)⟩ :: args.flatMap (sourceCalls types)
   | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
-  | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => sourceCalls types x
+  | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => sourceCalls types x
   | .letValue _ x b | .binary _ x b => sourceCalls types x ++ sourceCalls types b
   | .matchValue x arms => sourceCalls types x ++ arms.flatMap (fun a => sourceCalls types a.2)
   | _ => []
@@ -425,7 +454,7 @@ def elaborate (p : Program α) : Except String (Program α) := do
     checkParams fn.typeParams
     if let some n := findDuplicate (fn.params.map Prod.fst) [] then throw s!"duplicate parameter '{n}'"
     (fn.params.map Prod.snd ++ [fn.result]).forM (checkType p fn.typeParams)
-    let body ← elaborateExpr p fn.typeParams fn.params fn.body fn.result
+    let body ← elaborateExpr p fn.typeParams fn.params fn.body fn.result true
     return { fn with body }
   let tables ← p.tables.mapM fun t => do
     checkType p [] t.rowType

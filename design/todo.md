@@ -58,11 +58,11 @@ not an outstanding TODO.
   patterns remain irrefutable. See [binding](language.md#expressions-and-binding)
   and [let constraints](circuits.md#let-patterns).
 
-- [ ] **Early return.** Add explicit `return`, including propagation out of match
-  branches and skipping later calls or allocations in the function. Specify its
-  interaction with expression positions and prove a translation to the core,
-  or extend the evaluation relations and compiler proofs together. See ix's
-  [source evaluator](../../ix/Ix/Aiur/Semantics/SourceEval.lean).
+- [x] **Named blocks and early return.** Lexical `'label: { ... }`,
+  `break 'label value`, and `return value` have native evaluation rules and
+  proven late translation to the existing core. Source/checker correctness
+  includes skipped calls, hints, allocations, and scope shadowing. See
+  [control flow](control-flow.md).
 
 - [ ] **Assertions and zero tests.** Add convenient syntax or library definitions
   for `assert_eq!` and `eq_zero`. Field zero tests already use `match`; field
@@ -75,7 +75,7 @@ not an outstanding TODO.
 - [x] Add [const templates](consts.md) with retained references, cycle checks, fully
   specified value/pattern bodies, and capitalization-independent name resolution.
 - [ ] Add local type annotations and expression type annotations.
-- [ ] Add ordinary `expr; rest` statements and trailing semicolons, lowering to
+- [x] Add ordinary `expr; rest` statements and trailing semicolons, lowering to
   `let _ = expr; rest` and a final `()` where appropriate.
 - [ ] Add debugging output and useful call traces. Specify which debug operands
   are evaluated; printing itself must not affect circuit claims.

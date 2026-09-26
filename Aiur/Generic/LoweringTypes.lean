@@ -56,7 +56,7 @@ def Expr.checkLowerTypes (program : Aiur.Program F) (types : SourceSemantics.Typ
       (knownType program.enums) (expr.lower types)) then none else do
     let checks : Option Unit := match expr with
       | .literal _ | .var _ => some ()
-      | .global _ _ => none
+      | .global _ _ | .control _ _ => none
       | .tuple children | .array children | .construct _ _ _ children | .constructAs _ _ _ children
         | .call _ _ children => do
           let _ ← children.mapM (Expr.checkLowerTypes program types locals)

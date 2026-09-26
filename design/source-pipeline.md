@@ -2,7 +2,7 @@
 
 The source program is the semantic reference. Parsing produces `Program Nat`.
 Const declarations and uses, type aliases, arrays, pointer patterns, and generic
-functions remain present. Checking may infer type arguments and normalize types;
+functions and lexical exits remain present. Checking may infer type arguments and normalize types;
 it must not substitute const bodies or lower expressions and patterns.
 
 ## Stages
@@ -19,7 +19,7 @@ it must not substitute const bodies or lower expressions and patterns.
    predicate here.
 4. Prepare the checked program for selected, non-generic entrypoints. This is
    where instantiation, const expansion, alias elimination, and expression or
-   pattern lowering may happen. Optimization is not required; an unreachable
+   pattern lowering, and continuation translation of block/function exits happen. Optimization is not required; an unreachable
    branch may remain with an impossible selector.
 5. Compile the prepared program to chips and check integer row balances.
 

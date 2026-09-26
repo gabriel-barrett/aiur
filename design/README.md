@@ -13,6 +13,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   semantic questions.
 - [Source semantics](source-semantics.md): native evaluation, preparation order,
   the circuit compilation boundary, and the completed source/checker proofs.
+- [Control flow](control-flow.md): named blocks, lexical breaks, function returns,
+  native exit semantics, guarded compilation, and end-to-end proofs.
 - [Generics](generics.md): inferred type arguments, generic functions and enums,
   external entry selection, direct evaluation, and proved specialization.
 - [Type aliases](type-aliases.md): transparent parameterized aliases, type normalization

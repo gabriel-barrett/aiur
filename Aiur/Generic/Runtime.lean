@@ -130,7 +130,7 @@ def Source.run [Field F] [DecidableEq F] (s : Source F) (name : String)
     (hints : s.HintProvider := SourceSemantics.unavailable) : Except String (SourceValue F × Heap F) := do
   s.checkEntry name
   let (types, locals, body) ← (s.world.prepare name args).mapError reprStr
-  (SourceSemantics.evalExprWith s.world hints types locals fuel body []).mapError reprStr
+  (SourceSemantics.evalFunctionWith s.world hints types locals fuel body []).mapError reprStr
 
 def Source.EvalCall [Field F] [DecidableEq F] (s : Source F) (name : String)
     (args : List (SourceValue F)) (result : SourceValue F) : Prop :=
@@ -150,9 +150,9 @@ theorem Source.run_spec [Field F] [DecidableEq F] {s : Source F}
       | error e => simp [Source.run, entry, prepared, Except.mapError, bind, Except.bind] at run
       | ok triple =>
           rcases triple with ⟨types, locals, body⟩
-          have executed : SourceSemantics.evalExprWith s.world hints types locals fuel body [] = .ok (result, heap) := by
-            cases h : SourceSemantics.evalExprWith s.world hints types locals fuel body [] <;>
+          have executed : SourceSemantics.evalFunctionWith s.world hints types locals fuel body [] = .ok (result, heap) := by
+            cases h : SourceSemantics.evalFunctionWith s.world hints types locals fuel body [] <;>
               simpa [Source.run, entry, prepared, h, Except.mapError, bind, Except.bind] using run
-          exact ⟨rfl, .intro prepared (SourceSemantics.evalExpr_spec executed)⟩
+          exact ⟨rfl, SourceSemantics.evalFunction_spec prepared executed⟩
 
 end Aiur.Generic

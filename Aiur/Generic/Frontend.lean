@@ -5,9 +5,19 @@ namespace Aiur.Generic.Frontend
 open Lean Elab Term
 open Aiur.Frontend
 
+declare_syntax_cat aiur_body (behavior := symbol)
+syntax (name := bodyTail) aiur_expr : aiur_body
+syntax (name := bodyEnd) aiur_expr ";" : aiur_body
+syntax (name := bodySequence) aiur_expr ";" aiur_body : aiur_body
+syntax (name := bodyLetEnd) "let" aiur_pattern "=" aiur_expr ";" : aiur_body
+syntax (name := bodyLet) "let" aiur_pattern "=" aiur_expr ";" aiur_body : aiur_body
+syntax (name := blockStatements) "{" (aiur_body)? "}" : aiur_expr
+syntax (name := functionStatements) "fn" ident
+  "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")" "->" aiur_type "{" (aiur_body)? "}" : aiur_function
+
 syntax (name := appliedType) ident "<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">" : aiur_type
 syntax (name := genericFunction) "fn" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
-  "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")" "->" aiur_type "{" aiur_expr "}" : aiur_function
+  "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")" "->" aiur_type "{" (aiur_body)? "}" : aiur_function
 syntax (name := genericEnum) "enum" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
   "{" sepBy(aiur_constructor, ",", ",", allowTrailingSep) "}" : aiur_enum
 syntax (name := genericCall) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">"
@@ -42,6 +52,11 @@ syntax:80 (name := sliceToExpr) aiur_expr:80 "[" ".." num "]" : aiur_expr
 syntax:80 (name := sliceAllExpr) aiur_expr:80 "[" ".." "]" : aiur_expr
 syntax:80 (name := sliceInclusiveExpr) aiur_expr:80 "[" num "..=" num "]" : aiur_expr
 syntax:80 (name := sliceToInclusiveExpr) aiur_expr:80 "[" "..=" num "]" : aiur_expr
+syntax (name := namedBlock) "@" ident ":" "{" (aiur_body)? "}" : aiur_expr
+syntax:10 (name := breakExpr) "break" "@" ident aiur_expr:11 : aiur_expr
+syntax:10 (name := breakUnit) "break" "@" ident : aiur_expr
+syntax:10 (name := returnExpr) "return" aiur_expr:11 : aiur_expr
+syntax:10 (name := returnUnit) "return" : aiur_expr
 
 private def readName (s : Syntax) : Except String String :=
   match s.getId with
@@ -90,9 +105,42 @@ private partial def pattern (params : List String) (s : Syntax) : Except String 
   else if s.getKind == ``tuplePattern then return .tuple ((← pattern params s[1]) :: (← s[3].getSepArgs.toList.mapM (pattern params)))
   else throw "expected an Aiur pattern"
 
+/-- A terminal statement that can only exit has no implicit unit result.
+Blocks are deliberately opaque here: their own breaks can complete normally. -/
+private def exitsOnly : Expr α → Bool
+  | .control (.exit _) _ => true
+  | .letValue _ value body => exitsOnly value || exitsOnly body
+  | .matchValue value arms => exitsOnly value || (!arms.isEmpty && (arms.map fun arm => exitsOnly arm.2).all id)
+  | _ => false
+termination_by expr => sizeOf expr
+decreasing_by
+  all_goals simp_wf
+  all_goals first | omega | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›; cases ‹_ × _›; simp_all only [Prod.mk.sizeOf_spec]; omega
+
 private partial def expr (params : List String) (s : Syntax) : Except String (Expr Nat) := do
   let k := s.getKind
-  if k == `choice then expr params s[0]
+  if k == `choice then
+    -- A let followed by a trailing statement has both an expression parse
+    -- and a statement parse. Preserve the lexical let scope in the latter.
+    let selected := s.getArgs.find? fun child =>
+      child.getKind == ``bodyLet || child.getKind == ``bodySequence
+    expr params (selected.getD s[0])
+  else if k == ``bodyTail then expr params s[0]
+  else if k == ``bodyEnd then
+    let value ← expr params s[0]
+    return if exitsOnly value then value else .letValue .wildcard value (.tuple [])
+  else if k == ``bodySequence then return .letValue .wildcard (← expr params s[0]) (← expr params s[2])
+  else if k == ``bodyLetEnd then return .letValue (← pattern params s[1]) (← expr params s[3]) (.tuple [])
+  else if k == ``bodyLet then return .letValue (← pattern params s[1]) (← expr params s[3]) (← expr params s[5])
+  else if k == ``blockStatements then
+    if s[1].getArgs.isEmpty then return .tuple [] else expr params s[1][0]
+  else if k == ``namedBlock then
+    return .control (.block (← readName s[1]))
+      (← if s[4].getArgs.isEmpty then pure (.tuple []) else expr params s[4][0])
+  else if k == ``breakExpr then return .control (.exit (.block (← readName s[2]))) (← expr params s[3])
+  else if k == ``breakUnit then return .control (.exit (.block (← readName s[2]))) (.tuple [])
+  else if k == ``returnExpr then return .control (.exit .function) (← expr params s[1])
+  else if k == ``returnUnit then return .control (.exit .function) (.tuple [])
   else if k == ``literal then return .literal (s[0].isNatLit?.getD 0)
   else if k == ``variableExpr then return .var (← readName s[0])
   else if k == ``globalExpr then return .global (← readName s[1])
@@ -160,6 +208,7 @@ private def lowerAlias (s : Syntax) : Except String AliasDecl := do
 
 private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
     (consts : List (ConstDecl Nat)) (s : Syntax) : Except String (Function Nat) := do
+  let s := if s.getKind == `choice then s[0] else s
   let generic := s.getKind == ``genericFunction
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
   let offset := if generic then 3 else 0
@@ -179,7 +228,9 @@ private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
         inputs := inputs ++ [(name, t)]
         destructuring := destructuring ++ [(pat, name)]
   if let some n := findDuplicate boundNames [] then throw s!"duplicate parameter binding '{n}'"
-  let body ← expr ps s[8 + offset]
+  let body ← if generic || s.getKind == ``functionStatements then
+      if s[8 + offset].getArgs.isEmpty then pure (.tuple []) else expr ps s[8 + offset][0]
+    else expr ps s[8 + offset]
   return {
     name := ← readName s[1], typeParams := ps, params := inputs
     result := ← type ps s[6 + offset]
@@ -189,6 +240,10 @@ private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
 /-- Elaborates Rust-like syntax without choosing either a field or entrypoints. -/
 def ofString (env : Lean.Environment) (source : String) : Except String (Program Nat) := do
   let source := String.ofList (normalizeWhitespace (← maskComments source.toList 0 false))
+  -- Lean's lexer treats a leading apostrophe as a character literal. Aiur has
+  -- no character literals or `@` syntax; use an internal token for labels.
+  if source.contains '@' then throw "unexpected '@' in Aiur source"
+  let source := source.replace "'" "@ "
   -- Split nested generic closers before Lean's lexer treats `>>` as an operator.
   let source := source.replace ">" "> "
   -- Lean has an `&&` token; Aiur reads consecutive pointer prefixes instead.

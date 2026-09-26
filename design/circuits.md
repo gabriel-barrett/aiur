@@ -112,3 +112,13 @@ an unused result. Hints add no provider lookup premise or key/result equation.
 Their dynamic key expressions retain ordinary call and memory constraints.
 Soundness chooses the decoded well-typed value in the nondeterministic relation;
 completeness encodes the chosen value and fills the validation auxiliaries.
+
+## Named blocks and early return
+
+Lexical exits are translated after the source semantic boundary to ordinary
+let/match continuations. Existing selectors then guard everything that follows
+a block break or function return on its path. Skipped operations contribute no
+active call or ROM requirement; inactive division witnesses impose no inverse
+condition. The local circuit language is unchanged. The proved translation
+preserves the original source result and heap and composes with both row-checker
+models. See [control flow](control-flow.md) for the rules and theorem names.

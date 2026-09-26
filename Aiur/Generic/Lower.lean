@@ -25,6 +25,7 @@ def Expr.lower (env : List (String × Ty)) : Expr α → Aiur.Expr α
   | .literal x => .literal x
   | .var n => .var n
   | .global n _ => .var ("$const:" ++ n)
+  | .control _ _ => .var "$unloweredControl"
   | .tuple xs | .array xs => .tuple (xs.map (Expr.lower env))
   | .repeat x n => ArrayLowering.repeatValue (x.lower env) n
   | .index x i => .project (x.lower env) i

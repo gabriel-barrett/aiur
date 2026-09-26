@@ -77,7 +77,7 @@ private def decideAll (xs : List A) (p : A → Prop)
 lowering. Rejection is a compiler error, not a new source-language behavior. -/
 def Expr.lowerSafe (types : List (String × Ty)) : Expr F → Prop
   | .literal _ | .var _ => True
-  | .global _ _ => False
+  | .global _ _ | .control _ _ => False
   | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs | .call _ _ xs =>
       ∀ x ∈ xs, x.lowerSafe types
   | .repeat x _ | .index x _ | .project x _ | .store x | .load x | .hint _ x | .neg x => x.lowerSafe types
@@ -99,7 +99,7 @@ instance decidableLowerSafe (types : List (String × Ty)) (expr : Expr F) : Deci
   have sub (e : Expr F) (smaller : sizeOf e < sizeOf expr) : Decidable (e.lowerSafe types) :=
     decidableLowerSafe types e
   cases expr with
-  | literal _ | var _ | global _ _ => unfold Expr.lowerSafe; infer_instance
+  | literal _ | var _ | global _ _ | control _ _ => unfold Expr.lowerSafe; infer_instance
   | tuple xs | array xs | construct _ _ _ xs | constructAs _ _ _ xs | call _ _ xs =>
       unfold Expr.lowerSafe
       apply decideAll

@@ -32,9 +32,9 @@ theorem Specialized.prepare_sound [Field F] [DecidableEq F] {s : Source F}
         (by simp [Source.world, sourceWorld, sourceAbsent, found, bind, Except.bind, pure, Except.pure])
         (SourceSemantics.constant_evaluates s.world value [] [] after)
   | some core =>
-      obtain ⟨source, body, found, expanded, safe, params, bodyEq⟩ := Source.compilerFunction_spec compiled
+      obtain ⟨source, preparedBody, body, found, expanded, control, safe, params, bodyEq⟩ := Source.compilerFunction_spec compiled
       have check := q.typedLowering name reachable
-      simp only [found, Option.all_some, expanded] at check
+      simp only [found, Option.all_some, expanded, control] at check
       cases bodyChecked : body.checkLowerTypes q.program [] source.params with
       | none => simp [bodyChecked] at check
       | some type =>
@@ -50,10 +50,15 @@ theorem Specialized.prepare_sound [Field F] [DecidableEq F] {s : Source F}
               body [] _ _ _ _ safe
               (by rw [parameterTypes source.params args valid.1]; exact bodyChecked)
               evaluated heapGood localsGood
-            have original := (SourceSemantics.expression_preparation_open_iff s.program s.world
-              (fun _ _ => rfl) rfl _ _ _ expanded _ _ _ _).mpr native
-            exact .intro (by simp only [Source.world, sourceWorld, found, SourceFunction.prepare, if_pos valid])
-              original.close
+            rcases (ControlLower.function_correct control).mp native with normal | abrupt
+            · have original := (SourceSemantics.expression_preparation_open_iff s.program s.world
+                (fun _ _ => rfl) rfl _ _ _ expanded _ _ _ _).mpr normal
+              exact .intro (by simp only [Source.world, sourceWorld, found, SourceFunction.prepare, if_pos valid])
+                original.close
+            · have original := (SourceSemantics.exit_preparation_open_iff s.program s.world
+                (fun _ _ => rfl) rfl _ _ _ expanded _ _ _ _ _).mpr abrupt
+              exact .returned (by simp only [Source.world, sourceWorld, found, SourceFunction.prepare, if_pos valid])
+                original.close
           · cases prepared
 
 /-- Reflection at any reachable instance, with the ordinary well-formed heap

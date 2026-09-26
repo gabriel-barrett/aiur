@@ -163,7 +163,14 @@ private def lowerEnum (stx : Syntax) : Except String EnumDecl := do
     return { name := ← readName ctor[0], fields : ConstructorDecl }
   return { name, constructors }
 
-private def lowerFunction (decls : Declarations) (stx : Syntax) : Except String (Aiur.Function Nat) := do
+private partial def lowerFunction (decls : Declarations) (stx : Syntax) : Except String (Aiur.Function Nat) := do
+  if stx.getKind == `choice then
+    let mut error := "unsupported ambiguous function"
+    for alternative in stx.getArgs do
+      match lowerFunction decls alternative with
+      | .ok definition => return definition
+      | .error message => error := message
+    throw error
   let name ← readName stx[1]
   let mut params := []
   let mut destructuring := []
