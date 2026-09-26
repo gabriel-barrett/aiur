@@ -11,6 +11,10 @@ syntax (name := bodyEnd) aiur_expr ";" : aiur_body
 syntax (name := bodySequence) aiur_expr ";" aiur_body : aiur_body
 syntax (name := bodyLetEnd) "let" aiur_pattern "=" aiur_expr ";" : aiur_body
 syntax (name := bodyLet) "let" aiur_pattern "=" aiur_expr ";" aiur_body : aiur_body
+syntax (name := bodyLetTypedEnd) "let" aiur_pattern ":" aiur_type "=" aiur_expr ";" : aiur_body
+syntax (name := bodyLetTyped) "let" aiur_pattern ":" aiur_type "=" aiur_expr ";" aiur_body : aiur_body
+syntax (name := ascribeExpr) "(" aiur_expr ":" aiur_type ")" : aiur_expr
+syntax (name := debugExpr) "debug!" "(" str ("," sepBy(aiur_expr, ",", ",", allowTrailingSep))? ")" : aiur_expr
 syntax (name := blockStatements) "{" (aiur_body)? "}" : aiur_expr
 syntax (name := functionStatements) "fn" ident
   "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")" "->" aiur_type "{" (aiur_body)? "}" : aiur_function
@@ -169,7 +173,7 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
     -- A let followed by a trailing statement has both an expression parse
     -- and a statement parse. Preserve the lexical let scope in the latter.
     let selected := s.getArgs.find? fun child =>
-      child.getKind == ``bodyLet || child.getKind == ``bodySequence
+      child.getKind == ``bodyLet || child.getKind == ``bodyLetTyped || child.getKind == ``bodySequence
     expr params (selected.getD s[0])
   else if k == ``bodyTail then expr params s[0]
   else if k == ``bodyEnd then
@@ -178,6 +182,15 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
   else if k == ``bodySequence then return .letValue .wildcard (← expr params s[0]) (← expr params s[2])
   else if k == ``bodyLetEnd then return .letValue (← pattern params s[1]) (← expr params s[3]) (.tuple [])
   else if k == ``bodyLet then return .letValue (← pattern params s[1]) (← expr params s[3]) (← expr params s[5])
+  else if k == ``bodyLetTyped || k == ``bodyLetTypedEnd then
+    let body ← if k == ``bodyLetTyped then expr params s[7] else pure (.tuple [])
+    return .letValue (← pattern params s[1])
+      (.builtin (.ascribe (← type params s[3])) [← expr params s[5]]) body
+  else if k == ``ascribeExpr then
+    return .builtin (.ascribe (← type params s[3])) [← expr params s[1]]
+  else if k == ``debugExpr then
+    let values ← if s[3].getArgs.isEmpty then pure [] else s[3][1].getSepArgs.toList.mapM (expr params)
+    return .builtin (.debug (s[2].isStrLit?.getD "")) values
   else if k == ``blockStatements then
     if s[1].getArgs.isEmpty then return .tuple [] else expr params s[1][0]
   else if k == ``namedBlock then
@@ -308,17 +321,52 @@ private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
     body := destructuring.foldr (fun (pat, n) b => .letValue pat (.var n) b) body
   }
 
+
+/-- Strings are diagnostic metadata: comment masking, label rewriting and
+operator spacing must never change their contents. -/
+private inductive LexMode where
+  | code
+  | line
+  | comment (depth : Nat)
+  | string (escaped : Bool)
+
+private def prepareChars : List Char → LexMode → Except String (List Char)
+  | [], .comment _ => .error "unterminated block comment"
+  | [], .string _ => .error "unterminated diagnostic string"
+  | [], _ => .ok []
+  | c :: rest, .string escaped => do
+      let mode := if escaped then LexMode.string false
+        else if c == '\\' then .string true
+        else if c == '"' then .code else .string false
+      return c :: (← prepareChars rest mode)
+  | c :: rest, .line => do
+      if c == '\n' then return c :: (← prepareChars rest .code)
+      return ' ' :: (← prepareChars rest .line)
+  | '/' :: '*' :: rest, .comment depth => do
+      return ' ' :: ' ' :: (← prepareChars rest (.comment (depth + 1)))
+  | '*' :: '/' :: rest, .comment depth => do
+      return ' ' :: ' ' :: (← prepareChars rest (if depth == 1 then .code else .comment (depth - 1)))
+  | c :: rest, .comment depth => do
+      return (if c == '\n' then c else ' ') :: (← prepareChars rest (.comment depth))
+  | '/' :: '/' :: rest, .code => do return ' ' :: ' ' :: (← prepareChars rest .line)
+  | '/' :: '*' :: rest, .code => do return ' ' :: ' ' :: (← prepareChars rest (.comment 1))
+  | '"' :: rest, .code => do return '"' :: (← prepareChars rest (.string false))
+  | '.' :: '.' :: '=' :: rest, .code => do
+      return ' ' :: '.' :: '.' :: '=' :: ' ' :: (← prepareChars rest .code)
+  | '.' :: '.' :: rest, .code => do return ' ' :: '.' :: '.' :: ' ' :: (← prepareChars rest .code)
+  | c :: rest, .code => do
+      if c == '@' then throw "unexpected '@' in Aiur source"
+      let tail ← prepareChars rest .code
+      if c == '\'' then return '@' :: ' ' :: tail
+      if c == '.' then return ' ' :: '.' :: ' ' :: tail
+      let c := if c == '\t' || c == '\r' then ' ' else c
+      if c == '>' || c == '&' || c == '*' || ((c == '-' || c == '/') && rest.head? == some '-') then
+        return c :: ' ' :: tail
+      return c :: tail
+
 /-- Elaborates Rust-like syntax without choosing either a field or entrypoints. -/
 def ofString (env : Lean.Environment) (source : String) : Except String (Program Nat) := do
-  let source := String.ofList (normalizeWhitespace (← maskComments source.toList 0 false))
-  -- Lean's lexer treats a leading apostrophe as a character literal. Aiur has
-  -- no character literals or `@` syntax; use an internal token for labels.
-  if source.contains '@' then throw "unexpected '@' in Aiur source"
-  let source := source.replace "'" "@ "
-  -- Split nested generic closers before Lean's lexer treats `>>` as an operator.
-  let source := source.replace ">" "> "
-  -- Lean has an `&&` token; Aiur reads consecutive pointer prefixes instead.
-  let source := source.replace "&" "& "
+  let source := String.ofList (← prepareChars source.toList .code)
   let s ← Parser.runParserCategory env `aiur_program source "<aiur>"
   let ds := s[0].getArgs.toList
   let enums ← (ds.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])

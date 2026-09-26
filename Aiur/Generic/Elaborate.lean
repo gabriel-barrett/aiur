@@ -272,6 +272,17 @@ private def infer (p : Program α) (rigid : List String) :
             | none => fresh
           modify fun s => { s with dead := t.parameters ++ s.dead }
           pure (t, .control (.exit target) value)
+      | .builtin op operands => do
+          match op with
+          | .ascribe type =>
+              liftM (checkType p rigid type)
+              let [value] := operands | throw "type annotations take one expression"
+              if let some expected := expected then agree type expected
+              let (_, value) ← infer p rigid fuel locals value (some type)
+              pure (type, .builtin (.ascribe type) [value])
+          | .debug message =>
+              let pairs ← operands.mapM fun value => infer p rigid fuel locals value none
+              pure (.tuple [], .builtin (.debug message) (pairs.map Prod.snd))
       | .update paths operands => do
           let base :: replacements := operands | throw "update requires a base value"
           if paths.length != replacements.length then throw "update path/replacement count mismatch"
@@ -442,6 +453,7 @@ private def finishExpr (s : Inference) : Expr α → Except String (Expr α)
   | .slice x start stop => return .slice (← finishExpr s x) start stop
   | .construct n ts c xs => return .construct n (some (← (ts.getD []).mapM (finishType s))) c (← xs.mapM (finishExpr s))
   | .constructAs _ _ _ _ => throw "unelaborated constructor template"
+  | .builtin op xs => return .builtin (← op.mapTypesM (finishType s)) (← xs.mapM (finishExpr s))
   | .update paths xs => do
       let paths ← paths.mapM fun path => path.mapM fun step => match step with
         | .member field => return .member { field with owner := ← field.owner.mapM (finishType s) }
@@ -485,7 +497,7 @@ Consts cannot contain calls, so a reference introduces no function dependency. -
 def sourceCalls (types : List (String × Ty)) : Expr α → List Instance
   | .call name supplied args =>
       ⟨name, (supplied.getD []).map (Ty.subst types)⟩ :: args.flatMap (sourceCalls types)
-  | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
+  | .builtin _ xs | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => xs.flatMap (sourceCalls types)
   | .member x _ | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .hint _ x | .neg x => sourceCalls types x
   | .letValue _ x b | .binary _ x b => sourceCalls types x ++ sourceCalls types b
   | .matchValue x arms => sourceCalls types x ++ arms.flatMap (fun a => sourceCalls types a.2)

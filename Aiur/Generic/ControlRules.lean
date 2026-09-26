@@ -251,6 +251,17 @@ theorem exec_constructAs : Exec world calls types locals (.constructAs params ty
     · exact .inl ⟨_, _, .constructAs ev, post⟩
     · exact .inr ⟨_, _, _, .fromConstructAs ev, post⟩
 
+theorem exec_builtin : Exec world calls types locals (.builtin paths exprs) normal abrupt heap ↔
+    ExecArgs world calls types locals exprs
+      (fun values h => ∃ result, paths.apply values = .ok result ∧ normal result h) abrupt heap := by
+  constructor
+  · rintro (⟨v, h, ev, post⟩ | ⟨t, v, h, ev, post⟩)
+    · cases ev with | builtin args op => exact .inl ⟨_, _, args, _, op, post⟩
+    · cases ev with | fromBuiltin args => exact .inr ⟨_, _, _, args, post⟩
+  · rintro (⟨vs, h, ev, result, op, post⟩ | ⟨t, v, h, ev, post⟩)
+    · exact .inl ⟨_, _, .builtin ev op, post⟩
+    · exact .inr ⟨_, _, _, .fromBuiltin ev, post⟩
+
 theorem exec_update : Exec world calls types locals (.update paths exprs) normal abrupt heap ↔
     ExecArgs world calls types locals exprs
       (fun values h => ∃ result, Update.value types paths values = .ok result ∧ normal result h) abrupt heap := by

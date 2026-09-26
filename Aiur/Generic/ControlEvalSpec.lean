@@ -72,6 +72,12 @@ theorem evalOutcome_spec {locals : Environment F Nat} {fuel : Nat} {expr : Expr 
               simp only [evalOutcomeWith, found] at executed
               obtain ⟨rfl, rfl⟩ := FlowEvaluation.pure_ok.mp executed
               exact .var found
+      | builtin paths items =>
+          simp only [evalOutcomeWith] at executed
+          rcases FlowEvaluation.bind_ok.mp executed with ⟨values, middle, run, operation⟩ | ⟨⟨target, value⟩, run, rfl⟩
+          · obtain ⟨result, op, rfl, rfl⟩ := FlowEvaluation.lift_ok.mp operation
+            exact .builtin (args_spec (fun _ _ _ _ h => ih h) run) op
+          · exact .fromBuiltin (args_spec (fun _ _ _ _ h => ih h) run)
       | update paths items =>
           simp only [evalOutcomeWith] at executed
           rcases FlowEvaluation.bind_ok.mp executed with ⟨values, middle, run, operation⟩ | ⟨⟨target, value⟩, run, rfl⟩

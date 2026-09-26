@@ -6,7 +6,7 @@ set_option linter.unusedSimpArgs false
 def inScope (names : List String) (hintType : Aiur.Ty → Bool) (types : Types) : Expr α → Bool
   | .literal _ | .var _ => true
   | .global _ _ => true
-  | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => (xs.map (inScope names hintType types)).all id
+  | .builtin _ xs | .update _ xs | .record _ xs | .tuple xs | .array xs | .construct _ _ _ xs | .constructAs _ _ _ xs => (xs.map (inScope names hintType types)).all id
   | .call n ts xs => names.contains (instanceName types n ts) && (xs.map (inScope names hintType types)).all id
   | .member x _ | .control _ x | .project x _ | .index x _ | .slice x _ _ | .repeat x _ | .store x | .load x | .neg x => inScope names hintType types x
   | .hint t x => hintType (t.subst types).toCore && inScope names hintType types x
@@ -138,6 +138,7 @@ theorem EvalExpr.transfer [Field F] [DecidableEq F]
   | index _ op ih => intro h; exact .index (ih (by simpa [inScope] using h)) op
   | slice _ op ih => intro h; exact .slice (ih (by simpa [inScope] using h)) op
   | constructAs _ ih => intro h; exact .constructAs (ih (by simpa [inScope] using h))
+  | builtin _ op ih => intro h; exact .builtin (ih (by simpa [inScope] using h)) op
   | update _ op ih => intro h; exact .update (ih (by simpa [inScope] using h)) op
   | record _ ih => intro h; exact .record (ih (by simpa [inScope] using h))
   | construct _ ih => intro h; exact .construct (ih (by simpa [inScope] using h))
@@ -188,6 +189,7 @@ theorem EvalExpr.transfer [Field F] [DecidableEq F]
   | fromIndex _ ih => rename_i h; exact .fromIndex (ih (by simpa [inScope] using h))
   | fromSlice _ ih => rename_i h; exact .fromSlice (ih (by simpa [inScope] using h))
   | fromConstructAs _ ih => rename_i h; exact .fromConstructAs (ih (by simpa [inScope] using h))
+  | fromBuiltin _ ih => rename_i h; exact .fromBuiltin (ih (by simpa [inScope] using h))
   | fromUpdate _ ih => rename_i h; exact .fromUpdate (ih (by simpa [inScope] using h))
   | fromRecord _ ih => rename_i h; exact .fromRecord (ih (by simpa [inScope] using h))
   | fromConstruct _ ih => rename_i h; exact .fromConstruct (ih (by simpa [inScope] using h))
@@ -256,6 +258,7 @@ theorem EvalExit.transfer [Field F] [DecidableEq F]
   | index _ op ih => rename_i h; exact .index (ih (by simpa [inScope] using h)) op
   | slice _ op ih => rename_i h; exact .slice (ih (by simpa [inScope] using h)) op
   | constructAs _ ih => rename_i h; exact .constructAs (ih (by simpa [inScope] using h))
+  | builtin _ op ih => rename_i h; exact .builtin (ih (by simpa [inScope] using h)) op
   | update _ op ih => rename_i h; exact .update (ih (by simpa [inScope] using h)) op
   | record _ ih => rename_i h; exact .record (ih (by simpa [inScope] using h))
   | construct _ ih => rename_i h; exact .construct (ih (by simpa [inScope] using h))
@@ -306,6 +309,7 @@ theorem EvalExit.transfer [Field F] [DecidableEq F]
   | fromIndex _ ih => intro h; exact .fromIndex (ih (by simpa [inScope] using h))
   | fromSlice _ ih => intro h; exact .fromSlice (ih (by simpa [inScope] using h))
   | fromConstructAs _ ih => intro h; exact .fromConstructAs (ih (by simpa [inScope] using h))
+  | fromBuiltin _ ih => intro h; exact .fromBuiltin (ih (by simpa [inScope] using h))
   | fromUpdate _ ih => intro h; exact .fromUpdate (ih (by simpa [inScope] using h))
   | fromRecord _ ih => intro h; exact .fromRecord (ih (by simpa [inScope] using h))
   | fromConstruct _ ih => intro h; exact .fromConstruct (ih (by simpa [inScope] using h))

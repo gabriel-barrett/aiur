@@ -57,7 +57,7 @@ def Expr.checkLowerTypes (program : Aiur.Program F) (types : SourceSemantics.Typ
     let checks : Option Unit := match expr with
       | .literal _ | .var _ => some ()
       | .global _ _ | .control _ _ => none
-      | .update _ children | .record _ children | .tuple children | .array children | .construct _ _ _ children | .constructAs _ _ _ children
+      | .builtin _ children | .update _ children | .record _ children | .tuple children | .array children | .construct _ _ _ children | .constructAs _ _ _ children
         | .call _ _ children => do
           let _ ← children.mapM (Expr.checkLowerTypes program types locals)
           some ()

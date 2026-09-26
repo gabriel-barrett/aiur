@@ -48,7 +48,7 @@ theorem EvalExit.hasControl (ev : EvalExit world calls types locals expr before 
   | fromGlobal _ interpreted _ ih =>
       intro _
       exact ih (Consts.toExpr_closed _ interpreted).noControl
-  | fromUpdate _ ih | fromRecord _ ih | fromTuple _ ih | fromArray _ ih | fromConstruct _ ih | fromConstructAs _ ih | fromCall _ ih =>
+  | fromBuiltin _ ih | fromUpdate _ ih | fromRecord _ ih | fromTuple _ ih | fromArray _ ih | fromConstruct _ ih | fromConstructAs _ ih | fromCall _ ih =>
       intro h
       apply ih
       simpa [ControlLower.hasControl, List.any_eq_false] using h

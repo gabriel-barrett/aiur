@@ -149,6 +149,7 @@ def expandExpr (decls : List (ConstDecl α)) (locals : List String) : Expr α �
   | .slice x start stop => return .slice (← expandExpr decls locals x) start stop
   | .construct n ts c xs => return .construct n ts c (← xs.mapM (expandExpr decls locals))
   | .constructAs params t c xs => return .constructAs params t c (← xs.mapM (expandExpr decls locals))
+  | .builtin op xs => return .builtin op (← xs.mapM (expandExpr decls locals))
   | .update paths xs => return .update paths (← xs.mapM (expandExpr decls locals))
   | .record head xs => return .record head (← xs.mapM (expandExpr decls locals))
   | .member x field => return .member (← expandExpr decls locals x) field

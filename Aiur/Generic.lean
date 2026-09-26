@@ -1,4 +1,5 @@
 import Aiur.Generic.Frontend
+import Aiur.Generic.Diagnostics
 import Aiur.Generic.SourceRules
 import Aiur.Generic.AliasFacts
 import Aiur.Generic.ConstFacts

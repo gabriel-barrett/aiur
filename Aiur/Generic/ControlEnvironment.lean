@@ -24,6 +24,7 @@ theorem EvalExpr.changeLocals (ev : EvalExpr world calls types locals expr befor
       exact .var (by rw [← agree _ (by simp [ControlLower.names])]; exact lookup)
   | array _ ih => intro other agree; exact .array (ih other (by simpa only [ControlLower.names] using agree))
   | constructAs _ ih => intro other agree; exact .constructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | builtin _ op ih => intro other agree; exact .builtin (ih other (by simpa only [ControlLower.names] using agree)) op
   | update _ op ih => intro other agree; exact .update (ih other (by simpa only [ControlLower.names] using agree)) op
   | record _ ih => intro other agree; exact .record (ih other (by simpa only [ControlLower.names] using agree))
   | «repeat» _ ih => intro other agree; exact .repeat (ih other (by simpa only [ControlLower.names] using agree))
@@ -95,6 +96,9 @@ theorem EvalExpr.changeLocals (ev : EvalExpr world calls types locals expr befor
   | fromConstructAs _ ih =>
       rename_i other agree
       exact .fromConstructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | fromBuiltin _ ih =>
+      rename_i other agree
+      exact .fromBuiltin (ih other (by simpa only [ControlLower.names] using agree))
   | fromUpdate _ ih =>
       rename_i other agree
       exact .fromUpdate (ih other (by simpa only [ControlLower.names] using agree))
@@ -178,6 +182,7 @@ theorem EvalExit.changeLocals (ev : EvalExit world calls types locals expr befor
       exact .var (by rw [← agree _ (by simp [ControlLower.names])]; exact lookup)
   | array _ ih => rename_i other agree; exact .array (ih other (by simpa only [ControlLower.names] using agree))
   | constructAs _ ih => rename_i other agree; exact .constructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | builtin _ op ih => rename_i other agree; exact .builtin (ih other (by simpa only [ControlLower.names] using agree)) op
   | update _ op ih => rename_i other agree; exact .update (ih other (by simpa only [ControlLower.names] using agree)) op
   | record _ ih => rename_i other agree; exact .record (ih other (by simpa only [ControlLower.names] using agree))
   | «repeat» _ ih => rename_i other agree; exact .repeat (ih other (by simpa only [ControlLower.names] using agree))
@@ -249,6 +254,9 @@ theorem EvalExit.changeLocals (ev : EvalExit world calls types locals expr befor
   | fromConstructAs _ ih =>
       intro other agree
       exact .fromConstructAs (ih other (by simpa only [ControlLower.names] using agree))
+  | fromBuiltin _ ih =>
+      intro other agree
+      exact .fromBuiltin (ih other (by simpa only [ControlLower.names] using agree))
   | fromUpdate _ ih =>
       intro other agree
       exact .fromUpdate (ih other (by simpa only [ControlLower.names] using agree))

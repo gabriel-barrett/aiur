@@ -1,3 +1,4 @@
+import Aiur.Generic.BuiltinFacts
 import Aiur.Generic.UpdateFacts
 import Aiur.Generic.PatternLoweringFacts
 import Aiur.Generic.OpenSource
@@ -45,6 +46,9 @@ theorem lowering_complete [Field F] [DecidableEq F]
           rw [Expr.lower]
           exact ArrayLowering.sliceValue_iff.mpr
             ⟨input, values, ih safe.2, projected, rfl⟩
+  | builtin _ builtind ih =>
+      rw [Expr.lower]
+      exact BuiltinLowering.expression_iff.mpr ⟨_, ih (by simpa only [Expr.lowerSafe] using safe), builtind⟩
   | update _ updated ih =>
       rw [Expr.lower]
       exact UpdateLowering.expression_iff.mpr ⟨_, ih (by simpa only [Expr.lowerSafe] using safe), updated⟩
