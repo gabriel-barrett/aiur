@@ -91,8 +91,11 @@ not an outstanding TODO.
 - [x] Add `debug!` messages and useful call traces via `Source.runTraced`.
   Operands evaluate once in order, messages survive failures, and exact erasure
   of instrumentation is proved. See [diagnostics](diagnostics.md).
-- [ ] Extend rooted const references to module-qualified global names and checked
-  composition of programs, including enum, const, function, table, and map declarations.
+- [x] Add [modules and signatures](modules.md), module-qualified names, abstract
+  types, functors, shared applications, and checked composition including
+  enums, structs, consts, functions, tables and maps. Module-only roots are supplied
+  through metaprogramming. Certified static environments reuse native evaluation
+  and both integer row-checker correctness theorems.
 - [x] Select public entrypoints externally, independently of the toplevel syntax.
   Only non-generic functions qualify; compiled artifacts retain the whitelist
   and the existing pointer-free input-type restriction. See [generics](generics.md).
@@ -102,6 +105,12 @@ The corresponding ix facilities are in its
 [`Toplevel.merge` and function declarations](../../ix/Ix/Aiur/Stages/Source.lean).
 
 ## Proof reuse and later infrastructure
+
+- [ ] **Inlining controls.** Support inline function declarations and individual
+  inline calls. Keep their source semantics unchanged and prove any compiler
+  inlining preserves evaluation, including argument order, hints, allocation,
+  early returns, and recursive-call handling. Syntax and recursive expansion
+  policy remain to be designed.
 
 Define evaluation on the source AST. Retain const references and const/alias
 declarations through checking and field conversion. Normalize type information
@@ -143,7 +152,7 @@ See [correctness](correctness.md) for the existing theorem boundaries.
 Byte operations will be custom in this project, using generated tables/maps or
 other chosen definitions as appropriate. ix's hardcoded byte table, byte-specific
 primitives, and native arithmetic hints are excluded from this backlog. Pure
-performance features such as inlining, deduplication, circuit grouping, column
+performance features such as deduplication, circuit grouping, column
 reuse, and tag-elision optimizations are also excluded from the comparison.
 
 The language remains first order. ix represents function values in its source

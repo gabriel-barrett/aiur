@@ -96,7 +96,7 @@ syntax (name := updateEntry) aiur_update_step+ "=" aiur_expr : aiur_update_entry
 syntax:15 (name := updateExpr) aiur_expr:15 &"with" "{"
   sepBy(aiur_update_entry, ",", ",", allowTrailingSep) "}" : aiur_expr
 
-private def readName (s : Syntax) : Except String String :=
+def readName (s : Syntax) : Except String String :=
   match s.getId with
   | .str .anonymous n => .ok n
   | _ => .error "expected a simple identifier"
@@ -106,8 +106,17 @@ private def readLength (s : Syntax) : Except String Nat := do
   checkArrayLength n
   return n
 
-private partial def type (params : List String) (s : Syntax) : Except String Ty := do
-  if s.getKind == ``pointerType then return .ptr (← type params s[1])
+/-- Later frontends can extend shared syntax categories. Flat quotations keep
+preferring their native alternatives when those extensions introduce ambiguity. -/
+def nativeChoice (s : Syntax) : Syntax :=
+  if s.getKind != `choice then s else
+    (s.getArgs.find? fun child =>
+      (`Aiur.Generic.Frontend).isPrefixOf child.getKind ||
+        (`Aiur.Frontend).isPrefixOf child.getKind).getD s[0]
+
+partial def type (params : List String) (s : Syntax) : Except String Ty := do
+  if s.getKind == `choice then type params (nativeChoice s)
+  else if s.getKind == ``pointerType then return .ptr (← type params s[1])
   else if s.getKind == ``arrayType then return .array (← type params s[1]) (← readLength s[3])
   else if s.getKind == ``namedType then
     let n ← readName s[0]
@@ -122,8 +131,8 @@ private partial def type (params : List String) (s : Syntax) : Except String Ty 
     return .tuple ((← type params s[1]) :: (← s[3].getSepArgs.toList.mapM (type params)))
   else throw "expected an Aiur type"
 
-private partial def pattern (params : List String) (s : Syntax) : Except String (Pattern Nat) := do
-  if s.getKind == `choice then pattern params s[0]
+partial def pattern (params : List String) (s : Syntax) : Except String (Pattern Nat) := do
+  if s.getKind == `choice then pattern params (nativeChoice s)
   else if s.getKind == ``recordPattern || s.getKind == ``genericRecordPattern then
     let generic := s.getKind == ``genericRecordPattern
     let args ← if generic then s[2].getSepArgs.toList.mapM (type params) else pure []
@@ -172,14 +181,14 @@ decreasing_by
   all_goals simp_wf
   all_goals first | omega | have h := List.sizeOf_lt_of_mem ‹_ ∈ _›; cases ‹_ × _›; simp_all only [Prod.mk.sizeOf_spec]; omega
 
-private partial def expr (params : List String) (s : Syntax) : Except String (Expr Nat) := do
+partial def expr (params : List String) (s : Syntax) : Except String (Expr Nat) := do
   let k := s.getKind
   if k == `choice then
     -- A let followed by a trailing statement has both an expression parse
     -- and a statement parse. Preserve the lexical let scope in the latter.
     let selected := s.getArgs.find? fun child =>
       child.getKind == ``bodyLet || child.getKind == ``bodyLetTyped || child.getKind == ``bodySequence
-    expr params (selected.getD s[0])
+    expr params (selected.getD (nativeChoice s))
   else if k == ``bodyTail then expr params s[0]
   else if k == ``bodyEnd then
     let value ← expr params s[0]
@@ -272,7 +281,7 @@ private partial def expr (params : List String) (s : Syntax) : Except String (Ex
     return .matchValue (← expr params s[1]) (← s[3].getSepArgs.toList.mapM fun arm => return (← pattern params arm[0], ← expr params arm[2]))
   else throw s!"unsupported expression: {k}"
 
-private def lowerEnum (s : Syntax) : Except String EnumDecl := do
+def lowerEnum (s : Syntax) : Except String EnumDecl := do
   let generic := s.getKind == ``genericEnum
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
   let cs := if generic then s[6] else s[3]
@@ -283,14 +292,14 @@ private def lowerEnum (s : Syntax) : Except String EnumDecl := do
       return { name := ← readName c[0], fields }
   }
 
-private def lowerStruct (s : Syntax) : Except String StructDecl := do
+def lowerStruct (s : Syntax) : Except String StructDecl := do
   let generic := s.getKind == ``genericStruct
   let params ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
   let fields ← s[if generic then 6 else 3].getSepArgs.toList.mapM fun field => do
     return (← readName field[0], ← type params field[2])
   return { name := ← readName s[1], typeParams := params, fields }
 
-private def lowerAlias (s : Syntax) : Except String AliasDecl := do
+def lowerAlias (s : Syntax) : Except String AliasDecl := do
   let generic := s.getKind == ``genericAlias
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
   return {
@@ -298,8 +307,8 @@ private def lowerAlias (s : Syntax) : Except String AliasDecl := do
     target := ← type ps s[if generic then 6 else 3]
   }
 
-private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
-    (consts : List (ConstDecl Nat)) (s : Syntax) : Except String (Function Nat) := do
+def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
+    (consts : List (ConstDecl Nat)) (s : Syntax) (checkParameters : Bool := true) : Except String (Function Nat) := do
   let s := if s.getKind == `choice then s[0] else s
   let generic := s.getKind == ``genericFunction
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
@@ -310,8 +319,9 @@ private def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
   for (param, i) in s[3 + offset].getSepArgs.toList.zipIdx do
     let pat ← pattern ps param[0]
     boundNames := boundNames ++ pat.bindingNames
-    let inspected ← Consts.expandPattern consts pat
-    if !(← Aliases.expandPattern aliases inspected).irrefutable enums then throw "parameter patterns must be irrefutable"
+    if checkParameters then
+      let inspected ← Consts.expandPattern consts pat
+      if !(← Aliases.expandPattern aliases inspected).irrefutable enums then throw "parameter patterns must be irrefutable"
     let t ← type ps param[2]
     match pat with
     | .bind n => inputs := inputs ++ [(n, t)]
@@ -372,6 +382,10 @@ private def prepareChars : List Char → LexMode → Except String (List Char)
         return c :: ' ' :: tail
       return c :: tail
 
+/-- Shared lexical preparation for the modular frontend. -/
+def prepareSource (source : String) : Except String String :=
+  String.ofList <$> prepareChars source.toList .code
+
 /-- Elaborates Rust-like syntax without choosing either a field or entrypoints. -/
 def ofString (env : Lean.Environment) (source : String) : Except String (Program Nat) := do
   let source := String.ofList (← prepareChars source.toList .code)
@@ -389,7 +403,7 @@ def ofString (env : Lean.Environment) (source : String) : Except String (Program
     let s := d[0]
     return { name := ← readName s[1], rowType := ← type [] s[3], rows := ← s[5].getSepArgs.toList.mapM (expr []) : Table Nat }
   let maps ← (ds.filter (·.getKind == ``mapDecl)).mapM fun d => do
-    let s := d[0]
+    let s := nativeChoice d[0]
     let params ← s[3].getSepArgs.toList.mapM fun param => do
       let .bind n ← pattern [] param[0] | throw "map parameters must be named bindings"
       return (n, ← type [] param[2])

@@ -1,6 +1,9 @@
 # Source semantics and compiler preparation
 
-The source program is the semantic reference. Parsing produces `Program Nat`.
+The source program is the semantic reference. The modular frontend produces
+`Modules.Program Nat`. Its static meaning is a certified declaration environment;
+see [modules](modules.md) for the independent resolution and assembly specification.
+The existing `Generic.Program` remains the expression-level semantic environment.
 Const declarations and uses, type aliases, arrays, pointer patterns, and generic
 functions and lexical exits remain present. Checking may infer type arguments and normalize types;
 it must not substitute const bodies or lower expressions and patterns.
@@ -8,17 +11,20 @@ it must not substitute const bodies or lower expressions and patterns.
 ## Stages
 
 1. Parse source syntax with natural-number field literals.
-2. Check declarations, names, const/alias dependency cycles, and types. Resolve
+2. Check modules through their exposed signatures, including unused functors
+   against abstract parameters. Check declarations, names, const/alias dependency cycles, and types. Resolve
    aliases when inspecting types. Infer omitted type arguments as typing
    information, preserving the operations in the source code. Check generic
    recursion conservatively: a recursive path may revisit a declaration only
    with the same type arguments. Ordinary and mutual recursion remain allowed.
 3. Map field literals to the chosen field. Lengths and indices remain natural
    numbers. Perform field-dependent checks, including pattern/key collisions and
-   enum tag representability. Define execution and the independent evaluation
-   predicate here.
+   enum tag representability. Assemble the module environment using certified
+   name resolution and module-parameter substitution. This static interpretation
+   retains native expression structure. Define execution and the independent
+   evaluation predicate in that environment.
 4. Prepare the checked program for selected, non-generic entrypoints. This is
-   where instantiation, const expansion, alias elimination, and expression or
+   where function instantiation, const expansion, alias elimination, and expression or
    pattern lowering, and continuation translation of block/function exits happen. Optimization is not required; an unreachable
    branch may remain with an impossible selector.
 5. Compile the prepared program to chips and check integer row balances.

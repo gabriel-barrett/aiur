@@ -2,8 +2,11 @@
 
 Aiur is a first-order programming language for zero-knowledge circuits, formalized
 in Lean. Source programs use arithmetic, calls, and pattern matching rather than
-gates or wires. A Lean elaborator accepts a Rust-like source string containing all
-enum and struct declarations, type aliases, consts, function definitions, tables, and maps.
+gates or wires. A Lean elaborator accepts a Rust-like source string whose root
+contains only signatures and modules. Enum and struct declarations, type aliases,
+consts, function definitions, tables, and maps live inside modules. Modules and
+signatures do not nest; files and imports are outside the model. See
+[modules](modules.md). The declaration examples below show module contents.
 
 ## Values and signatures
 
@@ -35,8 +38,9 @@ name and cannot themselves be passed or returned as values. Maps use the same
 call syntax and callable namespace, with their signatures available alongside
 function signatures.
 
-The frontend remains field agnostic: `Generic.Program Nat` contains natural
-literals and type parameters; `Program Nat` is the concrete core. Both support
+The frontend remains field agnostic: `Modules.Program Nat` contains the modular
+source, `Generic.Program Nat` is its declaration environment with generic
+functions, and `Program Nat` is the concrete core. All support
 `toField F` for conversion to field values.
 This casts literals in expressions, patterns, and table rows into the chosen
 field. Function specialization is a separate pass, selected by an external list

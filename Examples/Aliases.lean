@@ -18,8 +18,8 @@ fn main(x: Scalar) -> Scalar {
 }
 "
 
--- Aliases have already disappeared; literals still use Nat.
-#guard aliasedSource.aliases.isEmpty
+-- Alias declarations remain in the source; literals still use Nat.
+#guard aliasedSource.aliases.length == 3
 
 #eval do
   let source ← Generic.prepare (aliasedSource.toField Rat)

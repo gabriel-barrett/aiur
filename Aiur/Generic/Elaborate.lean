@@ -57,6 +57,9 @@ private structure Inference where
   /-- A jump has no ordinary value. Its otherwise unconstrained result slot
   may default to unit without making generic value inference permissive. -/
   dead : List String := []
+  /-- Static interface checking may supply const types without their values.
+  Ordinary source checking always leaves this empty. -/
+  interfaceConsts : List (String × Ty) := []
 
 private abbrev Infer := StateT Inference (Except String)
 
@@ -170,6 +173,9 @@ private def inferPattern (p : Program α) (rigid : List String) : Nat → Patter
       | .bind n => return (.bind n, [(n, expected)])
       | .global n annotation =>
           if let some t := annotation then agree t expected
+          if let some t := (← get).interfaceConsts.lookup n then
+            agree t expected
+            return (.global n (some expected), [])
           let body ← liftM (Consts.lookup p.consts n)
           let (_, bindings) ← inferPattern p rigid fuel body expected
           if !bindings.isEmpty then throw s!"const '::{n}' contains a binder"
@@ -342,9 +348,11 @@ private def infer (p : Program α) (rigid : List String) :
       | .global n annotation => do
           let t ← match expected with | some t => pure t | none => fresh
           if let some a := annotation then agree a t
-          let body ← liftM (Consts.lookup p.consts n)
-          let (_, bindings) ← inferPattern p rigid fuel body t
-          if !bindings.isEmpty then throw s!"const '::{n}' contains a binder"
+          if let some declared := (← get).interfaceConsts.lookup n then agree declared t
+          else
+            let body ← liftM (Consts.lookup p.consts n)
+            let (_, bindings) ← inferPattern p rigid fuel body t
+            if !bindings.isEmpty then throw s!"const '::{n}' contains a binder"
           pure (t, .global n (some t))
       | .tuple xs => do
           let ts ← xs.mapM fun _ => fresh
@@ -502,10 +510,25 @@ decreasing_by
   all_goals first | omega | cases ‹Pattern α × Expr α›; simp_all only [Prod.mk.sizeOf_spec]; omega
 
 def elaborateExpr (p : Program α) (rigid : List String) (locals : List (String × Ty))
-    (e : Expr α) (expected : Ty) (inFunction : Bool := false) : Except String (Expr α) := do
+    (e : Expr α) (expected : Ty) (inFunction : Bool := false)
+    (interfaceConsts : List (String × Ty) := []) : Except String (Expr α) := do
   let ((_, e), state) ← infer p rigid 4096 locals e (some expected)
-    { exits := if inFunction then [(.function, expected)] else [] }
+    { exits := if inFunction then [(.function, expected)] else [], interfaceConsts }
   finishExpr state e
+
+/-- Infer a module's exported constant type using only dependency interfaces.
+The pattern is checked directly, without inventing values for abstract types. -/
+def inferInterfaceConst (p : Program α) (body : Pattern α)
+    (expected : Option Ty) (interfaceConsts : List (String × Ty))
+    (requireConcrete : Bool := true) : Except String Ty := do
+  let (type, state) ← (do
+    let type ← match expected with | some type => pure type | none => fresh
+    let (_, bindings) ← inferPattern p [] 4096 body type
+    if !bindings.isEmpty then throw "const body contains binders"
+    zonk type : Infer Ty).run { interfaceConsts }
+  let type ← (zonk type).run' state
+  if requireConcrete && !type.concrete then throw "ambiguous exported const type; add a type annotation"
+  return type
 
 /-- Check one const body at its use type, retaining any nested references.
 This supplies type information for context-dependent constructors such as

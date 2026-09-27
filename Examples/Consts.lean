@@ -25,8 +25,8 @@ fn main(zero: Field) -> Field {
 }
 "
 
--- Const declarations and references disappear while literals still use Nat.
-#guard constSource.consts.isEmpty
+-- Const declarations and references remain through source evaluation.
+#guard constSource.consts.length == 3
 
 #eval do
   let source ← Generic.prepare (constSource.toField Rat)
