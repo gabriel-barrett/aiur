@@ -69,6 +69,7 @@ def prepare [DecidableEq F] (p : Program F) : Except String (Source F) := do
 
 def Source.checkEntry [DecidableEq F] (s : Source F) (name : String) : Except String Unit := do
   let some fn := s.program.findFunction? name | throw s!"unknown entrypoint '{name}'"
+  if fn.isInline then throw s!"inline function '{name}' cannot be an entrypoint"
   if !fn.typeParams.isEmpty then throw s!"entrypoint '{name}' must be non-generic"
   (fn.params.map Prod.snd).forM (checkPointerFree s.program s!"entrypoint '{name}'" 1024 [])
   let fn : Aiur.Function F := {

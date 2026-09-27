@@ -570,6 +570,19 @@ def checkGenericCycles (p : Program α) : Except String Unit := do
   p.functions.forM fun fn =>
     visit (p.functions.length + 1) [] ⟨fn.name, fn.typeParams.map Ty.param⟩
 
+/-- Only edges between mandatory-inline functions participate in this check.
+An ordinary function call stops expansion, including on a recursive path. -/
+def checkInlineCycles (p : Program α) : Except String Unit := do
+  let rec visit : Nat → List String → String → Except String Unit
+    | 0, _, _ => throw "inline dependency depth exceeded"
+    | fuel + 1, path, name => do
+        let some fn := p.findFunction? name | return
+        if !fn.isInline then return
+        if path.contains name then throw s!"inline cycle through '{name}'"
+        for callee in sourceCalls [] fn.body do
+          visit fuel (name :: path) callee.name
+  for fn in p.functions do visit (p.functions.length + 1) [] fn.name
+
 /-- Check source expressions and infer their type metadata. Const references
 remain references; only type information is normalized. -/
 def elaborate (p : Program α) : Except String (Program α) := do
@@ -633,6 +646,7 @@ def elaborate (p : Program α) : Except String (Program α) := do
     if output.rowType != m.result then throw s!"output table type mismatch for map '{m.name}'"
   let checked := { p with functions, tables, aliases }
   checkGenericCycles checked
+  checkInlineCycles checked
   return checked
 
 /-- Compiler preparation may inline consts after the source semantics boundary.

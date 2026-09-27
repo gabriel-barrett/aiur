@@ -106,11 +106,12 @@ The corresponding ix facilities are in its
 
 ## Proof reuse and later infrastructure
 
-- [ ] **Inlining controls.** Support inline function declarations and individual
-  inline calls. Keep their source semantics unchanged and prove any compiler
-  inlining preserves evaluation, including argument order, hints, allocation,
-  early returns, and recursive-call handling. Syntax and recursive expansion
-  policy remain to be designed.
+- [x] **Inline functions.** `inline fn` expands every call on the circuit path,
+  rejects inline entrypoints and all-inline cycles, and preserves native
+  entrypoint evaluation with complete proofs. See [inlining](inlining.md).
+- [ ] **Individual inline calls.** Add call-site directives for ordinary functions,
+  with an explicit policy for finite recursive expansion. Source calls must
+  remain intact before the semantic boundary.
 
 Define evaluation on the source AST. Retain const references and const/alias
 declarations through checking and field conversion. Normalize type information

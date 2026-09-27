@@ -55,7 +55,7 @@ theorem Compiled.check_complete [Fintype F] {p : Prepared program} (c : Compiled
       c.check rom name wires output rows = .ok () := by
   obtain ⟨entry,selected,evaluated⟩ := evaluated
   obtain ⟨encode,wires,output,rom,rows,arguments,decoded,checked⟩ :=
-    c.specialized.checker_heap_complete (Prepared.entry_mem selected) c.circuit.compiled wellFormed evaluated capacity
+    c.circuit.checker_heap_complete (Prepared.entry_mem selected) wellFormed evaluated capacity
   refine ⟨encode,wires,output,rom,rows,arguments,decoded,?_⟩
   simp only [Compiled.check,selected]
   exact c.circuit.check_iff.mpr ⟨Prepared.entry_mem selected,checked⟩
@@ -69,7 +69,7 @@ theorem Compiled.checkMemo_complete [Fintype F] {p : Prepared program} (c : Comp
       c.checkMemo rom name wires output rows = .ok () := by
   obtain ⟨entry,selected,evaluated⟩ := evaluated
   obtain ⟨encode,wires,output,rom,rows,arguments,decoded,checked⟩ :=
-    c.specialized.checkerMemo_heap_complete (Prepared.entry_mem selected) c.circuit.compiled wellFormed evaluated capacity
+    c.circuit.checkerMemo_heap_complete (Prepared.entry_mem selected) wellFormed evaluated capacity
   refine ⟨encode,wires,output,rom,rows,arguments,decoded,?_⟩
   simp only [Compiled.checkMemo,selected]
   exact c.circuit.checkMemo_iff.mpr ⟨Prepared.entry_mem selected,checked⟩
@@ -121,8 +121,8 @@ theorem Compiled.checkerMemo_acyclic_sound {p : Prepared program} (c : Compiled 
     ∃ value heap, p.EvalCall name args value ∧
       Represents (rom.decode c.specialized.program.enums) heap value result := by
   obtain ⟨value,heap,evaluated,related⟩ :=
-    c.specialized.checkerMemo_acyclic_heap_sound (Prepared.entry_mem selected)
-      c.circuit.compiled checked acyclic arguments decoded
+    c.circuit.checkerMemo_acyclic_heap_sound (Prepared.entry_mem selected)
+      checked acyclic arguments decoded
   have checkedEntry := (c.specialized.valid.2.2.2.2.2.2.2 _ (Prepared.entry_mem selected)).2.1
   exact ⟨value,heap,⟨entry,selected,checkedEntry,heap,evaluated⟩,related⟩
 

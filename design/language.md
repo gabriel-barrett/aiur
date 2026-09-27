@@ -38,6 +38,11 @@ name and cannot themselves be passed or returned as values. Maps use the same
 call syntax and callable namespace, with their signatures available alongside
 function signatures.
 
+`inline fn` makes expansion mandatory during circuit compilation and excludes
+the function from entrypoint selection. Source execution still uses ordinary
+calls. Inline-only cycles are rejected; cycles through ordinary functions are
+allowed. See [inlining](inlining.md).
+
 The frontend remains field agnostic: `Modules.Program Nat` contains the modular
 source, `Generic.Program Nat` is its declaration environment with generic
 functions, and `Program Nat` is the concrete core. All support

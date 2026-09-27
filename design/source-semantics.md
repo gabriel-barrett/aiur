@@ -177,3 +177,12 @@ No semantic-equivalence hypothesis is hidden in specialization's certificate.
 The final theorem axiom reports are checked in `AiurTests/SourceEvaluation.lean`:
 only `propext`, `Classical.choice`, and `Quot.sound` occur, with no proof admissions
 or additional axioms.
+
+## Mandatory inlining
+
+`inline fn` leaves the source call semantics unchanged. Expansion runs after
+specialization and existing core lowering, before chip compilation.
+`Generic.Compiled.native_entry_iff` extends `Specialized.native_entry_iff`
+through this pass; the compiled wrapper and module row-checker theorems use the
+result. The raw `Specialized.*` compiler theorems still describe directly
+compiling the core cache before inlining. See [inlining](inlining.md).

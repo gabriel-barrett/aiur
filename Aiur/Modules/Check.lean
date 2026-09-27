@@ -152,6 +152,8 @@ def checkWorld (p : Program α) (w : World α) : Except String Unit := do
       let (exposed,_) ← publicView p w 128 item constants
       dependencies := dependencies ++ exposed.functions.map fun fn =>
         {fn with
+          -- Aliases are transparent edges, including for inline-cycle checks.
+          isInline := true
           body := .call (rename target.symbol ((splitPath fn.name).getLast!))
             (some (fn.typeParams.map .param)) (fn.params.map fun p => .var p.1)}
       continue
@@ -188,6 +190,7 @@ def checkWorld (p : Program α) (w : World α) : Except String Unit := do
   -- Interface-only body checking must not hide a growing generic recursion
   -- path that crosses module boundaries, including aliases and unused functors.
   Generic.checkGenericCycles {functions := dependencies}
+  Generic.checkInlineCycles {functions := dependencies}
   for (key,sig) in w.requirements do
     let some item := w.find? key | throw "missing module argument"
     (checkContract p w constants item sig true).mapError (fun e => s!"module argument '{key.symbol}' does not satisfy '{sig}': {e}")
