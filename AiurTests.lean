@@ -25,6 +25,7 @@ import AiurTests.Updates
 import AiurTests.Diagnostics
 import AiurTests.Assertions
 import AiurTests.OrPatterns
+import AiurTests.Modules
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -199,3 +200,4 @@ def main : IO Unit := do
   AiurDiagnosticTests.run
   AiurAssertionTests.run
   AiurOrPatternTests.run
+  AiurModuleTests.run

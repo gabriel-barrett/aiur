@@ -87,7 +87,14 @@ private partial def lowerType (stx : Syntax) : Except String Ty := do
   else throw "expected a field, tuple, pointer, or enum type"
 
 private partial def lowerPattern (stx : Syntax) : Except String (Pattern Nat) := do
-  if stx.getKind == ``literalPattern then
+  if stx.getKind == `choice then
+    let mut error := "unsupported ambiguous pattern"
+    for alternative in stx.getArgs do
+      match lowerPattern alternative with
+      | .ok pattern => return pattern
+      | .error message => error := message
+    throw error
+  else if stx.getKind == ``literalPattern then
     let some value := stx[0].isNatLit? | throw "expected a natural-number pattern"
     return .literal value
   else if stx.getKind == ``wildcardPattern then return .wildcard
@@ -210,7 +217,14 @@ private def lowerTable (stx : Syntax) : Except String (Table Nat) := do
     rows := ← stx[5].getSepArgs.toList.mapM fun row => do constantOfExpr (← lowerExpr row)
   }
 
-private def lowerMap (stx : Syntax) : Except String MapDecl := do
+private partial def lowerMap (stx : Syntax) : Except String MapDecl := do
+  if stx.getKind == `choice then
+    let mut error := "unsupported ambiguous map"
+    for alternative in stx.getArgs do
+      match lowerMap alternative with
+      | .ok decl => return decl
+      | .error message => error := message
+    throw error
   let params ← stx[3].getSepArgs.toList.mapM fun param => do
     let .bind name ← lowerPattern param[0] | throw "map parameters must be named bindings"
     return (name, ← lowerType param[2])

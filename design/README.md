@@ -17,6 +17,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   native exit semantics, guarded compilation, and end-to-end proofs.
 - [Generics](generics.md): inferred type arguments, generic functions, enums, and structs,
   external entry selection, direct evaluation, and proved specialization.
+- [Modules](modules.md): static signatures, abstract types, module parameters,
+  shared applications, qualified names and certified declaration environments.
 - [Type aliases](type-aliases.md): transparent parameterized aliases, type normalization
   during generic inference, constructor qualification, and cycle checks.
 - [Consts](consts.md): complete value/pattern declarations, direct reference semantics,

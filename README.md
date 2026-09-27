@@ -1,7 +1,7 @@
 # Aiur
 
 A Lean formalization of a first-order language for zero-knowledge circuits, with
-field arithmetic, nested tuples and fixed-size arrays, generic functions, nominal enums and structs, type aliases, typed ROM
+field arithmetic, static modules and signatures, nested tuples and fixed-size arrays, generic functions, nominal enums and structs, type aliases, typed ROM
 pointers, mutual recursion, pattern matching, named blocks and early return, static tables and maps, and compilation
 to chips with polynomial equations and abstract call messages.
 
@@ -23,6 +23,7 @@ lake env lean Examples/Arrays.lean
 lake env lean Examples/Control.lean
 lake env lean Examples/Structs.lean
 lake env lean Examples/Updates.lean
+lake env lean Examples/Modules.lean
 ```
 
 ## Use from Lean
@@ -33,26 +34,39 @@ import Mathlib.Algebra.Field.Rat
 
 open Aiur
 
-def source : Program Nat := aiur% "
-fn swap(p: (Field, Field)) -> (Field, Field) {
-  match p { (x, y) => (y, x) }
-}
+def source : Modules.Program Nat := aiur_modules% "
+module Pairs {
+  fn swap(p: (Field, Field)) -> (Field, Field) {
+    match p { (x, y) => (y, x) }
+  }
 
-fn nested(p: (Field, (Field, Field))) -> (Field, (Field, Field), ()) {
-  let (tag, pair) = p;
-  (tag, swap(pair), ())
+  fn nested(p: (Field, (Field, Field))) -> (Field, (Field, Field), ()) {
+    let (tag, pair) = p;
+    (tag, swap(pair), ())
+  }
 }
 "
 
-#eval eval (source.toField Rat) "nested" [.tuple [7, .tuple [2, 3]]]
--- .ok (.tuple [7, .tuple [3, 2], .tuple []])
+#eval do
+  let p ← Modules.prepare (source.toField Rat) ["Pairs::nested"]
+  p.run "Pairs::nested" [.tuple [7, .tuple [2, 3]]]
+-- .ok (.tuple [7, .tuple [3, 2], .tuple []], [])
 
-#eval (Circuit.compile (source.toField Rat)).isOk
+#eval do
+  let p ← Modules.prepare (source.toField Rat) ["Pairs::nested"]
+  return !(← p.compile).circuit.system.chips.isEmpty
 -- true
 ```
 
-`aiur%` elaborates a source string into a checked `Program Nat`, without reading
-files. `Nat` stores literals; `toField F` specializes expressions, patterns, and
+`aiur_modules%` elaborates a string into `Modules.Program Nat`, checking interfaces
+without reading files. `aiur%` supports the same AST when it is the expected type.
+Only modules and signatures occur at the root; every ordinary declaration belongs
+to a module. Plain global names resolve in the current module; other modules
+require qualification. Signatures can hide members and type representations,
+and module parameters use `module Algorithm<A: Arithmetic> { ... }`.
+See [modules](design/modules.md) and [the example](Examples/Modules.lean).
+
+`Nat` stores literals; `toField F` converts expressions, patterns, and
 table rows to a chosen field. Source arguments and results use `SourceValue F = Value F Nat`;
 field leaves, tuples, nominal constructors, and typed opaque pointers are distinct.
 Natural numerals denote field leaves. The intermediate ROM semantics uses
@@ -60,18 +74,19 @@ Natural numerals denote field leaves. The intermediate ROM semantics uses
 
 ## Generics and entrypoints
 
-Use `Generic.Program Nat` with the same `aiur%` string elaborator:
+Generic functions remain templates inside the module environment:
 
 ```lean
-def generic : Generic.Program Nat := aiur% "
-fn identity<T>(x: T) -> T { x }
-fn main(x: Field) -> Field { identity(x) }
+def generic : Modules.Program Nat := aiur_modules% "
+module Functions {
+  fn identity<T>(x: T) -> T { x }
+  fn main(x: Field) -> Field { identity(x) }
+}
 "
 
 #eval do
-  let source ← Generic.prepare (generic.toField Rat)
-  let specialized ← Generic.specialize source ["main"]
-  specialized.run "main" [.field 42]
+  let p ← Modules.prepare (generic.toField Rat) ["Functions::main"]
+  p.run "Functions::main" [.field 42]
 -- Except.ok (Aiur.Value.field 42, [])
 ```
 
@@ -122,7 +137,10 @@ positions and preserve earlier allocations while skipping later operations.
 Their source semantics and circuit translation are proved; see
 [control flow](design/control-flow.md) and [the example](Examples/Control.lean).
 
-`source.run` evaluates directly without collecting a finite set of instances.
+The evaluator executes generic function templates directly. Static module
+application happens while assembling the certified declaration environment.
+The flat `Generic.Program` and `Program` quotations remain available for
+lower-level compiler APIs and existing examples.
 `Generic.specialize` selects non-generic entry functions externally and rejects
 recursive paths that change a function's type arguments. The resulting wrapper
 keeps that public interface; `specialized.compile` produces a circuit artifact
