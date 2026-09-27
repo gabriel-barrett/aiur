@@ -95,6 +95,12 @@ constructors infer type arguments; explicit forms are `identity::<Field>(x)`
 and `Option::<Field>::Some(x)`. Signatures remain explicit, and hint result
 types must always be concrete.
 
+`inline fn` declares a helper that expands only during circuit compilation.
+Inline functions cannot be entrypoints. Cycles made entirely of inline functions
+are rejected; recursion through ordinary functions remains allowed. Entrypoint
+soundness and completeness include this pass. See [inlining](design/inlining.md)
+and the [example](Examples/Inlining.lean).
+
 Transparent aliases use `type Scalar = Field;` and `type Pair<T> = (T, T);`.
 Their declarations remain in the source; checking normalizes type information
 for generic inference while literals are still natural numbers.

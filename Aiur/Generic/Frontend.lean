@@ -23,6 +23,7 @@ syntax (name := functionStatements) "fn" ident
 syntax (name := appliedType) ident "<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">" : aiur_type
 syntax (name := genericFunction) "fn" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
   "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")" "->" aiur_type "{" (aiur_body)? "}" : aiur_function
+syntax (name := inlineFunction) "inline" aiur_function : aiur_function
 syntax (name := genericEnum) "enum" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">"
   "{" sepBy(aiur_constructor, ",", ",", allowTrailingSep) "}" : aiur_enum
 syntax (name := genericCall) ident "::<" sepBy1(aiur_type, ",", ",", allowTrailingSep) ">"
@@ -307,9 +308,13 @@ def lowerAlias (s : Syntax) : Except String AliasDecl := do
     target := ← type ps s[if generic then 6 else 3]
   }
 
-def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
+partial def lowerFunction (enums : List EnumDecl) (aliases : List AliasDecl)
     (consts : List (ConstDecl Nat)) (s : Syntax) (checkParameters : Bool := true) : Except String (Function Nat) := do
   let s := if s.getKind == `choice then s[0] else s
+  if s.getKind == ``inlineFunction then
+    let definition ← lowerFunction enums aliases consts s[1] checkParameters
+    if definition.isInline then throw "repeated inline modifier"
+    return {definition with isInline := true}
   let generic := s.getKind == ``genericFunction
   let ps ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
   let offset := if generic then 3 else 0

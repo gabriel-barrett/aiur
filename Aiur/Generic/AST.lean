@@ -231,6 +231,8 @@ structure Function (α : Type) where
   params : List (String × Ty)
   result : Ty
   body : Expr α
+  /-- Mandatory circuit-only expansion; execution still makes an ordinary call. -/
+  isInline : Bool := false
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 structure ConstructorDecl where

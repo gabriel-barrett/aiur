@@ -16,7 +16,8 @@ it must not substitute const bodies or lower expressions and patterns.
    aliases when inspecting types. Infer omitted type arguments as typing
    information, preserving the operations in the source code. Check generic
    recursion conservatively: a recursive path may revisit a declaration only
-   with the same type arguments. Ordinary and mutual recursion remain allowed.
+   with the same type arguments. Reject cycles consisting entirely of inline
+   functions. Ordinary and mutual recursion remain allowed.
 3. Map field literals to the chosen field. Lengths and indices remain natural
    numbers. Perform field-dependent checks, including pattern/key collisions and
    enum tag representability. Assemble the module environment using certified
@@ -27,7 +28,10 @@ it must not substitute const bodies or lower expressions and patterns.
    where function instantiation, const expansion, alias elimination, and expression or
    pattern lowering, and continuation translation of block/function exits happen. Optimization is not required; an unreachable
    branch may remain with an impossible selector.
-5. Compile the prepared program to chips and check integer row balances.
+5. Expand mandatory `inline fn` calls in the checked core, after control lowering.
+   Remove inline helper definitions; inline functions cannot be selected entrypoints.
+   See [inlining](inlining.md) for scope, argument-order and equivalence proofs.
+6. Compile the resulting program to chips and check integer row balances.
 
 The choice of entrypoints remains external to the source declarations.
 
@@ -72,14 +76,15 @@ statement with an admitted proof does not close this chain.
 
 The source refactor and both directions of the complete correctness chain are
 implemented and proved. `Specialized.native_entry_iff` relates original-source
-evaluation to the prepared core, including the exact result and heap.
-`Specialized.native_evalCall_iff` states the same equivalence for public claims.
-`Specialized.checker_heap_complete` and `checkerMemo_heap_complete` compose it
+evaluation to the prepared core; `Compiled.native_entry_iff` extends it through
+mandatory inlining, including the exact result and heap.
+`Specialized.native_evalCall_iff` remains the public-claim equivalence before
+inlining. `Compiled.checker_heap_complete` and `checkerMemo_heap_complete` compose it
 with the derivation and integer row-checker results. They assume successful
 specialization/compilation, a well-formed system, a selected entrypoint, and enough
 field elements for the allocation heap. They do not assume source termination.
 
-`Specialized.checker_heap_sound` reflects accepted unit rows to the original
+`Compiled.checker_heap_sound` reflects accepted unit rows to the original
 source predicate. `checkerMemo_acyclic_heap_sound` does the same for weighted
 rows when the graph recovered from checker acceptance is acyclic. Neither
 soundness theorem assumes totality or an allocation bound. Results containing

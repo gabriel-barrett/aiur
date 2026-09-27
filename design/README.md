@@ -17,6 +17,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   native exit semantics, guarded compilation, and end-to-end proofs.
 - [Generics](generics.md): inferred type arguments, generic functions, enums, and structs,
   external entry selection, direct evaluation, and proved specialization.
+- [Inlining](inlining.md): mandatory inline helpers, cycle checks, circuit-only
+  expansion, and entrypoint equivalence.
 - [Modules](modules.md): static signatures, abstract types, module parameters,
   shared applications, qualified names and certified declaration environments.
 - [Type aliases](type-aliases.md): transparent parameterized aliases, type normalization
@@ -58,7 +60,8 @@ design, and keep proposals and unanswered questions explicitly separate.
 - [Memoization](memoization.md): explicit cyclic graphs with shared nodes,
   completeness, acyclic soundness, and the executable-evaluator correspondence.
 
-The circuit pipeline begins with one chip per function and abstracts channel
-interactions independently of the eventual cryptographic protocol.
+The circuit pipeline uses one chip per remaining function after mandatory
+inlining and abstracts channel interactions independently of the eventual
+cryptographic protocol.
 
 - [Source pipeline](source-pipeline.md): retained source declarations and the end-to-end correctness theorems.

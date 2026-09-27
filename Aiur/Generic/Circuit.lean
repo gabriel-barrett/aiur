@@ -1,19 +1,32 @@
 import Aiur.Generic.Correctness
 import Aiur.CheckerCorrectness
+import Aiur.Inlining.Program
 
 namespace Aiur.Generic
 
 variable {F : Type} [Field F] [DecidableEq F]
 variable {s : Source F} {entries : List String}
 
-structure Compiled (q : Specialized s entries) where
-  system : Aiur.Circuit.System F
-  compiled : Aiur.Circuit.compile q.program = .ok system
+/-- The original declaration controls every concrete instance of a helper. -/
+def Specialized.inlineNames (q : Specialized s entries) : List String :=
+  q.program.functions.filterMap fun f =>
+    match Instance.ofSymbol f.name with
+    | .error _ => none
+    | .ok key => if (s.program.findFunction? key.name).any (·.isInline) then some f.name else none
 
-def Specialized.compile (q : Specialized s entries) : Except String (Compiled q) :=
-  match h : Aiur.Circuit.compile q.program with
+structure Compiled (q : Specialized s entries) where
+  inlined : Inlining.Prepared q.program q.inlineNames entries
+  system : Aiur.Circuit.System F
+  compiled : Aiur.Circuit.compile inlined.program = .ok system
+
+/-- The program actually passed to chip compilation, after mandatory inlining. -/
+def Compiled.program {q : Specialized s entries} (c : Compiled q) : Aiur.Program F := c.inlined.program
+
+def Specialized.compile (q : Specialized s entries) : Except String (Compiled q) := do
+  let inlined ← Inlining.prepare q.program q.inlineNames entries
+  match h : Aiur.Circuit.compile inlined.program with
   | .error e => .error (reprStr e)
-  | .ok system => .ok ⟨system, h⟩
+  | .ok system => .ok ⟨inlined,system,h⟩
 
 /-- Public checking retains the externally selected protocol interface. -/
 def Compiled.check {q : Specialized s entries} (c : Compiled q) (rom : WireROM F)

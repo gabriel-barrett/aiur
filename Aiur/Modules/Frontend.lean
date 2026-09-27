@@ -171,6 +171,7 @@ def readDefinitions (ds : List Syntax) : Except String (Definitions Nat) := do
   let functions ← (ds.filter (·.getKind == ``functionDecl)).mapM (fun d => lowerFunction [] [] [] d[0] false)
   let parameterPatterns ← (ds.filter (·.getKind == ``functionDecl)).mapM fun d => do
     let s := if d[0].getKind == `choice then d[0][0] else d[0]
+    let s := if s.getKind == ``inlineFunction then nativeChoice s[1] else s
     let generic := s.getKind == ``genericFunction
     let params ← if generic then s[3].getSepArgs.toList.mapM readName else pure []
     return (← readName s[1], ← s[if generic then 6 else 3].getSepArgs.toList.mapM fun p => pattern params p[0])

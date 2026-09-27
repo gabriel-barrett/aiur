@@ -2,6 +2,11 @@
 
 ## Current modules
 
+- `Aiur/Inlining/`: mandatory call expansion after specialization/control lowering,
+  lexical scope and type certificates, and entrypoint evaluation equivalence.
+  `Generic.Compiled.program` exposes the result passed to chip compilation;
+  native/module circuit correctness includes this pass. See [inlining](inlining.md).
+
 - `Aiur/Generic/AST.lean`, `Elaborate.lean`, and `Frontend.lean`: generic source
   types and definitions, unification of omitted arguments, and Rust-like quotation.
 - `Aiur/Generic/Aliases.lean` and `AliasFacts.lean`: checked alias dependency
