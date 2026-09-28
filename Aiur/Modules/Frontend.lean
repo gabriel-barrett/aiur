@@ -179,7 +179,7 @@ def readDefinitions (ds : List Syntax) : Except String (Definitions Nat) := do
     let s := d[0]
     return { name := ← readName s[1], rowType := ← type [] s[3], rows := ← s[5].getSepArgs.toList.mapM (expr []) : Generic.Table Nat }
   let maps ← (ds.filter (·.getKind == ``mapDecl)).mapM fun d => do
-    let s := d[0]
+    let s := nativeChoice d[0]
     let params ← s[3].getSepArgs.toList.mapM fun p => do
       let .bind n ← pattern [] p[0] | throw "map parameters must be named bindings"
       return (n, ← type [] p[2])

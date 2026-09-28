@@ -79,6 +79,12 @@ module Product: Operation {
   table products: Field { 2, 6 }
   map apply(a: Field, b: Field) -> Field = Shared::pairs => products;
 }
+module Local {
+  table inputs: (Field,) { (0,), (1,) }
+  table outputs: Field { 10, 11 }
+  map lookup(x: Field) -> Field = inputs => outputs;
+  fn run(x: Field) -> Field { lookup(x) }
+}
 module Use<A: Operation, B: Operation> {
   fn run(a: Field, b: Field) -> (Field, Field) { (A::apply(a,b), B::apply(a,b)) }
 }
@@ -155,6 +161,7 @@ def cases : List (String × Except String (SourceValue Rat × Heap Rat) × Sourc
   ("fallback arm", execute features "Main::lower" [.field 3], .field 8),
   ("rooted callable bypasses local", execute features "Main::shadow" [.field 3], .field 94),
   ("shared input tables", execute tables "App::run" [.field 2,.field 3], .tuple [.field 5,.field 6]),
+  ("unqualified table references", execute tables "Local::run" [.field 1], .field 11),
   ("nested applications", execute applications "Main::nested" [.field 1], .field 4),
   ("mutual modules", execute applications "Main::parity" [.field 6], .field 1),
   ("generic signature members", execute genericInterfaces "Algorithm::<BoxImpl>::run" [], .field 7),
@@ -236,7 +243,7 @@ def run : IO Unit := do
     | .ok (value, _) => unless value == expected do throw (IO.userError s!"{label}: {repr value}")
     | .error e => throw (IO.userError s!"{label}: {e}")
   for (p,entries) in [(arithmetic,["App::run","Algorithm::<Pair>::run","Algorithm::<Alias>::run"]),
-      (features,["Main::run","Main::lower","Main::shadow"]), (tables,["App::run"]),
+      (features,["Main::run","Main::lower","Main::shadow"]), (tables,["App::run","Local::run"]),
       (applications,["Main::nested","Main::parity"]), (genericInterfaces,["Algorithm::<BoxImpl>::run"]),
       (templates,["Main::run"])] do
     let .ok prepared := Modules.prepare (p.toField Rat) entries | throw (IO.userError "module preparation failed")

@@ -172,7 +172,10 @@ See [correctness](correctness.md) for the existing theorem boundaries.
 ## Deliberate differences and deferred decisions
 
 Byte operations will be custom in this project, using generated tables/maps or
-other chosen definitions as appropriate. ix's hardcoded byte table, byte-specific
+other chosen definitions as appropriate. The [Blake3 example](blake3-example.md)
+now demonstrates a U8 module with generated decomposition, XOR, and carry tables,
+and compares both compilers without adding a primitive byte type.
+ix's hardcoded byte table, byte-specific
 primitives, and native arithmetic hints are excluded from this backlog. Pure
 performance features such as deduplication, circuit grouping, column
 reuse, and tag-elision optimizations are also excluded from the comparison.
