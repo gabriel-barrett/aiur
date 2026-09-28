@@ -1,7 +1,9 @@
-# Fewer columns with a degree bound
+# Optimized circuit path
 
 Status: proposed alternative compiler. The statistics API described below is
-implemented; the new compiler and its equivalence proofs are not yet implemented.
+implemented; the new stages, chip deduplication, and their correctness proofs
+are not yet implemented. This document includes the subsequent discussion of
+activation expressions, scoped auxiliaries, and fixed public entrypoints.
 
 ## Goal and semantic boundary
 
@@ -10,16 +12,59 @@ to a configurable maximum polynomial degree. Start with a bound of three and
 allow larger bounds. The first version need not support bounds below three.
 The objective is fewer columns **within the degree bound**: splitting a large
 polynomial can require more columns than the current unrestricted compiler.
+Guarantee the degree bound and semantic correspondence, not globally minimal
+column count. Use semantic structure to obtain predictable savings before
+relying on arithmetic optimization heuristics.
 
-Keep the original source AST, evaluation predicate, specialization, and proved
-inlining boundary. This is a circuit compilation choice. Each remaining function
-still has one chip, a fixed interface, and the same call channels. Aggregates
-remain flat collections of field words with their existing nominal layout.
-Do not introduce extra execution rows or a new scheduling model in this version.
+Keep the original source AST and evaluation predicate. Reuse existing proved
+specialization, source lowering, and inlining stages where useful; the alternative
+path may introduce its own stages and datatypes after the semantic boundary.
+Public entrypoints, their claims, and their typed interfaces stay fixed. Internal
+function instances need not correspond one-to-one with final chips: deduplication
+may merge implementations and redirect their internal calls. Aggregates remain
+flat collections of field words with their existing nominal layout.
 
-The existing compiler remains available as a reference. Prove equivalence of
-each chip's local conclusion/premise relation and transfer the existing
-derivation and row-checker results, rather than repeat the source proofs.
+The existing compiler remains available as a reference. The optimized path must
+eventually emit the existing `Aiur.Circuit.System F`, containing ordinary
+`Chip`, `ArithExpr`, `Send`, and `MemoryLookup` values. Keep the existing checker
+and derivation datatypes. Do not introduce extra execution rows or a new
+scheduling model in the first version.
+
+## Stages and layout information
+
+Use a separate namespace, provisionally `Aiur.Optimized`. The following are
+proposed roles for intermediate representations, not declarations already in Lean:
+
+| Stage | Information retained |
+| --- | --- |
+| Prepared program | Concrete reachable instances and the fixed entrypoint set; existing preparation stages can be reused. |
+| Scoped chips | Typed interfaces, logical witnesses, activation scopes, exclusive alternatives, arithmetic expressions, and individual call/ROM occurrences. |
+| Laid-out chips | Physical column assignments, affine activation expressions, guarded gadgets, and an explicit description of column roles and sharing. |
+| Deduplicated chips | Representative chip names, rewritten call targets, and a record of the original implementations represented by each chip. |
+| Existing circuit datatype | Erase layout bookkeeping and emit a normal `Circuit.System`; statistics and both checkers operate on it directly. |
+
+An activation scope describes when a group of equations and lookup requirements
+is enabled. Record selector witnesses separately from ordinary auxiliary
+witnesses, and distinguish interface or shared values that cross scope
+boundaries. Activations need not have their own columns: they can be affine
+expressions over selector witnesses.
+
+The layout records a mapping from logical witnesses to physical columns. It
+can map auxiliaries from exclusive scopes to the same column; its ownership
+information must explain why every simultaneous use is compatible. Keep this
+information through layout and deduplication so that correctness proofs can
+refer to it. The final circuit datatype need not acquire these annotations.
+
+Initially, reserve distinct storage for actual selector witnesses and for
+values shared by simultaneously active scopes. Eliminating a selector through
+an affine definition is a separate operation from sharing its storage with an
+auxiliary. The layout policy can be refined without changing the output format.
+
+The existing `Generic.Compiled` artifact contains a proof that the reference
+compiler produced its system. An experimental optimized artifact must be
+separate; it cannot claim that equality or reuse the certified wrapper by
+inserting admitted proofs. Implement and inspect the new stages first, then
+attach their actual correctness theorems and compose the entrypoint result.
 
 ## Measure the current circuits first
 
@@ -46,12 +91,15 @@ does not include the degree of a future fingerprinting or lookup protocol.
 
 Record these measurements on the same prepared programs for both compilers.
 Compare columns and both degree measures; also monitor lookup counts so that
-local improvements do not hide changes to the call structure.
+local improvements do not hide changes to the call structure. For deduplication,
+also compare `system.chips.length` and retain the original-to-representative
+mapping. Chip count measures implementation sharing, not execution row count.
 
 ## Delay column allocation
 
 Build an internal graph of pure arithmetic expressions, logical witness values,
-guarded equations, and guarded lookups before assigning physical columns.
+guarded equations, and guarded lookups within the activation scopes before
+assigning physical columns.
 Function outputs can serve as destinations when the expression being compiled
 already has to produce a fresh witness there.
 
@@ -75,7 +123,7 @@ for an intermediate expression only when needed by a constraint or lookup, or
 when reuse makes it beneficial. Check the degree of the complete emitted
 equation, including activation guards.
 
-For example, with a Boolean activation column `e`,
+For example, with a Boolean affine activation expression `e`,
 
 ```text
 e * (y - a*b*c) = 0             degree 4
@@ -93,6 +141,16 @@ condition on its original values, and an auxiliary witness always exists.
 Auxiliary equations for partial operations, such as division, must retain their
 guards: requiring an inverse in inactive code would change the relation.
 
+For a mechanical fallback, every polynomial product can receive a fresh
+auxiliary with a defining quadratic equation after its operands are made affine.
+This can reduce arbitrary polynomial equations to degree at most two at the
+cost of columns. Defining a fresh witness for a total polynomial may be
+unconditional; such a witness then belongs to an always-active scope and cannot
+automatically share with branch auxiliaries. Keep partial-operation requirements
+under their original guards. The structured compiler should preserve products
+that already fit the configured budget, and use scoped definitions where that
+allows storage sharing.
+
 Use separate limits for local equations and lookup expressions. Initially
 propose `maxConstraintDegree = 3` and `maxLookupDegree = 1`, materializing nonlinear
 payload expressions and compound enables as needed. This keeps lookup words
@@ -104,47 +162,112 @@ and guards suffice in every scope where it is used. Start conservatively with
 scope-local reuse. Prove witness extension and projection for each rewrite,
 then prove that the final emitted expressions satisfy both configured bounds.
 
-## First-match selectors without growing products
+## Branch certificates and first-match order
 
-The current compiler builds products of preceding pattern failures, and uses
-Boolean selectors, pairwise exclusions, and a coverage equation. This can grow
-the degree and number of equations with the number of arms.
+The current compiler computes exact equality indicators with unconditional
+inverse-witness equations and builds products of preceding pattern failures.
+These choices obscure opportunities to share auxiliary columns. The optimized
+path can use different gadgets with explicit activation scopes.
 
-Instead, given a Boolean parent activation `e` and exact Boolean pattern-match
-indicators `t_i`, allocate selector columns `s_i` and impose
+For a match reached under Boolean activation `e`, its arm activations `s_i`
+must be Boolean, mutually exclusive, and cover the parent:
 
 ```text
-r_i = e - sum_{j < i} s_j       notation for a linear expression, no new column
-s_i - r_i * t_i = 0
-sum_i s_i - e = 0
+s_i * (s_i - 1) = 0
+s_i * s_j = 0                 for i != j
+sum_i s_i = e
 ```
 
-Induction over arms proves that `r_i` is Boolean and says that the parent is
-active and no earlier arm was selected. Thus `s_i` selects exactly the first
-matching arm. Coverage requires a match when the parent is active. A wildcard
-has `t_i = 1`. The argument works in every field characteristic: exclusivity is
-proved before using coverage, rather than inferred from a possibly wrapping sum.
+At `e = 1`, exactly one arm is selected; at `e = 0`, all are zero. Exclusion
+prevents field wraparound from allowing several selected arms. Pairwise equations
+can be omitted later where another proved construction already ensures exclusivity.
 
-The indicators for compound patterns must themselves be exact and satisfy the
-degree cap. Materialize conjunctions and nested enum-validation guards as needed.
-Preserve ordered pattern loads and every associated ROM requirement. Their
-activation follows the existing semantics; computing a test must not activate
-an otherwise skipped load. Selector simplification is an algebraic change to
-already established tests, not permission to change pattern evaluation.
+Under `s_i`, require a certificate that pattern `i` matches and all preceding
+patterns fail. Selectors are witnesses constrained by these simultaneous
+equations; no evaluation order requires computing their conditions first.
+For a match on field variable `x` with arms `0` and `_`, the conditions are simply:
 
-## Share columns between exclusive branches later
+```text
+s_zero * x = 0
+s_default * (x * inverse - 1) = 0
+```
 
-Temporaries from mutually exclusive branches may be candidates for the same
-physical column. Prove the relevant guards are exclusive and that every
-constraint and lookup using those temporaries respects their ownership.
+The inverse now belongs to the default branch. This replaces an unconditional
+zero-test gadget with a branch-owned failure witness. The coverage and exclusion
+equations are essential to this interpretation.
+
+Complex patterns need explicit matching and failure gadgets. Failure of a
+compound pattern is a disjunction, so it may require further selector witnesses
+and guarded subcases. Preserve the existing first-match semantics, ordered
+pointer-pattern loads, and enum-layout validation. For a selected later arm,
+earlier failed patterns may still have required ROM reads. A selected arm's
+certificate must account for those reads; no reads after a successful earlier
+arm may become active. Different certificates that change the reads performed
+cannot be treated as interchangeable without a correctness argument.
+
+As a conservative alternative where exact Boolean tests `t_i` are already
+available, use `r_i = e - sum_{j < i} s_j` and `s_i = r_i * t_i`. This gives
+first-match order without growing products, but the test auxiliaries retain
+their actual activation scopes. It is a possible reusable gadget, not a
+requirement to keep the reference compiler's global indicator representation.
+
+## Define parent activations by sums
+
+Coverage can define an enclosing activation instead of allocating a column for it:
+
+```text
+e := s_1 + ... + s_n
+```
+
+Replace every use of `e` by this expression and remove its separate column and
+defining equation. Mutually exclusive Boolean children give a Boolean sum in
+every characteristic. The sum is affine, so multiplying it by a quadratic
+condition still gives degree at most three.
+
+Apply this recursively to trees of nested alternatives, representing internal
+activations by sums of leaf selectors when useful. Retain root coverage equal
+to one. If two matches execute under the same activation, define it from one
+sum and require the other sum to equal it. Independent matches in the same block
+do not become mutually exclusive. Orient definitions without cycles, retaining
+equalities between alternative definitions as constraints.
+
+## Allocate auxiliaries by activation scope
+
+Temporaries from mutually exclusive branches can occupy the same physical
+column when every equation and lookup use respects that exclusivity. For example:
+
+```text
+s_1 * (u - a*b) = 0
+s_2 * (u - c*d) = 0
+```
+
+With exclusive `s_1` and `s_2`, the active branch determines `u`. After reserving
+selectors and shared values, branch auxiliary storage can use the maximum of
+the branch widths instead of their sum. This is a structural allocation rule,
+not a search for a globally minimal arithmetic circuit. Uses on the same active
+path generally still need distinct columns.
 
 Ordinary register liveness is insufficient: equations are simultaneous, and an
-earlier equation continues to constrain its variables. Some existing test and
-validation gadgets impose equations even in inactive code. Two such gadgets
-can conflict if their witnesses share a column. A safe packing pass must first
-give them an appropriate guarded formulation or prove their compatibility.
-Include result merges, hints, inverses, enum validators, and lookup enables in
-this audit. Defer packing until the unshared compiler is proved correct.
+earlier equation continues to constrain its variables. Existing unconditional
+test and validation gadgets must be restructured or allocated outside the shared
+branch area. Include result merges, hints, inverses, enum validators, lookup
+enables, and values that escape a scope in the ownership conditions. An
+auxiliary used to test alternatives belongs to the scope where its requirements
+are active, which need not be the selected body's scope.
+
+## Deduplicate internal chips
+
+After layout, compare normalized implementations, choose representatives for
+equivalent internal chips, and redirect every internal send to its representative.
+Keep the selected entrypoint chips and their names fixed in the initial policy.
+Retain every call occurrence, argument/result word, and activation expression:
+sharing an implementation does not remove repeated requirements.
+
+Matching equations alone is insufficient. Include typed interfaces, ROM
+requirements, and call targets modulo the proposed equivalence classes. Recursive
+groups require comparison of the call graph, not just independent function hashes.
+The detailed algorithm and the entrypoint proof boundary are in
+[circuit deduplication](circuit-deduplication.md).
 
 ## Local equivalence and proof reuse
 
@@ -181,19 +304,26 @@ Static map leaves stay unchanged. Compose these transfer theorems with the
 existing source soundness/completeness theorems, including their root validity,
 allocation-capacity, and memoized acyclicity conditions.
 
-This equivalence is appropriate for the proposed local compiler changes. It
-does not describe inlining away a call edge; inlining already has its own proved
+This same-channel equivalence is appropriate for column allocation, selector
+gadgets, and degree reduction. Deduplication additionally needs a system-level
+relation allowing internal channels to change while fixing entrypoint claims.
+Prove uniform rule lifting for every member of a merged class; equality of the
+union of their behaviors is insufficient. See the deduplication proposal for
+tree and memoized proof transport. Inlining already has its own proved
 entrypoint equivalence before this stage.
 
 ## Implementation order
 
 1. Measure current chips and retain representative examples. **Implemented.**
-2. Define the local relation and transfer theorems.
-3. Build the expression graph and prove degree-aware materialization, initially
-   with separate columns for separate logical witnesses.
-4. Add destination reuse and the selector construction, proving each rewrite.
-5. Integrate an alternative compiler with configurable bounds; compare reports
-   and prove its entrypoint theorems by composition.
-6. Add exclusive-branch column packing with explicit ownership proofs.
+2. Define the scoped and laid-out representations and the intended invariants.
+3. Implement affine activations, guarded gadgets, degree-aware materialization,
+   destination reuse, and structural allocation across exclusive branches.
+4. Emit the original circuit datatype and compare the reports on representative
+   programs. Keep this experimental path distinct from the certified compiler.
+5. Add internal-chip deduplication and retain a checked representative mapping;
+   start with conservative structural matches, then handle recursive groups.
+6. Prove local and layout correspondence, degree bounds, and system-level
+   deduplication transport. Compose with the existing source and checker results
+   to certify the alternative path at the fixed entrypoints.
 
 No change to the source evaluation relation is needed for any of these steps.

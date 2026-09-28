@@ -146,11 +146,18 @@ without admitted proof steps.
   constraint degree, function/map and ROM lookup counts, and lookup-expression
   degree. Expose structured results and a printable report.
 - [ ] Implement an alternative constraint compiler that reduces columns subject
-  to a configurable degree bound (initially three). Prove degree-aware
-  materialization, destination reuse, and simpler first-match selectors through
-  the local equivalence interface. Later add column sharing between exclusive
-  branches with explicit guard/ownership proofs. See the
+  to a configurable degree bound (initially three), with its own scoped and
+  laid-out datatypes and final emission to the existing `Circuit.System`.
+  Represent activations as affine expressions, including sums of child
+  selectors; share auxiliary columns across exclusive scopes. Add degree-aware
+  materialization and destination reuse, then prove the layout and local-rule
+  correspondence and compose the entrypoint theorems. See the
   [design and implementation order](constraint-compiler.md).
+- [ ] Add [circuit deduplication](circuit-deduplication.md) to the optimized path:
+  retain fixed entrypoint chips, compare complete typed local implementations,
+  redirect internal channels, and preserve call occurrences. Extend structural
+  matching to recursive groups and prove system correspondence under the
+  representative map, including memoized graphs and acyclic soundness.
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern
@@ -165,6 +172,8 @@ other chosen definitions as appropriate. ix's hardcoded byte table, byte-specifi
 primitives, and native arithmetic hints are excluded from this backlog. Pure
 performance features such as deduplication, circuit grouping, column
 reuse, and tag-elision optimizations are also excluded from the comparison.
+Column reuse and chip deduplication now have independent proposals above,
+motivated by this project's optimized compiler path.
 
 The language remains first order. ix represents function values in its source
 checker and interpreter, but its inspected bytecode lowering resolves calls
