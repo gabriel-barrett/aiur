@@ -321,7 +321,8 @@ entrypoint equivalence before this stage.
 4. Emit the original circuit datatype and compare the reports on representative
    programs. Keep this experimental path distinct from the certified compiler.
 5. Add internal-chip deduplication and retain a checked representative mapping;
-   start with conservative structural matches, then handle recursive groups.
+   use structural partition refinement to handle recursive groups from the
+   start, with a simple iteration before considering a faster worklist algorithm.
 6. Prove local and layout correspondence, degree bounds, and system-level
    deduplication transport. Compose with the existing source and checker results
    to certify the alternative path at the fixed entrypoints.
