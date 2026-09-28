@@ -2,8 +2,9 @@
 
 ## Model
 
-Each function compiles to one chip. A chip has field-valued variables and local
-constraints consisting only of polynomials equal to zero. Polynomials contain
+In the reference compiler, each function compiles to one chip. A chip has
+field-valued variables and local constraints consisting only of polynomials
+equal to zero. Polynomials contain
 constants, variables, addition, subtraction, and multiplication. Their order has
 no semantic significance.
 
@@ -28,9 +29,13 @@ lookup. It also reports maximum lookup-expression degree, including enables.
 Degrees are conservative expression-tree bounds without algebraic simplification,
 and an empty maximum is zero. See [the example](../Examples/CircuitStats.lean).
 
-The [alternative compiler proposal](constraint-compiler.md) uses these statistics
-to compare columns under a configurable degree cap. That compiler is not yet
-implemented.
+The [experimental alternative compiler](constraint-compiler.md) uses these
+statistics to compare columns under a configurable degree cap. Call
+`prepared.compileOptimized` for scoped auxiliary sharing, affine selector
+elimination, degree reduction, and recursive chip deduplication. It emits the
+same circuit datatype and carries a proof of the degree bounds. Its
+source-correctness proofs remain separate work; the proofs described below
+apply to the reference compiler.
 
 ## Arithmetic and calls
 

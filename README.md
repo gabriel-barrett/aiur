@@ -244,8 +244,8 @@ the determinism theorems retain their guarantees for programs without hints.
 
 ## Circuits and proof status
 
-Compilation produces one chip per remaining function after inlining and retains
-shared static tables and map references. Assignments contain field elements;
+Reference compilation produces one chip per remaining function after inlining
+and retains shared static tables and map references. Assignments contain field elements;
 chip interfaces and messages retain static type metadata and flat value words.
 Each result column of a call gets a fresh variable, including enum tags and
 padding. Unit-valued calls still produce messages. All constraints are polynomial equations equal to zero. Division uses inverse witnesses, and
@@ -257,8 +257,29 @@ each chip's column count, maximum constraint degree, and call/map/ROM lookup
 counts. `system.stats` returns the same measurements as structured data. The
 report also includes lookup-expression degree. Degrees are structural upper
 bounds without polynomial simplification; counts include guarded lookup slots.
-See [the example](Examples/CircuitStats.lean) and the
-[proposed compiler with configurable degree bounds](design/constraint-compiler.md).
+See [the statistics example](Examples/CircuitStats.lean).
+
+`prepared.compileOptimized` selects an experimental alternative compiler. It
+shares auxiliary columns across exclusive branches, removes selectors defined
+by sums of child selectors, and merges structurally equivalent internal chips,
+including mutually recursive groups. Public entrypoints remain fixed. It emits
+the existing `Circuit.System` and defaults to a maximum constraint degree of
+three, with affine lookup expressions:
+
+```lean
+let optimized ← prepared.compileOptimized
+optimized.circuit.system.printStats
+-- Larger caps and individual optimization switches are also available:
+let alternative ← prepared.compileOptimized { maxDegree := 4, deduplicate := false }
+```
+
+Every successful optimized artifact carries a Lean proof of these degree
+bounds. **Source soundness/completeness for this alternative path is still
+pending.** The existing reference proofs remain checked. Run
+`lake env lean Examples/Optimized.lean` for a comparison that reduces six chips
+to four, each recursive helper from eight columns to six, and a branch chip's
+degree from six to three. See the [optimized compiler design](design/constraint-compiler.md)
+for its stages, layout metadata, and remaining proof obligations.
 
 Enum encodings contain a constructor tag and payload padded with zeros to the
 largest variant. Active interface and ROM values are constrained to be canonical.
@@ -281,8 +302,9 @@ permits sharing and cycles; acyclic graphs unfold into trees. Public
 ROM for the whole proof. Root well-formedness does not assume the claimed result
 is true; soundness proves that.
 
-**Correctness, including enums, pointers, and maps, is proved without admitted steps or
-added axioms.** The main theorems in [MemoryCorrectness.lean](Aiur/MemoryCorrectness.lean) are:
+**Reference-compiler correctness, including enums, pointers, and maps, is proved
+without admitted steps or added axioms.** The main theorems in
+[MemoryCorrectness.lean](Aiur/MemoryCorrectness.lean) are:
 
 - `compiler_run_complete`: successful execution yields a circuit derivation when
   the allocation count fits the field cardinality.

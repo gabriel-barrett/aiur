@@ -54,8 +54,8 @@ design, and keep proposals and unanswered questions explicitly separate.
 - [Alternative constraint compiler](constraint-compiler.md): per-chip statistics
   and a separate path with activation scopes, explicit layouts, shared auxiliary
   columns, and configurable degree bounds, emitting the existing circuit datatype.
-- [Circuit deduplication](circuit-deduplication.md): proposed sharing of internal
-  chips, fixed entrypoints, recursive structural comparison, and proof transport.
+- [Circuit deduplication](circuit-deduplication.md): implemented sharing of internal
+  chips, fixed entrypoints, recursive structural comparison, and planned proof transport.
 - [Integer accumulators](accumulators.md): unit and weighted trace checkers,
   their proved equivalence to trees and memoized graphs, and source-proof reuse.
 - [Correctness](correctness.md): relational evaluation, closed circuit
@@ -65,8 +65,9 @@ design, and keep proposals and unanswered questions explicitly separate.
 - [Memoization](memoization.md): explicit cyclic graphs with shared nodes,
   completeness, acyclic soundness, and the executable-evaluator correspondence.
 
-The circuit pipeline uses one chip per remaining function after mandatory
-inlining and abstracts channel interactions independently of the eventual
+The reference circuit pipeline uses one chip per remaining function after
+mandatory inlining. The experimental optimized path can also merge equivalent
+internal chips. Both abstract channel interactions independently of the eventual
 cryptographic protocol.
 
 - [Source pipeline](source-pipeline.md): retained source declarations and the end-to-end correctness theorems.

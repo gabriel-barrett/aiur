@@ -141,23 +141,27 @@ without admitted proof steps.
   equivalence of the local conclusion/premise relation after existentially
   quantifying auxiliary assignments. Include guarded ROM requirements and
   preserve the shared static map interpretation. See the
-  [alternative compiler proposal](constraint-compiler.md).
+  [alternative compiler design](constraint-compiler.md).
 - [x] Add per-chip circuit statistics: allocated columns, maximum structural
   constraint degree, function/map and ROM lookup counts, and lookup-expression
   degree. Expose structured results and a printable report.
-- [ ] Implement an alternative constraint compiler that reduces columns subject
+- [x] Implement an alternative constraint compiler that reduces columns subject
   to a configurable degree bound (initially three), with its own scoped and
   laid-out datatypes and final emission to the existing `Circuit.System`.
   Represent activations as affine expressions, including sums of child
   selectors; share auxiliary columns across exclusive scopes. Add degree-aware
-  materialization and destination reuse, then prove the layout and local-rule
-  correspondence and compose the entrypoint theorems. See the
+  materialization and destination reuse. Successful artifacts carry a Lean
+  proof of the emitted constraint and lookup degree bounds. See the
   [design and implementation order](constraint-compiler.md).
-- [ ] Add [circuit deduplication](circuit-deduplication.md) to the optimized path:
+- [x] Add [circuit deduplication](circuit-deduplication.md) to the optimized path:
   retain fixed entrypoint chips, compare complete typed local implementations,
   redirect internal channels, and preserve call occurrences. Extend structural
-  matching to recursive groups and prove system correspondence under the
-  representative map, including memoized graphs and acyclic soundness.
+  matching to recursive groups through checked stable partition refinement.
+- [ ] Prove the optimized compiler's layout and local-rule correspondence,
+  then system correspondence under the deduplication representative map.
+  Transport trees and memoized graphs, preserve acyclicity, and compose the
+  source-to-checker entrypoint theorems. The alternative compiler is currently
+  experimental; only its structural degree bound is formally certified.
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern
@@ -172,7 +176,7 @@ other chosen definitions as appropriate. ix's hardcoded byte table, byte-specifi
 primitives, and native arithmetic hints are excluded from this backlog. Pure
 performance features such as deduplication, circuit grouping, column
 reuse, and tag-elision optimizations are also excluded from the comparison.
-Column reuse and chip deduplication now have independent proposals above,
+Column reuse and chip deduplication now have independent implementations above,
 motivated by this project's optimized compiler path.
 
 The language remains first order. ix represents function values in its source

@@ -1,0 +1,240 @@
+import Aiur.Modules
+import AiurTests.Arrays
+import AiurTests.Structs
+import AiurTests.Modules
+import AiurTests.Inlining
+import Mathlib.Algebra.Field.ZMod
+
+namespace AiurOptimizedTests
+open Aiur
+set_option maxRecDepth 10000
+set_option maxHeartbeats 8000000
+
+instance : Fact (Nat.Prime 3) := ⟨by decide⟩
+abbrev K := ZMod 3
+
+def localSource : Program Nat := aiur% "
+enum Inner { Zero, Value(Field) }
+enum Outer { Empty, Wrap(Inner) }
+fn pair(x: Field, y: Field) -> (Field, Field) { (-x, y + 1) }
+fn overlap(p: (Field, Field)) -> Field {
+  match p { (0, _) => 1, (_, 0) => 2, _ => 0 }
+}
+fn conjunction(x: Field, y: Field) -> Field { match (x, y) { (0, 0) => 1, _ => 2 } }
+fn partial_match(x: Field) -> Field { match x { 0 => 1 } }
+fn divide(x: Field, y: Field) -> Field { match x { 0 => y / y, _ => x / x } }
+fn nested(x: Field, y: Field) -> Field { match x { 0 => match y { 0 => 0, _ => 1 }, _ => 2 } }
+fn separate(x: Field, y: Field) -> Field {
+  let a = match x { 0 => 0, _ => 1 };
+  let b = match y { 0 => 0, _ => 1 };
+  a + b
+}
+fn product(a: Field, b: Field, c: Field, d: Field) -> Field { a * b * c * d }
+fn helper(x: Field) -> Field { x * x }
+fn forward(x: Field) -> Field { helper(x) }
+fn repeated(x: Field) -> Field { let a = helper(x); let b = helper(x); a + b }
+fn lookup_product(a: Field, b: Field, c: Field) -> Field { helper(a * b * c) }
+fn require(x: Field) -> () { let 0 = x; () }
+fn unit_call(x: Field) -> Field { let _ = require(x); 1 }
+fn memory(x: Field) -> Field { let p = &x; *p }
+fn guarded_memory(x: Field) -> Field { match x { 0 => 0, _ => { let p = &(1 / x); *p } } }
+fn preimage(h: Field) -> Field { let w = hint::<Field>(()); let 0 = w * w - h; w }
+fn failed_key() -> Field { hint::<Field>(1 / 0) }
+fn enum_input(x: Outer) -> Field {
+  match x { Outer::Empty => 0, Outer::Wrap(Inner::Zero) => 1, Outer::Wrap(Inner::Value(a)) => a }
+}
+fn enum_hint() -> Outer { hint::<Outer>(()) }
+table inputs: (Field,) { (0,), (1,), (2,) }
+table outputs: Field { 1, 2, 0 }
+map successor(x: Field) -> Field = inputs => outputs;
+fn table_call(x: Field) -> Field { successor(x) }
+"
+
+def recursiveSource : Modules.Program Nat := aiur% "
+module R {
+  fn a(x: Field) -> Field { match x { 0 => 0, _ => b(x - 1) + 1 } }
+  fn b(x: Field) -> Field { match x { 0 => 0, _ => a(x - 1) + 2 } }
+  fn c(x: Field) -> Field { match x { 0 => 0, _ => d(x - 1) + 1 } }
+  fn d(x: Field) -> Field { match x { 0 => 0, _ => c(x - 1) + 2 } }
+  fn e(x: Field) -> Field { match x { 0 => 1, _ => e(x - 1) + 2 } }
+  fn main(x: Field) -> (Field, Field, Field) { (a(x), c(x), e(x)) }
+  fn pinned(x: Field) -> Field { match x { 0 => 0, _ => b(x - 1) + 1 } }
+  fn branch(x: Field, y: Field, z: Field) -> Field {
+    match x { 0 => y * y * y * y / z, _ => z * z * z * z / y }
+  }
+}
+"
+
+private def get {α : Type} : Except String α → IO α
+  | .ok value => pure value
+  | .error message => throw (IO.userError message)
+
+private def ensure (message : String) (condition : Bool) : IO Unit :=
+  unless condition do throw (IO.userError message)
+
+private def firstSome (f : α → Option β) : List α → Option β
+  | [] => none
+  | x :: xs => (f x).orElse (fun _ => firstSome f xs)
+
+/-- Small-field exhaustive row search with early rejection of fully assigned
+equations. This is a test oracle, not production witness generation. -/
+private def search (chip : Circuit.Chip K) (rom : WireROM K) (claim : Circuit.Message K)
+    (allowed : Circuit.Message K → Bool) (fixed : List (Nat × K)) :
+    Nat → List K → Option (Circuit.Row K)
+  | fuel, values =>
+    let row : Circuit.Row K := ⟨chip.name, values⟩
+    let ready := chip.constraints.all fun eq =>
+      !(Optimized.Polynomial.vars eq).all (· < values.length) || eq.denote row.assignment == 0
+    if !ready then none else
+    match fuel with
+    | 0 => match chip.checkRow rom row with
+      | .ok (provided, required) =>
+          if provided == claim && required.all allowed then some row else none
+      | .error _ => none
+    | fuel + 1 =>
+      let choices := match fixed.find? (·.1 == values.length) with
+        | some (_, value) => [value]
+        | none => [0, 1, 2]
+      firstSome (fun value => search chip rom claim allowed fixed fuel (values ++ [value])) choices
+
+private def rowFor (system : Circuit.System K) (rom : WireROM K) (claim : Circuit.Message K)
+    (allowed : Circuit.Message K → Bool) : Option (Circuit.Row K) := do
+  let chip ← system.findChip? claim.channel
+  let fixed := (chip.inputs.flatMap WireValue.words).zip (claim.args.flatMap WireValue.words) ++
+    chip.output.words.zip claim.result.words
+  search chip rom claim allowed fixed chip.numVars []
+
+/-- These call-oracle cases have pointer-free interfaces; ROM cases below have
+their explicit cells checked directly by the row checker. -/
+private def allowed (program : Program K) (system : Circuit.System K) (claim : Circuit.Message K) : Bool :=
+  if system.mapClaims.any (· == claim) then true else
+  match claim.args.mapM (WireValue.decode system.enums) with
+  | none => false
+  | some args =>
+      match eval program claim.channel (args.map (Value.mapAddress fun _ => (0 : Nat))) 100 with
+      | .error _ => false
+      | .ok value => (value.mapAddress (fun _ => (0 : K))).encode system.enums == some claim.result
+
+private def rowsFor (program : Program K) (system : Circuit.System K) (rom : WireROM K) :
+    Nat → Circuit.Message K → Option (List (Circuit.Row K))
+  | 0, _ => none
+  | fuel + 1, claim => do
+      if system.mapClaims.any (· == claim) then return []
+      let row ← rowFor system rom claim (allowed program system)
+      let chip ← system.findChip? claim.channel
+      let children ← (chip.premises row).mapM (rowsFor program system rom fuel)
+      return row :: children.flatten
+
+private def checkCase (program : Program K) (compiled : Optimized.Artifact K)
+    (name : String) (args : List (WireValue K)) (result : WireValue K) (expected : Bool)
+    (rom : WireROM K := ⟨[]⟩) : IO Unit := do
+  let claim : Circuit.Message K := ⟨name, args, result⟩
+  let found := rowFor compiled.system rom claim (allowed program compiled.system)
+  ensure s!"{name}: wrong row acceptance for {repr args} -> {repr result}"
+    (found.isSome == expected)
+
+private def width (compiled : Optimized.Artifact F) (name : String) : Nat :=
+  ((compiled.system.findChip? name).map (·.numVars)).getD 0
+
+def run : IO Unit := do
+  let program := localSource.toField K
+  let entries := program.functions.map (·.name)
+  let compiled ← get <| Optimized.compile program entries
+  let unshared ← get <| Optimized.compile program entries { shareAuxiliaries := false }
+  let uneliminated ← get <| Optimized.compile program entries { eliminateSelectors := false }
+  ensure "exclusive auxiliaries were not shared" (width compiled "divide" < width unshared "divide")
+  ensure "parent selector was not eliminated" (width compiled "nested" < width uneliminated "nested")
+  ensure "direct call did not reuse output" (width compiled "forward" == 2)
+  let some repeated := compiled.system.findChip? "repeated" | throw (IO.userError "missing repeated")
+  ensure "repeated call occurrences were merged" (repeated.sends.length == 2)
+  ensure "unsupported cap accepted" (Optimized.compile program entries { maxDegree := 2 }).toOption.isNone
+  let _ ← get <| Optimized.compile program entries { maxDegree := 4 }
+  for layout in compiled.layouts do
+    for occupants in layout.layout.occupants do
+      for i in occupants do
+        for j in occupants do
+          ensure "nonexclusive column occupants" (i == j || layout.logical.canShare i j)
+  for x in ([0, 1, 2] : List K) do
+    for y in ([0, 1, 2] : List K) do
+      for out in ([0, 1, 2] : List K) do
+        checkCase program compiled "overlap" [.tuple [.field x, .field y]] (.field out)
+          (out == if x == 0 then 1 else if y == 0 then 2 else 0)
+        checkCase program compiled "conjunction" [.field x, .field y] (.field out)
+          (out == if x == 0 && y == 0 then 1 else 2)
+        checkCase program compiled "divide" [.field x, .field y] (.field out)
+          (out == 1 && (x != 0 || y != 0))
+        checkCase program compiled "nested" [.field x, .field y] (.field out)
+          (out == if x == 0 then (if y == 0 then 0 else 1) else 2)
+        checkCase program compiled "separate" [.field x, .field y] (.field out)
+          (out == (if x == 0 then 0 else 1) + (if y == 0 then 0 else 1))
+        checkCase program compiled "pair" [.field x, .field y] (.tuple [.field out, .field (y + 1)])
+          (out == -x)
+        checkCase program compiled "product" [.field x, .field y, .field 2, .field 2] (.field out)
+          (out == x * y * 2 * 2)
+        checkCase program compiled "lookup_product" [.field x, .field y, .field 2] (.field out)
+          (out == (x * y * 2) * (x * y * 2))
+    for out in ([0, 1, 2] : List K) do
+      checkCase program compiled "partial_match" [.field x] (.field out) (x == 0 && out == 1)
+      checkCase program compiled "preimage" [.field x] (.field out) (out * out == x)
+      checkCase program compiled "failed_key" [] (.field out) false
+      checkCase program compiled "forward" [.field x] (.field out) (out == x * x)
+      checkCase program compiled "repeated" [.field x] (.field out) (out == x * x + x * x)
+      checkCase program compiled "unit_call" [.field x] (.field out) (x == 0 && out == 1)
+      checkCase program compiled "table_call" [.field x] (.field out) (out == x + 1)
+      checkCase program compiled "memory" [.field x] (.field out) (out == x) ⟨[(0, .field x)]⟩
+      let rom : WireROM K := if x == 0 then ⟨[]⟩ else ⟨[(0, .field x⁻¹)]⟩
+      checkCase program compiled "guarded_memory" [.field x] (.field out)
+        (out == if x == 0 then 0 else x⁻¹) rom
+  for (words, expected) in [([0, 0, 0], true), ([1, 0, 0], true), ([1, 1, 2], true),
+      ([2, 0, 0], false), ([0, 1, 0], false), ([1, 0, 1], false)] do
+    checkCase program compiled "enum_hint" [] ⟨.enum "Outer", words⟩ expected
+  for (words, value) in [([0, 0, 0], 0), ([1, 0, 0], 1), ([1, 1, 2], 2)] do
+    for out in ([0, 1, 2] : List K) do
+      checkCase program compiled "enum_input" [⟨.enum "Outer", words⟩] (.field out) (out == value)
+  -- Produce actual accepted trees of rows for both existing checkers.
+  for (name, args, out) in [("repeated", [.field 2], .field 2),
+      ("unit_call", [.field 0], .field 1), ("table_call", [.field 2], .field 0)] do
+    let claim : Circuit.Message K := ⟨name, args, out⟩
+    let some rows := rowsFor program compiled.system ⟨[]⟩ 20 claim |
+      throw (IO.userError s!"could not construct rows for {name}")
+    let _ ← get <| compiled.check ⟨[]⟩ claim rows
+    let _ ← get <| compiled.checkMemo ⟨[]⟩ claim (rows.map fun row => ⟨row, 1⟩)
+  -- Mutually recursive copies merge, different constants and public roots do not.
+  let p ← get <| Modules.prepare (recursiveSource.toField K) ["R::main", "R::pinned", "R::branch"]
+  let optimized ← get p.compileOptimized
+  let plain ← get <| p.compileOptimized { deduplicate := false, shareAuxiliaries := false }
+  let c := optimized.circuit.artifact
+  let representatives := c.representatives
+  let rep := fun name => ((representatives.find? (·.1 == name)).map Prod.snd).getD name
+  ensure "mutual cycles did not merge" (rep "R::a" == rep "R::c" && rep "R::b" == rep "R::d")
+  ensure "different recursive rules merged" (rep "R::a" != rep "R::b" && rep "R::b" != rep "R::e")
+  ensure "entrypoint merged" (rep "R::pinned" == "R::pinned" && rep "R::main" == "R::main")
+  ensure "chip count did not decrease" (c.system.chips.length + 2 == plain.circuit.system.chips.length)
+  ensure "branch storage did not decrease" (width c "R::branch" < width plain.circuit.artifact "R::branch")
+  for x in ([0, 1, 2] : List K) do
+    let value ← get <| p.run "R::main" [.field x]
+    let some result := (value.1.mapAddress (fun _ => (0 : K))).encode c.system.enums |
+      throw (IO.userError "cannot encode recursive result")
+    let claim : Circuit.Message K := ⟨"R::main", [.field x], result⟩
+    let some rows := rowsFor optimized.circuit.inlined.program c.system ⟨[]⟩ 20 claim |
+      throw (IO.userError "recursive rows missing")
+    let _ ← get <| optimized.check ⟨[]⟩ "R::main" claim.args claim.result rows
+    let _ ← get <| optimized.checkMemo ⟨[]⟩ "R::main" claim.args claim.result (rows.map fun row => ⟨row, 1⟩)
+  ensure "internal representative accepted as entry" (c.check ⟨[]⟩ ⟨rep "R::a", [.field 0], .field 0⟩ []).toOption.isNone
+  -- Existing preparation paths cover arrays, structs, exits, functors, and inline helpers.
+  for (source, names) in [
+      (AiurArrayTests.source, ["all_slices", "ordered", "const_pattern", "empty_error", "slice_once", "generic_enum"]),
+      (AiurStructTests.source, ["named", "recursive", "pointers", "early", "hinted"])] do
+    let prepared ← get <| Generic.prepare (source.toField Rat)
+    let specialized ← get <| Generic.specialize prepared names
+    let _ ← get specialized.compileOptimized
+  let modules ← get <| Modules.prepare (AiurModuleTests.arithmetic.toField Rat) ["App::run"]
+  let _ ← get modules.compileOptimized
+  let inlineEntries := (AiurInlineTests.cases.map (·.1)).eraseDups
+  let inlineProgram ← get <| Modules.prepare (AiurInlineTests.source.toField Rat) inlineEntries
+  let inlined ← get inlineProgram.compileOptimized
+  for name in inlined.specialized.inlineNames do
+    ensure "inline chip remained in optimized system" (inlined.circuit.system.findChip? name).isNone
+  IO.println "Passed optimized compiler checks: exhaustive F3 rows, enums, hints, ROM, both checkers, recursive deduplication, layouts, and source features."
+
+end AiurOptimizedTests
