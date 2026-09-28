@@ -51,6 +51,9 @@ design, and keep proposals and unanswered questions explicitly separate.
   and backend work, deliberate differences, and deferred decisions.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
   fresh call results, and abstract channel balance.
+- [Alternative constraint compiler](constraint-compiler.md): per-chip statistics
+  and a proposal for fewer columns under configurable degree bounds, with local
+  equivalence proofs and reuse of the existing semantic theorems.
 - [Integer accumulators](accumulators.md): unit and weighted trace checkers,
   their proved equivalence to trees and memoized graphs, and source-proof reuse.
 - [Correctness](correctness.md): relational evaluation, closed circuit

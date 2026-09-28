@@ -18,6 +18,20 @@ auxiliary variables. `WireValue` stores a type and flat words: field expressions
 during lowering, variable indices at interfaces, and field elements in messages.
 Type metadata preserves tuple shape, nominal enum identity, and pointer targets.
 
+## Statistics
+
+`System.stats` returns one `ChipStats` record per chip; `System.printStats` prints
+the report. It includes allocated field columns, maximum structural constraint
+degree, and the number of function/map and ROM lookup slots. All declared slots
+count, including guarded ones; the provided conclusion does not count as a
+lookup. It also reports maximum lookup-expression degree, including enables.
+Degrees are conservative expression-tree bounds without algebraic simplification,
+and an empty maximum is zero. See [the example](../Examples/CircuitStats.lean).
+
+The [alternative compiler proposal](constraint-compiler.md) uses these statistics
+to compare columns under a configurable degree cap. That compiler is not yet
+implemented.
+
 ## Arithmetic and calls
 
 Arithmetic operates on field leaves. For `a / b`, fresh inverse variable `u` and
