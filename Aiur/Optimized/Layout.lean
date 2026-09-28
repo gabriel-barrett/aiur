@@ -150,10 +150,19 @@ def allocateColumns (config : Config) (chip : ScopedChip F) : ColumnLayout := Id
           occupants := layout.occupants.push [id] }
   return layout
 
+def ColumnLayout.column (layout : ColumnLayout) (id : Witness) : Circuit.Var :=
+  (layout.columnOf[id]?.getD none).getD layout.occupants.size
+
+def ColumnLayout.expression [Field F] [DecidableEq F] (layout : ColumnLayout) (value : Polynomial F) : Polynomial F :=
+  (value.subst (Polynomial.var ∘ layout.column)).simplify
+
+def ScopedChip.activation [Zero F] (chip : ScopedChip F) (scope : ScopeId) : Polynomial F :=
+  ((chip.scopes[scope]?).map Scope.activation).getD (.const 0)
+
 def emitChip [Field F] [DecidableEq F] (chip : ScopedChip F) (layout : ColumnLayout) : Circuit.Chip F := Id.run do
-  let column := fun id => (layout.columnOf[id]?.getD none).getD layout.occupants.size
-  let expr := fun (value : Polynomial F) => (value.subst (Polynomial.var ∘ column)).simplify
-  let enable := fun scope => expr ((chip.scopes[scope]?).map Scope.activation |>.getD (.const 0))
+  let column := layout.column
+  let expr := layout.expression
+  let enable := fun scope => expr (chip.activation scope)
   let constraints := chip.equations.toList.filterMap fun eq =>
     let polynomial := Polynomial.simplify (.mul (enable eq.scope) (expr eq.polynomial))
     if polynomial == .const 0 then none else some polynomial

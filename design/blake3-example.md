@@ -140,10 +140,11 @@ agree between compilers and include statically declared inactive slots.
 | `Words::u64_succ` | 32 | 32 | 1 | 1 | 8 |
 | `Benchmark::generate` | 21 | 11 | 3 | 3 | 4 |
 
-The optimized artifact carries the existing Lean certificate that constraint
-degrees are at most three and lookup expressions are affine. The optimized
-compiler's source soundness/completeness proof remains pending, as described
-in the [compiler design](constraint-compiler.md). No BLAKE3 execution, test-vector
+The optimized artifact carries Lean certificates that constraint degrees are
+at most three, lookup expressions are affine, and chip deduplication preserves
+entrypoint acceptance. Full optimized/reference compiler equivalence remains
+pending, as described in the [proof status](optimized-equivalence.md).
+No BLAKE3 execution, test-vector
 validation, or cryptographic correctness proof is claimed by this benchmark.
 
 ## Frontend support

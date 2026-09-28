@@ -2,6 +2,17 @@
 
 ## Current modules
 
+- `Aiur/Circuit/RuleEquivalence.lean` and `RuleTranslation.lean`: local-rule
+  equivalence and uniform channel-translation proofs for trees, finite graphs,
+  acyclicity, and both integer checkers.
+- `Aiur/Optimized/DedupCertificate.lean` and `Correctness.lean`: the implemented
+  deduplication pass carries a checked structural certificate and preserves
+  entrypoint acceptance. `PolynomialFacts.lean`, `BranchFacts.lean`,
+  `ScopedSemantics.lean`, and `LayoutWitness.lean` prove simplification, branch
+  algebra, physical emission, and conditional witness packing. Earlier pass
+  invariants and full reference/optimized equivalence remain open; see
+  [the exact proof status](optimized-equivalence.md).
+
 - `Aiur/Inlining/`: mandatory call expansion after specialization/control lowering,
   lexical scope and type certificates, and entrypoint evaluation equivalence.
   `Generic.Compiled.program` exposes the result passed to chip compilation;

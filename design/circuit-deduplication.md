@@ -2,8 +2,10 @@
 
 Status: implemented for the experimental [optimized circuit path](constraint-compiler.md)
 in [`Aiur/Optimized/Dedup.lean`](../Aiur/Optimized/Dedup.lean). Stable partition,
-representative, and fixed-entrypoint checks are executable. Semantic transport
-theorems remain to be proved.
+representative, and fixed-entrypoint checks are executable. The pass now carries
+a checked structural certificate, with proved equivalence for trees, memoized
+graphs, acyclicity, and both integer checkers. See
+[the exact theorem boundaries](optimized-equivalence.md#certified-deduplication).
 
 ## Boundary and fixed entrypoints
 
@@ -198,5 +200,7 @@ cyclic acceptance remains intentionally possible.
 
 Finally compose with the source theorems, keeping their root well-formedness,
 pointer-free entry types, ROM correspondence, and allocation-capacity hypotheses.
-These remain proof obligations. The implementation and its regression checks
-do not yet certify source soundness/completeness for the optimized compiler.
+Deduplication transport is now proved, including the finite copied-node graph
+construction. The remaining source composition obligations are in the earlier
+scoped compilation, alias/degree, and allocation stages; deduplication
+equivalence alone does not certify the entire optimized compiler.

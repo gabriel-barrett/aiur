@@ -5,14 +5,16 @@ import Aiur.Modules.Correctness
 
 namespace Aiur.Optimized
 
-/-- Experimental compiler artifact. The degree bound is certified; source
-soundness/completeness for this alternative pipeline is separate future work. -/
-structure Artifact (F : Type) where
+/-- Experimental compiler artifact. Degree bounds and deduplication equivalence
+are certified; source soundness/completeness still needs the earlier pass proofs. -/
+structure Artifact (F : Type) [Field F] [DecidableEq F] where
   config : Config
   entries : List String
   layouts : List (LaidOutChip F)
   system : Circuit.System F
   representatives : List (String × String)
+  unmerged : Circuit.System F
+  deduplication : Dedup.Certificate unmerged system representatives entries
   degreeBound : ∀ chip ∈ system.chips,
     chip.stats.maxConstraintDegree ≤ config.maxDegree ∧ chip.stats.maxLookupDegree ≤ 1
 
@@ -28,12 +30,15 @@ def compile [Field F] [DecidableEq F] (program : Program F) (entries : List Stri
   let layouts ← program.functions.mapM fun fn => do
     layOut config (← Compiler.function program config fn)
   let initial : Circuit.System F := ⟨layouts.map (·.chip), program.enums, program.tables, program.maps⟩
-  let result ← if config.deduplicate then Dedup.run initial entries else pure (Dedup.identity initial)
+  let result ← if config.deduplicate then Dedup.run initial entries
+    else Dedup.certify initial entries (Dedup.identity initial)
   let _ ← (Circuit.checkChips [] result.system.chips).mapError reprStr
   if h : result.system.chips.all (fun chip => decide
       (chip.stats.maxConstraintDegree ≤ config.maxDegree ∧ chip.stats.maxLookupDegree ≤ 1)) = true then
     return {
       config, entries, layouts, system := result.system, representatives := result.representatives
+      unmerged := initial
+      deduplication := result.certificate
       degreeBound := by
         intro chip member
         exact of_decide_eq_true (List.all_eq_true.mp h chip member)

@@ -137,11 +137,12 @@ without admitted proof steps.
   provide-weighted checker and prove both directions with memoized graphs,
   including cycles. See [integer accumulators](accumulators.md) for the precise
   context hypotheses, source-proof composition, and regression coverage.
-- [ ] Define an interface for replacing a constraint compiler by proving
+- [x] Define an interface for replacing a constraint compiler by proving
   equivalence of the local conclusion/premise relation after existentially
   quantifying auxiliary assignments. Include guarded ROM requirements and
   preserve the shared static map interpretation. See the
-  [alternative compiler design](constraint-compiler.md).
+  [alternative compiler design](constraint-compiler.md). Tree, graph, acyclicity,
+  and both checker transfer theorems are proved in `Circuit/RuleEquivalence.lean`.
 - [x] Add per-chip circuit statistics: allocated columns, maximum structural
   constraint degree, function/map and ROM lookup counts, and lookup-expression
   degree. Expose structured results and a printable report.
@@ -157,11 +158,15 @@ without admitted proof steps.
   retain fixed entrypoint chips, compare complete typed local implementations,
   redirect internal channels, and preserve call occurrences. Extend structural
   matching to recursive groups through checked stable partition refinement.
-- [ ] Prove the optimized compiler's layout and local-rule correspondence,
-  then system correspondence under the deduplication representative map.
-  Transport trees and memoized graphs, preserve acyclicity, and compose the
-  source-to-checker entrypoint theorems. The alternative compiler is currently
-  experimental; only its structural degree bound is formally certified.
+- [x] Prove deduplication correspondence under the representative map, including
+  uniform reverse lifting for every original name. Transport trees and cyclic
+  memoized graphs, preserve acyclicity, and prove both integer checker
+  equivalences at fixed roots. The actual pass carries a checked certificate.
+- [ ] Finish the optimized compiler's layout and local-rule correspondence and
+  compose the source-to-checker entrypoint theorems. Polynomial simplification,
+  branch algebra, emission, and conditional witness packing are proved.
+  Scoped compilation, alias/degree pass composition, and the generated
+  allocation invariants remain. See [proof status](optimized-equivalence.md).
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern

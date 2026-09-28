@@ -1,4 +1,5 @@
 import Aiur.Modules
+import Aiur.Optimized.Correctness
 import AiurTests.Arrays
 import AiurTests.Structs
 import AiurTests.Modules
@@ -133,7 +134,7 @@ private def checkCase (program : Program K) (compiled : Optimized.Artifact K)
   ensure s!"{name}: wrong row acceptance for {repr args} -> {repr result}"
     (found.isSome == expected)
 
-private def width (compiled : Optimized.Artifact F) (name : String) : Nat :=
+private def width [Field F] [DecidableEq F] (compiled : Optimized.Artifact F) (name : String) : Nat :=
   ((compiled.system.findChip? name).map (·.numVars)).getD 0
 
 def run : IO Unit := do
@@ -147,6 +148,19 @@ def run : IO Unit := do
   ensure "direct call did not reuse output" (width compiled "forward" == 2)
   let some repeated := compiled.system.findChip? "repeated" | throw (IO.userError "missing repeated")
   ensure "repeated call occurrences were merged" (repeated.sends.length == 2)
+  -- The semantic certificate must reject changes to rules or their namespace.
+  let certify := fun system => Optimized.Dedup.certify compiled.unmerged entries
+    ⟨system, compiled.representatives, #[]⟩
+  ensure "valid deduplication certificate rejected" (certify compiled.system).toOption.isSome
+  let fewerCalls := { compiled.system with chips := compiled.system.chips.map fun chip =>
+    if chip.name == "repeated" then { chip with sends := chip.sends.drop 1 } else chip }
+  ensure "certificate lost a repeated premise" (certify fewerCalls).toOption.isNone
+  let weaker := { compiled.system with chips := compiled.system.chips.map fun chip =>
+    if chip.name == "helper" then { chip with constraints := [] } else chip }
+  ensure "certificate allowed weaker equations" (certify weaker).toOption.isNone
+  ensure "certificate allowed different static maps" (certify { compiled.system with maps := [] }).toOption.isNone
+  ensure "certificate allowed a duplicate chip"
+    (certify { compiled.system with chips := compiled.system.chips ++ [repeated] }).toOption.isNone
   ensure "unsupported cap accepted" (Optimized.compile program entries { maxDegree := 2 }).toOption.isNone
   let _ ← get <| Optimized.compile program entries { maxDegree := 4 }
   for layout in compiled.layouts do
@@ -209,6 +223,9 @@ def run : IO Unit := do
   ensure "mutual cycles did not merge" (rep "R::a" == rep "R::c" && rep "R::b" == rep "R::d")
   ensure "different recursive rules merged" (rep "R::a" != rep "R::b" && rep "R::b" != rep "R::e")
   ensure "entrypoint merged" (rep "R::pinned" == "R::pinned" && rep "R::main" == "R::main")
+  let unpinned ← get <| Optimized.Dedup.compute c.unmerged []
+  ensure "certificate allowed merging a pinned entrypoint"
+    (Optimized.Dedup.certify c.unmerged ["R::pinned"] unpinned).toOption.isNone
   ensure "chip count did not decrease" (c.system.chips.length + 2 == plain.circuit.system.chips.length)
   ensure "branch storage did not decrease" (width c "R::branch" < width plain.circuit.artifact "R::branch")
   for x in ([0, 1, 2] : List K) do
@@ -238,3 +255,14 @@ def run : IO Unit := do
   IO.println "Passed optimized compiler checks: exhaustive F3 rows, enums, hints, ROM, both checkers, recursive deduplication, layouts, and source features."
 
 end AiurOptimizedTests
+
+#print axioms Aiur.Circuit.System.RuleEquiv.check_iff
+#print axioms Aiur.Circuit.System.RuleEquiv.checkMemo_iff
+#print axioms Aiur.Optimized.Artifact.dedup_check_iff
+#print axioms Aiur.Optimized.Artifact.dedup_checkMemo_iff
+#print axioms Aiur.Optimized.Artifact.dedup_acyclic_iff
+#print axioms Aiur.Optimized.emitChip_validRow
+#print axioms Aiur.Optimized.emitChip_complete
+#print axioms Aiur.Optimized.Polynomial.denote_simplify
+#print axioms Aiur.Optimized.failure_certificate_iff
+#print axioms Aiur.Optimized.selector_exactly_one
