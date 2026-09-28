@@ -13,3 +13,4 @@ import Aiur.MemoryCorrectness
 import Aiur.CheckerCorrectness
 import Aiur.Generic
 import Aiur.Modules
+import Aiur.Optimized

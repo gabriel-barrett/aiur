@@ -274,9 +274,13 @@ optimized.circuit.system.printStats
 let alternative ← prepared.compileOptimized { maxDegree := 4, deduplicate := false }
 ```
 
-Every successful optimized artifact carries a Lean proof of these degree
-bounds. **Source soundness/completeness for this alternative path is still
-pending.** The existing reference proofs remain checked. Run
+Every successful optimized artifact carries Lean proofs of these degree bounds
+and of deduplication equivalence for trees, memoized graphs, and both integer
+checkers at the fixed entrypoints. Polynomial simplification and physical-row
+emission are also proved. **Full equivalence with the reference compiler remains
+pending**, including the scoped expression compiler and allocation invariants.
+See the precise [proof status](design/optimized-equivalence.md).
+The existing reference proofs remain checked. Run
 `lake env lean Examples/Optimized.lean` for a comparison that reduces six chips
 to four, each recursive helper from eight columns to six, and a branch chip's
 degree from six to three. See the [optimized compiler design](design/constraint-compiler.md)

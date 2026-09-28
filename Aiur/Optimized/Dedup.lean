@@ -1,4 +1,4 @@
-import Aiur.Optimized.Basic
+import Aiur.Optimized.DedupCertificate
 
 namespace Aiur.Optimized
 namespace Dedup
@@ -8,6 +8,18 @@ structure Result (F : Type) where
   representatives : List (String × String)
   classes : Array Nat
   deriving Repr, BEq
+
+/-- The partitioning heuristic produces data; certification gives the semantic
+guarantee, including recursive rules and fixed public entrypoints. -/
+structure CheckedResult [Field F] [DecidableEq F] (source : Circuit.System F) (entries : List String)
+    extends Result F where
+  certificate : Certificate source system representatives entries
+
+def certify [Field F] [DecidableEq F] (source : Circuit.System F) (entries : List String)
+    (result : Result F) : Except String (CheckedResult source entries) :=
+  if valid : Certificate source result.system result.representatives entries then
+    .ok { toResult := result, certificate := valid }
+  else .error "chip deduplication certificate failed"
 
 /-- Call slots keep their order, payloads, results, and enables. Only the
 destination names of function calls are replaced by candidate class indices. -/
@@ -51,7 +63,7 @@ def identity (system : Circuit.System F) : Result F :=
   ⟨system, system.chips.map (fun chip => (chip.name, chip.name)),
     (List.range system.chips.length).toArray⟩
 
-def run [DecidableEq F] (system : Circuit.System F) (entries : List String) : Except String (Result F) := do
+def compute [DecidableEq F] (system : Circuit.System F) (entries : List String) : Except String (Result F) := do
   let count := system.chips.length
   let classes ← partition system entries (count + 1) (Array.replicate count 0)
   unless classes.size == count && refine system entries classes == classes do
@@ -69,6 +81,10 @@ def run [DecidableEq F] (system : Circuit.System F) (entries : List String) : Ex
       some { chip with sends := chip.sends.map fun send => { send with channel := rename send.channel } }
     else none
   return ⟨{ system with chips }, representatives, classes⟩
+
+def run [Field F] [DecidableEq F] (system : Circuit.System F) (entries : List String) :
+    Except String (CheckedResult system entries) := do
+  certify system entries (← compute system entries)
 
 end Dedup
 end Aiur.Optimized

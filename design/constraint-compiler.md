@@ -3,8 +3,11 @@
 Status: experimental alternative compiler implemented in
 [`Aiur/Optimized`](../Aiur/Optimized.lean), including scoped layout, degree
 reduction, and recursive chip deduplication. Every successful artifact carries
-a Lean proof of its structural degree bounds. Local-rule equivalence and
-end-to-end source soundness/completeness for this path remain to be proved.
+Lean proofs of its structural degree bounds and deduplication equivalence.
+Reusable local-rule transport, polynomial/branch lemmas, physical emission,
+and conditional witness packing are proved. The earlier pass invariants and
+end-to-end source soundness/completeness remain open. See the detailed
+[proof status](optimized-equivalence.md).
 
 ## Goal and semantic boundary
 
@@ -336,7 +339,7 @@ The detailed algorithm and the entrypoint proof boundary are in
 
 ## Local equivalence and proof reuse
 
-For a fixed ROM and chip, define the proposed interface schematically as
+For a fixed ROM and chip, the implemented rule interface is schematically
 
 ```text
 Rule(chip, ROM, conclusion, premises) :=
@@ -394,8 +397,14 @@ entrypoint equivalence before this stage.
    **Implemented.**
 6. Certify structural degree bounds on every successful artifact.
    **Implemented without admitted proofs.**
-7. Prove local and layout correspondence and system-level
-   deduplication transport. Compose with the existing source and checker results
-   to certify the alternative path at the fixed entrypoints.
+7. Prove local and layout correspondence and system-level deduplication
+   transport. **Partially proved:** the reusable transfer interface and the
+   actual deduplication pass are certified for both checkers, including cyclic
+   memoized graphs and preservation of acyclicity. Polynomial simplification,
+   branch algebra, physical emission, and conditional witness packing are also
+   proved. Scoped compilation, alias/degree pass composition, and the generated
+   layout invariants remain; see [the theorem list](optimized-equivalence.md).
+8. Compose the complete pass correspondence with the existing source and
+   checker results to certify the alternative path at the fixed entrypoints.
 
 No change to the source evaluation relation is needed for any of these steps.
