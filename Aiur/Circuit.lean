@@ -1,4 +1,5 @@
 import Aiur.Circuit.Basic
+import Aiur.Circuit.Stats
 import Aiur.Circuit.Compile
 import Aiur.Circuit.PatternFacts
 import Aiur.Circuit.Derivation

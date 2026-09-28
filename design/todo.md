@@ -140,7 +140,17 @@ without admitted proof steps.
 - [ ] Define an interface for replacing a constraint compiler by proving
   equivalence of the local conclusion/premise relation after existentially
   quantifying auxiliary assignments. Include guarded ROM requirements and
-  preserve the shared static map interpretation.
+  preserve the shared static map interpretation. See the
+  [alternative compiler proposal](constraint-compiler.md).
+- [x] Add per-chip circuit statistics: allocated columns, maximum structural
+  constraint degree, function/map and ROM lookup counts, and lookup-expression
+  degree. Expose structured results and a printable report.
+- [ ] Implement an alternative constraint compiler that reduces columns subject
+  to a configurable degree bound (initially three). Prove degree-aware
+  materialization, destination reuse, and simpler first-match selectors through
+  the local equivalence interface. Later add column sharing between exclusive
+  branches with explicit guard/ownership proofs. See the
+  [design and implementation order](constraint-compiler.md).
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern

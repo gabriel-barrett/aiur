@@ -1,5 +1,6 @@
 import Aiur.Generic.Correctness
 import Aiur.CheckerCorrectness
+import Aiur.Circuit.Stats
 import Aiur.Inlining.Program
 
 namespace Aiur.Generic

@@ -24,6 +24,7 @@ lake env lean Examples/Control.lean
 lake env lean Examples/Structs.lean
 lake env lean Examples/Updates.lean
 lake env lean Examples/Modules.lean
+lake env lean Examples/CircuitStats.lean
 ```
 
 ## Use from Lean
@@ -243,13 +244,21 @@ the determinism theorems retain their guarantees for programs without hints.
 
 ## Circuits and proof status
 
-Compilation produces one chip per function and retains shared static tables and
-map references. Assignments contain field elements;
+Compilation produces one chip per remaining function after inlining and retains
+shared static tables and map references. Assignments contain field elements;
 chip interfaces and messages retain static type metadata and flat value words.
 Each result column of a call gets a fresh variable, including enum tags and
 padding. Unit-valued calls still produce messages. All constraints are polynomial equations equal to zero. Division uses inverse witnesses, and
 first-match selectors support overlapping tuple patterns. Duplicate retained
 pattern conditions are rejected after field conversion, ignoring binder names.
+
+Call `compiled.circuit.system.printStats` on a module compilation result to print
+each chip's column count, maximum constraint degree, and call/map/ROM lookup
+counts. `system.stats` returns the same measurements as structured data. The
+report also includes lookup-expression degree. Degrees are structural upper
+bounds without polynomial simplification; counts include guarded lookup slots.
+See [the example](Examples/CircuitStats.lean) and the
+[proposed compiler with configurable degree bounds](design/constraint-compiler.md).
 
 Enum encodings contain a constructor tag and payload padded with zeros to the
 largest variant. Active interface and ROM values are constrained to be canonical.
