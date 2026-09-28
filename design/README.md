@@ -52,8 +52,10 @@ design, and keep proposals and unanswered questions explicitly separate.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,
   fresh call results, and abstract channel balance.
 - [Alternative constraint compiler](constraint-compiler.md): per-chip statistics
-  and a proposal for fewer columns under configurable degree bounds, with local
-  equivalence proofs and reuse of the existing semantic theorems.
+  and a separate path with activation scopes, explicit layouts, shared auxiliary
+  columns, and configurable degree bounds, emitting the existing circuit datatype.
+- [Circuit deduplication](circuit-deduplication.md): proposed sharing of internal
+  chips, fixed entrypoints, recursive structural comparison, and proof transport.
 - [Integer accumulators](accumulators.md): unit and weighted trace checkers,
   their proved equivalence to trees and memoized graphs, and source-proof reuse.
 - [Correctness](correctness.md): relational evaluation, closed circuit
