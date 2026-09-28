@@ -70,9 +70,21 @@ An unsuccessful comparison simply leaves more chips in the output.
 
 ## Recursion and partition refinement
 
-For a first implementation, merge only structurally identical chips with exact
-call targets. This already handles duplicated nonrecursive helpers. A later
-step can recognize equivalent recursive groups without unfolding recursion:
+Use **bisimulation minimization by partition refinement**. The classical
+efficient algorithm is [Paige–Tarjan, *Three Partition Refinement Algorithms*](https://doi.org/10.1137/0216062).
+[Computing Maximal Bisimulations](https://www.cs.ox.ac.uk/files/6715/ICFEM%202014%20Version%2010.pdf)
+describes both simple iterative refinement and a labelled-transition-system
+adaptation of Paige–Tarjan.
+
+Our proposed graph has chips as nodes, normalized local structure as node
+labels, and individual function call slots as labelled edges. A slot's enable,
+argument expressions, and result columns remain in the node's structural label.
+Distinct slots remain distinct even when they call the same representative;
+ordinary bisimulation on a graph of unlabelled callee sets would lose essential
+information about occurrences. Static map targets remain exact labels.
+
+Start with a simple iterative implementation that handles mutual recursion
+immediately, without unfolding function bodies:
 
 1. Form candidate groups by interface and local normalized structure, keeping
    entrypoints singleton and static map targets exact. Initially abstract
@@ -84,6 +96,18 @@ step can recognize equivalent recursive groups without unfolding recursion:
    the finite compiled system.
 4. Choose a deterministic representative in each final class, rewrite targets,
    and check the resulting structural correspondence for every class member.
+
+For example, write `A = K(B), B = L(A)` and `C = K(D), D = L(C)`, where `K`
+and `L` denote fixed local structures with one callee slot. The groups `{A,C}`
+and `{B,D}` are stable: each corresponding call targets the same group. Both
+recursive pairs can therefore use the same two implementations.
+
+This simple iteration computes a stable partition of a finite graph. Replace
+full rescans with a worklist or a Paige–Tarjan-style implementation later if
+measurements justify it. SCC decomposition can help organize traversal, but
+finding cycles alone does not establish equivalence and is not the deduplication
+criterion. The proof interface should accept any checked stable partition;
+maximal compression is unnecessary for correctness.
 
 This compares recursive call structure simultaneously. For example, identical
 self-recursive helpers can match when their self-calls target the same candidate
