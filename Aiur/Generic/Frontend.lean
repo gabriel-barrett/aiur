@@ -353,47 +353,47 @@ private inductive LexMode where
   | comment (depth : Nat)
   | string (escaped : Bool)
 
-private def prepareChars : List Char → LexMode → Except String (List Char)
-  | [], .comment _ => .error "unterminated block comment"
-  | [], .string _ => .error "unterminated diagnostic string"
-  | [], _ => .ok []
-  | c :: rest, .string escaped => do
+-- Accumulate in reverse so source length does not consume the interpreter stack.
+private def prepareChars : List Char → LexMode → List Char → Except String (List Char)
+  | [], .comment _, _ => .error "unterminated block comment"
+  | [], .string _, _ => .error "unterminated diagnostic string"
+  | [], _, acc => .ok acc.reverse
+  | c :: rest, .string escaped, acc =>
       let mode := if escaped then LexMode.string false
         else if c == '\\' then .string true
         else if c == '"' then .code else .string false
-      return c :: (← prepareChars rest mode)
-  | c :: rest, .line => do
-      if c == '\n' then return c :: (← prepareChars rest .code)
-      return ' ' :: (← prepareChars rest .line)
-  | '/' :: '*' :: rest, .comment depth => do
-      return ' ' :: ' ' :: (← prepareChars rest (.comment (depth + 1)))
-  | '*' :: '/' :: rest, .comment depth => do
-      return ' ' :: ' ' :: (← prepareChars rest (if depth == 1 then .code else .comment (depth - 1)))
-  | c :: rest, .comment depth => do
-      return (if c == '\n' then c else ' ') :: (← prepareChars rest (.comment depth))
-  | '/' :: '/' :: rest, .code => do return ' ' :: ' ' :: (← prepareChars rest .line)
-  | '/' :: '*' :: rest, .code => do return ' ' :: ' ' :: (← prepareChars rest (.comment 1))
-  | '"' :: rest, .code => do return '"' :: (← prepareChars rest (.string false))
-  | '.' :: '.' :: '=' :: rest, .code => do
-      return ' ' :: '.' :: '.' :: '=' :: ' ' :: (← prepareChars rest .code)
-  | '.' :: '.' :: rest, .code => do return ' ' :: '.' :: '.' :: ' ' :: (← prepareChars rest .code)
-  | c :: rest, .code => do
-      if c == '@' then throw "unexpected '@' in Aiur source"
-      let tail ← prepareChars rest .code
-      if c == '\'' then return '@' :: ' ' :: tail
-      if c == '.' then return ' ' :: '.' :: ' ' :: tail
+      prepareChars rest mode (c :: acc)
+  | c :: rest, .line, acc =>
+      if c == '\n' then prepareChars rest .code (c :: acc)
+      else prepareChars rest .line (' ' :: acc)
+  | '/' :: '*' :: rest, .comment depth, acc =>
+      prepareChars rest (.comment (depth + 1)) (' ' :: ' ' :: acc)
+  | '*' :: '/' :: rest, .comment depth, acc =>
+      prepareChars rest (if depth == 1 then .code else .comment (depth - 1)) (' ' :: ' ' :: acc)
+  | c :: rest, .comment depth, acc =>
+      prepareChars rest (.comment depth) ((if c == '\n' then c else ' ') :: acc)
+  | '/' :: '/' :: rest, .code, acc => prepareChars rest .line (' ' :: ' ' :: acc)
+  | '/' :: '*' :: rest, .code, acc => prepareChars rest (.comment 1) (' ' :: ' ' :: acc)
+  | '"' :: rest, .code, acc => prepareChars rest (.string false) ('"' :: acc)
+  | '.' :: '.' :: '=' :: rest, .code, acc =>
+      prepareChars rest .code (' ' :: '=' :: '.' :: '.' :: ' ' :: acc)
+  | '.' :: '.' :: rest, .code, acc => prepareChars rest .code (' ' :: '.' :: '.' :: ' ' :: acc)
+  | c :: rest, .code, acc =>
+      if c == '@' then .error "unexpected '@' in Aiur source" else
+      if c == '\'' then prepareChars rest .code (' ' :: '@' :: acc) else
+      if c == '.' then prepareChars rest .code (' ' :: '.' :: ' ' :: acc) else
       let c := if c == '\t' || c == '\r' then ' ' else c
       if c == '>' || c == '&' || c == '*' || ((c == '-' || c == '/') && rest.head? == some '-') then
-        return c :: ' ' :: tail
-      return c :: tail
+        prepareChars rest .code (' ' :: c :: acc)
+      else prepareChars rest .code (c :: acc)
 
 /-- Shared lexical preparation for the modular frontend. -/
 def prepareSource (source : String) : Except String String :=
-  String.ofList <$> prepareChars source.toList .code
+  String.ofList <$> prepareChars source.toList .code []
 
 /-- Elaborates Rust-like syntax without choosing either a field or entrypoints. -/
 def ofString (env : Lean.Environment) (source : String) : Except String (Program Nat) := do
-  let source := String.ofList (← prepareChars source.toList .code)
+  let source ← prepareSource source
   let s ← Parser.runParserCategory env `aiur_program source "<aiur>"
   let ds := s[0].getArgs.toList
   let enums ← (ds.filter (·.getKind == ``enumDecl)).mapM (fun d => lowerEnum d[0])

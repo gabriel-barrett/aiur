@@ -144,6 +144,8 @@ associate left. Tuples, parameters, arguments, and arms allow trailing commas.
 
 Rust-style line and nested block comments are masked before parsing. Whitespace
 normalization supports tabs, CRLF, adjacent operators, and chained tuple indices.
+Character preprocessing uses a tail-recursive accumulator, so long source
+quotations do not require one interpreter stack frame per character.
 Parser columns refer to the normalized string.
 
 The checker examines every body and arm. It rejects duplicate definitions and

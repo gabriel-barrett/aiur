@@ -17,3 +17,7 @@ name = "AiurTests"
 [[lean_exe]]
 name = "aiur_tests"
 root = "AiurTests"
+
+[[lean_exe]]
+name = "blake3_stats"
+root = "Examples.Blake3"

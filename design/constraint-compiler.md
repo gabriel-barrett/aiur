@@ -96,6 +96,13 @@ entrypoints and both call occurrences in the main chip remain. The example
 also shows that enforcing the degree cap can consume the columns saved by
 branch sharing.
 
+The larger [Blake3 example](blake3-example.md) uses generated U8 tables and the
+same byte-stream hash program for both compilers. It reduces the sum of chip
+widths from 3,661 to 2,509 columns and maximum degree from nine to three, while
+retaining all 958 call/map/ROM lookup slots. Run `lake exe blake3_stats` for the
+per-chip comparison and precommitted table sizes. These are static costs;
+the example does not execute the hash or construct witnesses.
+
 [`AiurTests/Optimized.lean`](../AiurTests/Optimized.lean) exhaustively searches
 small-field rows for accepted and rejected outputs, including overlapping
 patterns, inactive division and ROM operations, nested enums, hints, static

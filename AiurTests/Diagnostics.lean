@@ -47,6 +47,14 @@ def checks : List (String × Except String (SourceValue Rat × Heap Rat)) := [
 
 run_cmd do
   let env ← Lean.getEnv
+  -- Character preprocessing must handle realistic source sizes in the
+  -- elaborator's interpreter without one stack frame per character.
+  let long := String.ofList (List.replicate 100000 'x')
+  unless Generic.Frontend.prepareSource long == .ok long do
+    throwError "large source changed during character preprocessing"
+  let spaces := String.ofList (List.replicate 100004 ' ')
+  unless Generic.Frontend.prepareSource ("/*" ++ long ++ "*/") == .ok spaces do
+    throwError "large block comment was not masked correctly"
   for text in [
     "fn f() -> Field { let x: () = 1; 0 }",
     "fn f() -> Field { ((): Field) }",

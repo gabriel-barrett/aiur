@@ -56,6 +56,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   columns, and configurable degree bounds, emitting the existing circuit datatype.
 - [Circuit deduplication](circuit-deduplication.md): implemented sharing of internal
   chips, fixed entrypoints, recursive structural comparison, and planned proof transport.
+- [Blake3 comparison](blake3-example.md): generated U8 tables, a byte-stream hash
+  example, and measured reference versus optimized circuit statistics.
 - [Integer accumulators](accumulators.md): unit and weighted trace checkers,
   their proved equivalence to trees and memoized graphs, and source-proof reuse.
 - [Correctness](correctness.md): relational evaluation, closed circuit
