@@ -1,9 +1,10 @@
 # Optimized circuit path
 
-Status: proposed alternative compiler. The statistics API described below is
-implemented; the new stages, chip deduplication, and their correctness proofs
-are not yet implemented. This document includes the subsequent discussion of
-activation expressions, scoped auxiliaries, and fixed public entrypoints.
+Status: experimental alternative compiler implemented in
+[`Aiur/Optimized`](../Aiur/Optimized.lean), including scoped layout, degree
+reduction, and recursive chip deduplication. Every successful artifact carries
+a Lean proof of its structural degree bounds. Local-rule equivalence and
+end-to-end source soundness/completeness for this path remain to be proved.
 
 ## Goal and semantic boundary
 
@@ -12,9 +13,9 @@ to a configurable maximum polynomial degree. Start with a bound of three and
 allow larger bounds. The first version need not support bounds below three.
 The objective is fewer columns **within the degree bound**: splitting a large
 polynomial can require more columns than the current unrestricted compiler.
-Guarantee the degree bound and semantic correspondence, not globally minimal
-column count. Use semantic structure to obtain predictable savings before
-relying on arithmetic optimization heuristics.
+The final proof target is the degree bound and semantic correspondence, not
+globally minimal column count. Use semantic structure to obtain predictable
+savings before relying on arithmetic optimization heuristics.
 
 Keep the original source AST and evaluation predicate. Reuse existing proved
 specialization, source lowering, and inlining stages where useful; the alternative
@@ -24,23 +25,22 @@ function instances need not correspond one-to-one with final chips: deduplicatio
 may merge implementations and redirect their internal calls. Aggregates remain
 flat collections of field words with their existing nominal layout.
 
-The existing compiler remains available as a reference. The optimized path must
-eventually emit the existing `Aiur.Circuit.System F`, containing ordinary
+The existing compiler remains available as a reference. The optimized path
+emits the existing `Aiur.Circuit.System F`, containing ordinary
 `Chip`, `ArithExpr`, `Send`, and `MemoryLookup` values. Keep the existing checker
 and derivation datatypes. Do not introduce extra execution rows or a new
 scheduling model in the first version.
 
 ## Stages and layout information
 
-Use a separate namespace, provisionally `Aiur.Optimized`. The following are
-proposed roles for intermediate representations, not declarations already in Lean:
+The implementation uses the separate namespace `Aiur.Optimized`:
 
 | Stage | Information retained |
 | --- | --- |
 | Prepared program | Concrete reachable instances and the fixed entrypoint set; existing preparation stages can be reused. |
-| Scoped chips | Typed interfaces, logical witnesses, activation scopes, exclusive alternatives, arithmetic expressions, and individual call/ROM occurrences. |
-| Laid-out chips | Physical column assignments, affine activation expressions, guarded gadgets, and an explicit description of column roles and sharing. |
-| Deduplicated chips | Representative chip names, rewritten call targets, and a record of the original implementations represented by each chip. |
+| `ScopedChip` | Typed interfaces, logical witnesses, activation scopes, exclusive alternatives, arithmetic expressions, and individual call/ROM occurrences. |
+| `LaidOutChip` | Physical column assignments, affine activation expressions, guarded gadgets, and an explicit description of column roles and sharing. |
+| `Dedup.Result` | Representative chip names, rewritten call targets, and a record of the original implementations represented by each chip. |
 | Existing circuit datatype | Erase layout bookkeeping and emit a normal `Circuit.System`; statistics and both checkers operate on it directly. |
 
 An activation scope describes when a group of equations and lookup requirements
@@ -61,10 +61,48 @@ an affine definition is a separate operation from sharing its storage with an
 auxiliary. The layout policy can be refined without changing the output format.
 
 The existing `Generic.Compiled` artifact contains a proof that the reference
-compiler produced its system. An experimental optimized artifact must be
-separate; it cannot claim that equality or reuse the certified wrapper by
-inserting admitted proofs. Implement and inspect the new stages first, then
-attach their actual correctness theorems and compose the entrypoint result.
+compiler produced its system. The experimental `Optimized.Artifact` is separate;
+it does not claim that equality or reuse the certified wrapper by inserting
+admitted proofs. Its `degreeBound` field proves, for every emitted chip, that
+`maxConstraintDegree ≤ config.maxDegree` and `maxLookupDegree ≤ 1`.
+This certificate comes from a checked decidable proposition about the final
+system, after deduplication. It does not certify semantic correspondence.
+
+## API and current measurements
+
+From a `Modules.Prepared` value, call `prepared.compileOptimized`. The returned
+`compiled.circuit.system` supports the existing statistics and checkers;
+`compiled.circuit.artifact` retains layouts, representatives, and the degree
+certificate. `Generic.Specialized.compileOptimized` and the lower-level
+`Optimized.compile` are also available. Public `check` and `checkMemo` wrappers
+enforce the original entrypoint whitelist and resolve external module names.
+
+`Optimized.Config` defaults to degree three and enables auxiliary sharing,
+selector elimination, and deduplication. Set `maxDegree` to any larger bound;
+bounds below three are rejected. Each optimization can be disabled separately
+using `shareAuxiliaries`, `eliminateSelectors`, or `deduplicate`.
+
+Run `lake env lean Examples/Optimized.lean` for a comparison:
+
+| Measurement | Reference | Optimized |
+| --- | ---: | ---: |
+| Chip count | 6 | 4 |
+| Columns in each retained recursive helper | 8 | 6 |
+| Branch chip columns | 11 | 11 |
+| Branch chip maximum constraint degree | 6 | 3 |
+
+Two copies of a mutually recursive pair share their implementations. Both
+entrypoints and both call occurrences in the main chip remain. The example
+also shows that enforcing the degree cap can consume the columns saved by
+branch sharing.
+
+[`AiurTests/Optimized.lean`](../AiurTests/Optimized.lean) exhaustively searches
+small-field rows for accepted and rejected outputs, including overlapping
+patterns, inactive division and ROM operations, nested enums, hints, static
+maps, and separate calls. It constructs accepted traces for both existing
+integer checkers, tests recursive deduplication and fixed entrypoints, and
+exercises the existing source preparation paths. This is regression evidence;
+production witness generation and semantic correctness proofs remain separate.
 
 ## Measure the current circuits first
 
@@ -97,7 +135,7 @@ mapping. Chip count measures implementation sharing, not execution row count.
 
 ## Delay column allocation
 
-Build an internal graph of pure arithmetic expressions, logical witness values,
+Build symbolic arithmetic expressions, logical witness values,
 guarded equations, and guarded lookups within the activation scopes before
 assigning physical columns.
 Function outputs can serve as destinations when the expression being compiled
@@ -151,23 +189,29 @@ under their original guards. The structured compiler should preserve products
 that already fit the configured budget, and use scoped definitions where that
 allows storage sharing.
 
-Use separate limits for local equations and lookup expressions. Initially
-propose `maxConstraintDegree = 3` and `maxLookupDegree = 1`, materializing nonlinear
-payload expressions and compound enables as needed. This keeps lookup words
+Use separate limits for local equations and lookup expressions. The defaults
+are `config.maxDegree = 3` for constraints and a fixed degree bound of one for
+lookups, materializing nonlinear payload expressions as needed. Activations
+are kept affine. This keeps lookup words
 affine without claiming a bound on the eventual cryptographic backend. A
 backend may account for activation and fingerprint expressions differently.
 
+The current reducer traverses expressions bottom-up and names a larger operand
+when a product exceeds the scope's remaining degree budget. Affine lookup
+payloads use named quadratic products. Its cache reuses materialized pure
+expressions only within the same activation scope.
+
 Materialization can be shared across scopes only when the defining equations
 and guards suffice in every scope where it is used. Start conservatively with
-scope-local reuse. Prove witness extension and projection for each rewrite,
-then prove that the final emitted expressions satisfy both configured bounds.
+scope-local reuse. Witness extension and projection for each rewrite remain
+proof work; the final emitted expressions' bounds are already certified.
 
 ## Branch certificates and first-match order
 
-The current compiler computes exact equality indicators with unconditional
+The reference compiler computes exact equality indicators with unconditional
 inverse-witness equations and builds products of preceding pattern failures.
 These choices obscure opportunities to share auxiliary columns. The optimized
-path can use different gadgets with explicit activation scopes.
+path uses different gadgets with explicit activation scopes.
 
 For a match reached under Boolean activation `e`, its arm activations `s_i`
 must be Boolean, mutually exclusive, and cover the parent:
@@ -196,14 +240,27 @@ The inverse now belongs to the default branch. This replaces an unconditional
 zero-test gadget with a branch-owned failure witness. The coverage and exclusion
 equations are essential to this interpretation.
 
-Complex patterns need explicit matching and failure gadgets. Failure of a
-compound pattern is a disjunction, so it may require further selector witnesses
-and guarded subcases. Preserve the existing first-match semantics, ordered
-pointer-pattern loads, and enum-layout validation. For a selected later arm,
-earlier failed patterns may still have required ROM reads. A selected arm's
-certificate must account for those reads; no reads after a successful earlier
-arm may become active. Different certificates that change the reads performed
-cannot be treated as interchangeable without a correctness argument.
+The current scoped compiler receives the existing prepared core. Its patterns
+are conjunctions of scalar equalities `d_1 = 0, ..., d_n = 0`, including enum
+tag tests. A successful pattern contributes one guarded equation per
+difference. Failure is certified using branch-owned coefficient witnesses:
+
+```text
+s * (d_1*u_1 + ... + d_n*u_n - 1) = 0
+```
+
+When the branch is active, coefficients exist exactly when at least one
+difference is nonzero: choose its inverse and set the other coefficients to
+zero. If all differences vanish, the equation is impossible. This handles the
+disjunction without adding another choice of failure selectors. Earlier
+irrefutable patterns truncate the retained arms. Nonlinear differences are
+handled by the same degree-reduction stage.
+
+Source pointer patterns and or-patterns reach this stage through the existing
+proved preparation. Their ordered reads and first-match continuations are
+ordinary core expressions; the scoped compiler retains their call and ROM
+occurrences under the corresponding activations. Enum validation uses its own
+exclusive constructor choices, guarded payload checks, and zero-padding checks.
 
 As a conservative alternative where exact Boolean tests `t_i` are already
 available, use `r_i = e - sum_{j < i} s_j` and `s_i = r_i * t_i`. This gives
@@ -257,8 +314,9 @@ are active, which need not be the selected body's scope.
 
 ## Deduplicate internal chips
 
-After layout, compare normalized implementations, choose representatives for
-equivalent internal chips, and redirect every internal send to its representative.
+After layout, compare deterministically emitted implementations, choose
+representatives for equivalent internal chips, and redirect every internal send
+to its representative.
 Keep the selected entrypoint chips and their names fixed in the initial policy.
 Retain every call occurrence, argument/result word, and activation expression:
 sharing an implementation does not remove repeated requirements.
@@ -312,18 +370,24 @@ union of their behaviors is insufficient. See the deduplication proposal for
 tree and memoized proof transport. Inlining already has its own proved
 entrypoint equivalence before this stage.
 
-## Implementation order
+## Implementation and remaining proofs
 
 1. Measure current chips and retain representative examples. **Implemented.**
 2. Define the scoped and laid-out representations and the intended invariants.
+   **Implemented**, including checks that auxiliary uses respect owner scopes.
 3. Implement affine activations, guarded gadgets, degree-aware materialization,
    destination reuse, and structural allocation across exclusive branches.
+   **Implemented.**
 4. Emit the original circuit datatype and compare the reports on representative
    programs. Keep this experimental path distinct from the certified compiler.
+   **Implemented.**
 5. Add internal-chip deduplication and retain a checked representative mapping;
    use structural partition refinement to handle recursive groups from the
    start, with a simple iteration before considering a faster worklist algorithm.
-6. Prove local and layout correspondence, degree bounds, and system-level
+   **Implemented.**
+6. Certify structural degree bounds on every successful artifact.
+   **Implemented without admitted proofs.**
+7. Prove local and layout correspondence and system-level
    deduplication transport. Compose with the existing source and checker results
    to certify the alternative path at the fixed entrypoints.
 

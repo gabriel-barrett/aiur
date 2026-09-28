@@ -28,6 +28,7 @@ import AiurTests.OrPatterns
 import AiurTests.Modules
 import AiurTests.Inlining
 import AiurTests.CircuitStats
+import AiurTests.Optimized
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -205,3 +206,4 @@ def main : IO Unit := do
   AiurModuleTests.run
   AiurInlineTests.run
   AiurCircuitStatsTests.run
+  AiurOptimizedTests.run

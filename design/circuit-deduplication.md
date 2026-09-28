@@ -1,7 +1,9 @@
 # Circuit deduplication
 
-Status: proposal for the [optimized circuit path](constraint-compiler.md).
-No deduplication stage or correctness theorem is implemented yet.
+Status: implemented for the experimental [optimized circuit path](constraint-compiler.md)
+in [`Aiur/Optimized/Dedup.lean`](../Aiur/Optimized/Dedup.lean). Stable partition,
+representative, and fixed-entrypoint checks are executable. Semantic transport
+theorems remain to be proved.
 
 ## Boundary and fixed entrypoints
 
@@ -52,12 +54,14 @@ metadata. A normalized signature includes:
   static map destinations are compared exactly.
 - Every ROM requirement: address, typed payload, and enable.
 
-Normalize column numbering consistently, recording the bijection needed to
-transport assignments. Preserve the pattern of column sharing. Initially use
-deterministic emission order for constraints and lookup lists and exact
-structural equality after normalization. Recognizing arbitrary polynomial
-equivalence is not required. Comparing lists modulo permutation and stronger
-algebraic canonicalization can be added as separately justified improvements.
+The current compiler allocates columns and emits equations and lookup lists in
+deterministic order. Deduplication uses exact structural equality of those
+implementations after replacing the chip name and function destinations.
+It preserves the pattern of column sharing and does not search for column
+permutations. Consequently, different allocation or expression orders can
+prevent a merge even when the local relations agree. Column renumbering,
+list permutation, and stronger algebraic canonicalization can be added as
+separately justified improvements, retaining assignment bijections as needed.
 
 Equal flattened widths do not justify erasing nominal types. The final messages
 retain those types, and ROM membership depends on the typed payload. Likewise,
@@ -76,15 +80,15 @@ efficient algorithm is [Paige–Tarjan, *Three Partition Refinement Algorithms*]
 describes both simple iterative refinement and a labelled-transition-system
 adaptation of Paige–Tarjan.
 
-Our proposed graph has chips as nodes, normalized local structure as node
+Our graph has chips as nodes, normalized local structure as node
 labels, and individual function call slots as labelled edges. A slot's enable,
 argument expressions, and result columns remain in the node's structural label.
 Distinct slots remain distinct even when they call the same representative;
 ordinary bisimulation on a graph of unlabelled callee sets would lose essential
 information about occurrences. Static map targets remain exact labels.
 
-Start with a simple iterative implementation that handles mutual recursion
-immediately, without unfolding function bodies:
+The implemented simple iteration handles mutual recursion immediately, without
+unfolding function bodies:
 
 1. Form candidate groups by interface and local normalized structure, keeping
    entrypoints singleton and static map targets exact. Initially abstract
@@ -115,6 +119,14 @@ class. A mutual call cycle can become a self-call after merging. This does not
 establish termination, nor does it create a finite derivation for a function
 that previously had none. The correctness proof must lift each finite rule
 application back to the requested original function.
+
+The implementation uses at most `numberOfChips + 1` refinement steps and checks
+the final partition is stable and its representative map is idempotent. The
+earliest chip in each class is the representative. Function and static-map
+destinations use distinct signature labels; static map names never change.
+No hash-based equality is involved. The regression suite covers mutually
+recursive copies, differing local constants, duplicate call occurrences, and
+an entrypoint identical to an internal helper that must remain separate.
 
 The algorithm seeks a conservative structural equivalence. It need not identify
 every pair of semantically equivalent functions or find the smallest system.
@@ -186,5 +198,5 @@ cyclic acceptance remains intentionally possible.
 
 Finally compose with the source theorems, keeping their root well-formedness,
 pointer-free entry types, ROM correspondence, and allocation-capacity hypotheses.
-These are planned proof obligations, not current guarantees of an implemented
-optimized compiler.
+These remain proof obligations. The implementation and its regression checks
+do not yet certify source soundness/completeness for the optimized compiler.
