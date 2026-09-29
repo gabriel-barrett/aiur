@@ -407,27 +407,39 @@ mutual
                     simp [evalBinOp, zero] at operation
                   have quotient : Value.field (leftPoly.denote b / rightPoly.denote b) = value := by
                     simpa [evalBinOp, nonzero] using operation
-                  obtain ⟨inverse, s₅, freshRun, rest⟩ := bind_ok.mp restBind
-                  obtain ⟨⟨⟩, s₆, inverseRun, finished⟩ := bind_ok.mp rest
-                  obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-                  obtain ⟨c, freshExt, inverseBound, inverseEq⟩ := fresh_complete freshRun rightExt.layout
-                    rightExt.validAssignment (rightPoly.denote b)⁻¹
-                  have freshScoped := fresh_scoped freshRun rightScoped
-                  have ib : (Polynomial.var inverse : Polynomial F).inBounds s₅.roles.size = true := by
-                    simpa [Scalar.Circuit.ArithExpr.inBounds] using inverseBound
-                  have inverseExt := equation_complete inverseRun freshExt.layout freshExt.validAssignment (by
-                    simpa only [Scalar.Circuit.ArithExpr.inBounds, Bool.and_eq_true, and_true] using
-                      And.intro (freshScoped.activation_bound scope) (And.intro (freshExt.bound rb) ib)) (by
-                      change (s₅.activation scope).denote c * (rightPoly.denote c * c inverse - 1) = 0
-                      rw [freshExt.polynomial rb, inverseEq]
-                      simp [nonzero])
-                  refine ⟨c, (chainExt.trans freshExt).trans inverseExt, ?_, ?_⟩
-                  · simpa [Scalar.Circuit.ArithExpr.inBounds] using
-                      And.intro ((freshExt.trans inverseExt).bound lb) (inverseExt.bound ib)
-                  · simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq]
-                    change Value.field (leftPoly.denote c * c inverse) = value
-                    rw [freshExt.polynomial lb, inverseEq, ← div_eq_mul_inv]
-                    exact quotient
+                  cases folded : rightPoly.constantInverse? with
+                  | some inverse =>
+                      simp only [folded] at restBind
+                      obtain ⟨rfl, rfl⟩ := pure_ok.mp restBind
+                      refine ⟨b, chainExt, ?_, ?_⟩
+                      · simpa [Scalar.Circuit.ArithExpr.inBounds] using lb
+                      · simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq]
+                        change Value.field (leftPoly.denote b * inverse) = value
+                        rw [(Polynomial.constantInverse?_sound folded b).2, ← div_eq_mul_inv]
+                        exact quotient
+                  | none =>
+                      simp only [folded] at restBind
+                      obtain ⟨inverse, s₅, freshRun, rest⟩ := bind_ok.mp restBind
+                      obtain ⟨⟨⟩, s₆, inverseRun, finished⟩ := bind_ok.mp rest
+                      obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+                      obtain ⟨c, freshExt, inverseBound, inverseEq⟩ := fresh_complete freshRun rightExt.layout
+                        rightExt.validAssignment (rightPoly.denote b)⁻¹
+                      have freshScoped := fresh_scoped freshRun rightScoped
+                      have ib : (Polynomial.var inverse : Polynomial F).inBounds s₅.roles.size = true := by
+                        simpa [Scalar.Circuit.ArithExpr.inBounds] using inverseBound
+                      have inverseExt := equation_complete inverseRun freshExt.layout freshExt.validAssignment (by
+                        simpa only [Scalar.Circuit.ArithExpr.inBounds, Bool.and_eq_true, and_true] using
+                          And.intro (freshScoped.activation_bound scope) (And.intro (freshExt.bound rb) ib)) (by
+                          change (s₅.activation scope).denote c * (rightPoly.denote c * c inverse - 1) = 0
+                          rw [freshExt.polynomial rb, inverseEq]
+                          simp [nonzero])
+                      refine ⟨c, (chainExt.trans freshExt).trans inverseExt, ?_, ?_⟩
+                      · simpa [Scalar.Circuit.ArithExpr.inBounds] using
+                          And.intro ((freshExt.trans inverseExt).bound lb) (inverseExt.bound ib)
+                      · simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq]
+                        change Value.field (leftPoly.denote c * c inverse) = value
+                        rw [freshExt.polynomial lb, inverseEq, ← div_eq_mul_inv]
+                        exact quotient
       | call name args =>
           rw [exprEq] at evaluated valueRun
           cases evaluated with

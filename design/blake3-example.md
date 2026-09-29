@@ -79,11 +79,11 @@ made to a compiled artifact.
 | `pair_xor_parts7` | 65,536 | 2 | `(x / 128, 2*(x % 128))`, where `x = a XOR b`. |
 | `pair_units` | 65,536 | 0 | `()` for a paired byte-range check. |
 | `sum_inputs` | 768 | 1 | Argument packs `(s,)` for `0 ≤ s < 768`. |
-| `sum_parts` | 768 | 2 | `(s % 256, s / 256)`. |
+| `sum_bytes` | 768 | 1 | `s % 256`; the carry is reconstructed as `(s - byte) / 256`. |
 
 Nine maps reference these twelve tables. Seven maps share `pair_inputs`;
 the input trace is stored once. There are **526,336 stored rows and
-723,712 field cells**, counting each shared table once. These precommitted data
+722,944 field cells**, counting each shared table once. These precommitted data
 are reported separately from dynamic chip columns.
 
 Byte XOR and both XOR/split operations each use one direct lookup, matching
@@ -96,12 +96,17 @@ field addition. Addition returns only the low byte; multiplication returns
 The carry table covers the largest sum needed by three-operand word addition:
 `255 + 255 + 255 + 2 = 767`. Two-operand addition and the eight-byte counter
 increment use the same table. The final carry is discarded for wrapping word
-arithmetic.
+arithmetic. `U8::sum_byte` returns just the byte; the inline `split_sum` wrapper
+returns `(byte, (sum - byte) / 256)`. Constant division is folded before degree
+reduction in the optimized compiler, so the carry needs no witness column.
+`Library.Carry.mapEntries_iff` proves exact equivalence with the original
+two-output map, including its input domain, when `256` is nonzero in the field.
+See [constant division and carries](constant-division.md).
 
 The original example used 256-row nibble tables. The full byte-pair tables trade
 more precommitted data for fewer intermediate columns and lookup slots. Both
-compilers receive the same full tables. Word addition still uses the original
-carry table; this change does not introduce ix's packed, advice-based addition.
+compilers receive the same full tables. Word addition still propagates carries
+byte by byte; it does not use ix's packed, advice-based addition.
 
 Input uniqueness is checked by grouping rows on their first argument, then
 checking complete rows within each group. `tableRowsNodup_eq` proves this check
@@ -128,13 +133,13 @@ and deduplication).
 | Metric | Reference | Optimized |
 | --- | ---: | ---: |
 | Chips | 14 | 14 |
-| Sum of chip columns | 2,861 | 1,586 |
+| Sum of chip columns | 2,861 | 1,449 |
 | Maximum constraint degree | 9 | 3 |
 | Call/map lookup slots | 342 | 342 |
 | ROM lookup slots | 104 | 104 |
-| Maximum lookup expression degree | 2 | 1 |
+| Maximum lookup expression degree | 8 | 1 |
 
-The sum of chip widths decreases by **1,275 columns, about 44.6%**. This sum
+The sum of chip widths decreases by **1,412 columns, about 49.4%**. This sum
 allocates one row's width to each chip; it is not a trace-size or proving-time
 estimate. Deduplication finds no equivalent internal chips in this example.
 
@@ -146,7 +151,7 @@ agree between compilers and include statically declared inactive slots.
 | `Benchmark::main` | 78 | 40 | 2 | 2 | 7 |
 | `Blake3::compress_layer` | 292 | 143 | 3 | 3 | 6 |
 | `Blake3::next_layer` | 394 | 224 | 3 | 3 | 11 |
-| `Blake3::compress` | 709 | 612 | 2 | 3 | 289 |
+| `Blake3::compress` | 709 | 484 | 2 | 3 | 289 |
 | `Blake3::compress_chunks` | 35 | 17 | 3 | 3 | 5 |
 | `Blake3::finish` | 314 | 166 | 9 | 3 | 20 |
 | `Words::u64_is_zero` | 28 | 19 | 8 | 3 | 0 |
@@ -155,16 +160,16 @@ agree between compilers and include statically declared inactive slots.
 | `Blake3::pad_block` | 14 | 7 | 3 | 3 | 2 |
 | `Blake3::compress_block` | 282 | 182 | 3 | 3 | 29 |
 | `Blake3::is_empty` | 14 | 8 | 2 | 3 | 1 |
-| `Words::u64_succ` | 32 | 24 | 1 | 0 | 8 |
-| `Benchmark::generate` | 21 | 10 | 3 | 3 | 4 |
+| `Words::u64_succ` | 32 | 16 | 1 | 0 | 8 |
+| `Benchmark::generate` | 21 | 9 | 3 | 3 | 4 |
 
-Compared with the original nibble-table library, the full byte-pair maps reduce
+Compared with the original nibble-table library, the full byte-pair maps reduced
 the optimized compression chip from **1,252 to 612 columns**, and its lookup
 slots from **801 to 289**. That table change reduced the optimized total from
 **2,509 to 1,869** columns. The reference compression chip falls from 1,509 to 709
 columns, including savings in both match branches. Other chip widths were unchanged.
-The remaining compression-width gap with ix (533 stage1 columns in the
-[original comparison](ix-blake3-widths.md)) comes from its packed word-addition
+At that stage, the compression-width gap with ix (533 stage1 columns in the
+[original comparison](ix-blake3-widths.md)) came from its packed word-addition
 strategy, offset by its provide-multiplicity column: `612 - 80 + 1 = 533`.
 
 Removing independent load validation saved a further **140 columns**:
@@ -174,7 +179,7 @@ from 10 to 8. `bytes_to_block` needed only degree-one equations afterward.
 All 104 ROM lookups remain. [Store provenance](load-provenance.md) proves
 that these loads inherit value validity from their stored contents.
 
-Certified [copy/constant propagation](value-propagation.md) now removes another
+Certified [copy/constant propagation](value-propagation.md) then removed another
 **143 columns**, reducing the optimized total from **1,729 to 1,586**.
 `bytes_to_block` loses 64 output copies and 64 fixed constructor tags, reaching
 **129 columns with no local equations**. Its 64 ROM lookups still carry the
@@ -182,6 +187,21 @@ constant `Cons` tag. `u64_succ` returns its eight byte lookup results directly,
 falling from 32 to 24 columns, also with no local equations. The remaining seven
 columns are saved in `main`, `compress_layer`, `compress_chunks`, `pad_block`,
 and `generate`. All lookup counts and table sizes are unchanged.
+
+The latest [constant-division and carry-table change](constant-division.md)
+saves another **137 columns**, bringing the optimized total to **1,449**.
+`compress` loses 128 carry outputs, reaching **484 columns**; `u64_succ`
+loses eight, reaching **16**; and `generate` loses one, reaching **9**.
+All 446 lookup slots remain. The slimmer precommitted output trace also saves
+768 field cells. Its 768 inputs, and therefore its accepted domain, are unchanged.
+
+Reference widths remain 2,861 total: each removed carry output is replaced by
+an inverse witness for division by 256. Chained carry expressions raise the
+reference maximum lookup degree from two to eight; the optimized compiler
+keeps every lookup affine. The optimized compression width is now below ix's
+recorded 533, but the addition algorithms still differ: four byte-sum lookups
+per word here versus two paired range lookups there. Width alone does not
+measure stage2 work or proving cost.
 
 The optimized artifact carries Lean certificates that constraint degrees are
 at most three, lookup expressions are affine, and chip deduplication preserves

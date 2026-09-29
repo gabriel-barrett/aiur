@@ -191,15 +191,16 @@ canonicality of arbitrary hint outputs cannot simply be omitted.
    choice for a value already known to have a particular tag, including stores
    of constructed enum values. Reuse established validity within its scope;
    retain required payload/padding checks.
-3. **Slimmer table outputs.** Use inline wrappers and affine identities to avoid
-   committing both coordinates of the byte decompositions and carry maps.
-   This preserves the small-table approach and needs no hints.
+3. **Slimmer table outputs (carry implemented).** The carry map now returns
+   only the byte, with an inline wrapper reconstructing the carry. Constant
+   division folding and the exact map relation are proved; the measured
+   follow-up is below. Other decompositions remain separate opportunities.
 4. **Full byte-pair tables (implemented).** Generate a shared byte-pair input
    table with XOR, XOR/split4, and XOR/split7 output maps. The follow-up below
    compares the result with the original small-table configuration.
-5. **Packed u32 addition using existing hints and range maps.** Include constant
-   division folding in circuit compilation, and derive carries as affine
-   expressions. Prove the library's integer interpretation for suitable fields.
+5. **Packed u32 addition using existing hints and range maps.** Constant
+   division folding is now available for affine carry expressions. The packed
+   library's integer interpretation still needs a proof for suitable fields.
 6. **Avoid materializing a product immediately pinned by an assertion.** ix
    currently materializes all 48 carry-check multiplications in a round. The
    last product of each of the 32 assertions can instead be eliminated. A
@@ -297,5 +298,42 @@ provided/required message expressions affine.
 
 The pass uses actual unconditional equations and proves complete local-rule
 equivalence, including arbitrary cyclic graphs. Scoped propagation, further
-known-constructor validation simplification, slimmer table outputs, and packed
-word addition remain opportunities.
+known-constructor validation simplification, and packed word addition remain
+opportunities. The next follow-up implements slimmer carry outputs.
+
+## Follow-up: constant division and slimmer carries
+
+The [optimized compiler](constant-division.md) folds division by a known
+nonzero field constant before degree reduction. Both operands are still
+compiled, preserving their effects; zero denominators retain guarded failure.
+This change is included in the existing soundness/completeness proofs.
+
+`U8::sum_byte` now returns one byte for each input from 0 through 767.
+The inline `split_sum` wrapper reconstructs the carry as `(sum - byte) / 256`,
+so callers retain their pair-valued interface. `Library.Carry.mapEntries_iff`
+proves the exact replacement relation, including the input domain, when the
+base is nonzero in the field. No hints are introduced.
+
+| Measurement | Before | After | Recorded ix stage1 |
+| --- | ---: | ---: | ---: |
+| `compress` columns | 612 | 484 | 533 |
+| `u64_succ` columns | 24 | 16 | 19 |
+| `generate` columns | 10 | 9 | — |
+| Total optimized columns | 1,586 | 1,449 | — |
+| Shared precommitted field cells | 723,712 | 722,944 | — |
+
+The 484-column prediction is now measured. The expensive compression branch
+loses exactly its 128 carry-result columns. Required lookup counts remain
+342 call/map slots plus 104 ROM slots; all optimized constraints have degree
+at most three and all lookup expressions remain affine.
+
+The reference compiler still creates an inverse witness for each division by
+256, so its widths stay unchanged. Its chained carry expressions have higher
+structural lookup degree, reaching eight in `u64_succ`.
+
+This gives fewer compression columns than ix's recorded implementation while
+retaining a different addition algorithm: our four byte-sum lookups per word
+versus ix's two paired range checks. ix's active-row/multiplicity conventions
+and backend costs still differ; this width comparison is not a proving-cost
+comparison. Scoped propagation and constructor-validation simplification
+remain candidates for the other chips.

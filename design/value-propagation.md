@@ -55,6 +55,10 @@ not increase the statistic for required lookup slots.
 `LaidOutChip.layout` records allocation before propagation; `LaidOutChip.chip`
 is the final compacted chip.
 
+[Constant division](constant-division.md) is folded earlier, during scoped
+expression compilation. Propagation can then substitute the resulting affine
+quotients without first allocating inverse witnesses or product temporaries.
+
 ## Correctness
 
 `Candidate.equivalent` proves both assignment-transport directions for an

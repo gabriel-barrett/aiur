@@ -53,6 +53,12 @@ cyclic-graph correspondence.
 Successful compilation establishes all layout certificates; users do not supply
 an assumed semantic certificate.
 
+The scoped compiler also [folds constant division](constant-division.md) before
+layout. `Polynomial.constantInverse?_sound` establishes nonzeroness and the
+inverse identity in the chosen field. The expression soundness/completeness
+and inactive-witness proofs cover the folded case; both operands' effects
+remain. Zero and unknown denominators retain guarded inverse constraints.
+
 [`NativeCorrectness.lean`](../Aiur/Optimized/NativeCorrectness.lean) composes
 specialization, late source lowering, mandatory inlining, optimized compilation,
 and deduplication. Its public module results are:
@@ -303,7 +309,10 @@ forged scope parents, dropped call occurrences, weakened equations, changed
 static maps, duplicate chip names, or merged pinned entries.
 The Blake3 comparison saves 140 columns by omitting load validation, followed
 by another 143 through copy/constant propagation and compaction;
-all call/map and ROM lookup counts are preserved. The propagation regression
+constant division and slimmer carry tables save a further 137.
+`Library.Carry.mapEntries_iff` proves the exact old/new carry relation, including
+its domain, when the base is nonzero. All call/map and ROM lookup counts are
+preserved. The propagation regression
 suite covers zero-column constant results, affine outputs, guarded definitions,
 ROM membership, repeated calls, nonlinear degree limits, and cyclic copies.
 Production witness generation and connection to a concrete cryptographic backend

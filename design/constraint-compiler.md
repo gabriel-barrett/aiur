@@ -88,9 +88,9 @@ enforce the original entrypoint whitelist and resolve external module names.
 
 `Optimized.Config` defaults to degree three and enables auxiliary sharing,
 selector elimination, value propagation, and deduplication. Set `maxDegree` to
-any larger bound; bounds below three are rejected. Each optimization can be
-disabled separately
+any larger bound; bounds below three are rejected. These passes can be disabled separately
 using `shareAuxiliaries`, `eliminateSelectors`, `propagateValues`, or `deduplicate`.
+Division by known nonzero constants is always folded during scoped compilation.
 
 Run `lake env lean Examples/Optimized.lean` for a comparison:
 
@@ -108,7 +108,7 @@ branch sharing.
 
 The larger [Blake3 example](blake3-example.md) uses generated U8 tables and the
 same byte-stream hash program for both compilers. It reduces the sum of chip
-widths from 2,861 to 1,586 columns and maximum degree from nine to three, while
+widths from 2,861 to 1,449 columns and maximum degree from nine to three, while
 retaining all 446 call/map/ROM lookup slots. Run `lake exe blake3_stats` for the
 per-chip comparison and precommitted table sizes. These are static costs;
 the example does not execute the hash or construct witnesses.
@@ -204,6 +204,12 @@ An active branch forces the same value of `y`. An inactive branch imposes no
 condition on its original values, and an auxiliary witness always exists.
 Auxiliary equations for partial operations, such as division, must retain their
 guards: requiring an inverse in inactive code would change the relation.
+
+Before this stage, [constant division](constant-division.md) replaces a known
+nonzero denominator with a constant inverse. This avoids both the inverse
+witness and any product materialization caused by treating that inverse as a
+variable. Both operands' effects remain; zero or unknown denominators retain
+their guarded inverse constraints.
 
 For a mechanical fallback, every polynomial product can receive a fresh
 auxiliary with a defining quadratic equation after its operands are made affine.

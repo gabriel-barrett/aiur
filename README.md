@@ -263,7 +263,8 @@ See [the statistics example](Examples/CircuitStats.lean).
 
 `prepared.compileOptimized` selects an experimental alternative compiler. It
 shares auxiliary columns across exclusive branches, removes selectors defined
-by sums of child selectors, propagates copies and constants, and merges
+by sums of child selectors, folds division by nonzero constants, propagates
+copies and constants, and merges
 structurally equivalent internal chips, including mutually recursive groups.
 Public entrypoints remain fixed. It emits
 the existing `Circuit.System` and defaults to a maximum constraint degree of
@@ -307,8 +308,10 @@ For a larger comparison, `lake exe blake3_stats` compiles the
 [Blake3 example](Examples/Blake3.lean), including programmatically generated U8
 tables and an entrypoint that builds a byte stream. It prints each chip's
 statistics for both compilers and the shared table sizes, without executing
-the hash. The current totals are 2,861 versus 1,586 chip columns, maximum
+the hash. The current totals are 2,861 versus 1,449 chip columns, maximum
 constraint degree nine versus three, and 446 lookup slots in either version.
+The [constant-division and carry-table change](design/constant-division.md)
+reduces the optimized compression chip from 612 to 484 columns.
 See the [adaptation and measured report](design/blake3-example.md).
 
 Enum encodings contain a constructor tag and payload padded with zeros to the
