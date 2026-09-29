@@ -81,8 +81,21 @@ def Certificate (source target : Circuit.System F) (representatives : List (Stri
   checkChips [] source.chips = .ok () ∧ checkChips [] target.chips = .ok () ∧
   (∀ entry ∈ entries, rename representatives entry = entry)
 
+private theorem isEqv_decide_iff [DecidableEq α] (left right : List α) :
+    left.isEqv right (fun a b => decide (a = b)) = true ↔ left = right := by
+  induction left generalizing right with
+  | nil => cases right <;> simp [List.isEqv]
+  | cons a left ih => cases right <;> simp [List.isEqv, ih]
+
+/-- A full byte table supplies hundreds of thousands of map claims. Use the
+tail-recursive comparison for that list, with exactly the same equality test. -/
 instance (source target : Circuit.System F) (representatives : List (String × String)) (entries : List String) :
-    Decidable (Certificate source target representatives entries) := by unfold Certificate; infer_instance
+    Decidable (Certificate source target representatives entries) := by
+  letI : Decidable (target.mapClaims = source.mapClaims) :=
+    decidable_of_iff (target.mapClaims.isEqv source.mapClaims (fun a b => decide (a = b)) = true)
+      (isEqv_decide_iff _ _)
+  unfold Certificate
+  infer_instance
 
 theorem rename_eq_self {pairs : List (String × String)} {name : String}
     (absent : ∀ pair ∈ pairs, pair.1 ≠ name) : rename pairs name = name := by

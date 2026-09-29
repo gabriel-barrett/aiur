@@ -80,6 +80,13 @@ may repeat. Input uniqueness is checked again on the specialized field program,
 so natural literals that collide in that field cannot introduce ambiguity.
 Tables used only as outputs need not have distinct rows.
 
+`TableUniqueness.lean` implements input uniqueness by partitioning rows on
+their first argument and checking whole-row equality within each group.
+`tableRowsNodup_eq` proves equivalence to `List.Nodup`; no hash function or
+field ordering is assumed. This makes generated Cartesian-product inputs
+practical (the U8 example uses 65,536 byte pairs) while retaining field-collision
+checks. It is a checker implementation change, not a change to map semantics.
+
 The evaluator searches the input rows and returns the aligned output. A missing
 input yields `EvalError.missingMapInput`. Empty maps are allowed. This is a
 deterministic partial lookup; nondeterministic maps are deferred.
