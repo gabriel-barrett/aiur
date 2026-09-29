@@ -43,13 +43,13 @@ def run : IO Unit := do
   let system := compiled.circuit.system
   checkEqual "chip order" (system.stats.map (·.name)) (system.chips.map (·.name))
   for expected in ([
-      ⟨"Metrics::square", 2, 2, 0, 0, 0⟩,
+      ⟨"Metrics::square", 2, 2, 0, 0, 1⟩,
       ⟨"Metrics::calls", 4, 1, 2, 0, 1⟩,
-      ⟨"Metrics::product", 5, 4, 0, 0, 0⟩,
+      ⟨"Metrics::product", 5, 4, 0, 0, 1⟩,
       ⟨"Metrics::memory", 4, 1, 0, 2, 1⟩,
       ⟨"Metrics::lookup_product", 5, 1, 1, 0, 3⟩,
       ⟨"Metrics::unit", 0, 0, 0, 0, 0⟩,
-      ⟨"Metrics::inlined", 2, 2, 0, 0, 0⟩,
+      ⟨"Metrics::inlined", 2, 2, 0, 0, 1⟩,
       ⟨"Metrics::table_call", 2, 1, 1, 0, 1⟩
     ] : List Circuit.ChipStats) do
     let some chip := system.findChip? expected.name |
@@ -69,6 +69,11 @@ def run : IO Unit := do
   let cubic : Circuit.ArithExpr Rat := .mul x (.mul x x)
   let guarded : Circuit.ArithExpr Rat := .mul x (.sub cubic cubic)
   checkEqual "structural degree includes guards" guarded.degree 4
+  let outputOnly : Circuit.Chip Rat := {
+    name := "output", inputs := [.field 0], output := .field cubic,
+    numVars := 1, constraints := [], sends := [], memory := [] }
+  checkEqual "provided expressions count toward the degree bound" outputOnly.stats.maxLookupDegree 3
+  checkEqual "provided claim does not add a required lookup slot" outputOnly.stats.lookups 0
   let empty : Circuit.System Rat := ⟨[], [], [], []⟩
   checkEqual "empty circuit" empty.stats []
   checkEqual "empty report" empty.formatStats "No chips."

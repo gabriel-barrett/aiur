@@ -34,14 +34,12 @@ theorem chip_wellFormed {name : String} {inputs : List (WireValue Var)} {output 
     (layout : state.WellFormed)
     (inputsBound : ∀ input ∈ inputs, Bounded (F := F) state.nextVar (input.map ArithExpr.var))
     (outputBound : Bounded (F := F) state.nextVar (output.map ArithExpr.var)) :
-    (Chip.mk name inputs output state.nextVar state.constraints.toList state.sends.toList state.memory.toList).wellFormed = true := by
+    (Chip.mk name inputs (output.map ArithExpr.var) state.nextVar state.constraints.toList state.sends.toList state.memory.toList).wellFormed = true := by
   simp only [Chip.wellFormed, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq]
-  refine ⟨⟨⟨?_, layout.constraints⟩, layout.sends⟩, layout.memory⟩
+  refine ⟨⟨⟨⟨?_, outputBound⟩, layout.constraints⟩, layout.sends⟩, layout.memory⟩
   intro id member
-  rcases List.mem_append.mp member with member | member
-  · obtain ⟨input, member, leaf⟩ := List.mem_flatMap.mp member
-    exact bounded_vars.mp (inputsBound input member) id leaf
-  · exact bounded_vars.mp outputBound id member
+  obtain ⟨input, member, leaf⟩ := List.mem_flatMap.mp member
+  exact bounded_vars.mp (inputsBound input member) id leaf
 
 end Compiler
 end Aiur.Circuit

@@ -47,8 +47,9 @@ provider can justify a pointer to malformed memory without any store origin.
 The reference compiler may reject a load through it while the relaxed compiler
 accepts it. The executable tests include this case.
 
-The generic accumulator/derivation theorems have not changed. Neither layout nor
-deduplication loses its stronger local and cyclic-graph correspondence.
+The generic accumulator/derivation theorems have not changed. Neither layout,
+copy/constant propagation, nor deduplication loses its stronger local and
+cyclic-graph correspondence.
 Successful compilation establishes all layout certificates; users do not supply
 an assumed semantic certificate.
 
@@ -279,6 +280,15 @@ No general field decision procedure or noncomputable checker is assumed.
 certificate proofs are erased during execution. The source evaluation predicate
 is unchanged.
 
+After emission, [`Propagation.lean`](../Aiur/Optimized/Propagation.lean) checks
+unconditional affine definitions and substitutes them throughout the physical
+chip, including its expression-valued provided result. Copy/constant propagation
+and dense column compaction preserve exactly the same local rule; guarded
+equations do not license global substitutions. `Chip.Equivalent.localRule` in
+[`PhysicalSemantics.lean`](../Aiur/Optimized/PhysicalSemantics.lean) connects the
+assignment proof to finite rows, and `layOut_correct` includes this stage.
+See [value propagation](value-propagation.md) for the algorithm and restrictions.
+
 ## Validation and remaining scope
 
 `AiurTests/Optimized.lean` audits the final local, checker-equivalence, and
@@ -291,7 +301,10 @@ Regression checks reject certificates with missing degree definitions/defining
 equations, missing selector coverage equations, conflicting shared columns,
 forged scope parents, dropped call occurrences, weakened equations, changed
 static maps, duplicate chip names, or merged pinned entries.
-The Blake3 comparison saves 140 further columns by omitting load validation;
-all call/map and ROM lookup counts are preserved.
+The Blake3 comparison saves 140 columns by omitting load validation, followed
+by another 143 through copy/constant propagation and compaction;
+all call/map and ROM lookup counts are preserved. The propagation regression
+suite covers zero-column constant results, affine outputs, guarded definitions,
+ROM membership, repeated calls, nonlinear degree limits, and cyclic copies.
 Production witness generation and connection to a concrete cryptographic backend
 remain separate work; neither is assumed by these abstract acceptance theorems.

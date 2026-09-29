@@ -183,11 +183,10 @@ canonicality of arbitrary hint outputs cannot simply be omitted.
 
 ## Candidate work
 
-1. **Certified constant and copy propagation after semantic lowering.** Extend
-   the optimized path to use actual defining equations, including fixed enum
-   tags and return copies. Preserve all lookup arguments under substitution.
-   Begin with unconditional equalities, then consider definitions valid within
-   a scope. The 385-to-129 example is a useful regression target.
+1. **Certified constant and copy propagation (implemented).** The optimized
+   path now uses actual unconditional defining equations, including fixed enum
+   tags and return copies, preserving every lookup under substitution. The
+   129-column target is achieved; scoped propagation remains a possible extension.
 2. **Known-constructor validation.** Avoid allocating a fresh constructor
    choice for a value already known to have a particular tag, including stores
    of constructed enum values. Reuse established validity within its scope;
@@ -236,8 +235,8 @@ Measured results after this change:
 | Shared precommitted field cells | 4,608 | 723,712 |
 
 The measured 640-column optimized reduction matches the original accounting.
-The remaining gap to ix is `612 - 80 + 1 = 533`. The constant/copy propagation
-and packed-addition proposals remain unimplemented.
+The remaining gap to ix is `612 - 80 + 1 = 533`. At this stage, constant/copy
+propagation and packed addition were still proposals; see the later follow-up.
 
 Two certified checking changes make the larger tables practical: grouping
 input rows by their first argument before checking whole-row duplicates
@@ -266,8 +265,37 @@ For `bytes_to_block`, the remaining accounting is:
 1 input + 64 outputs + 64*(tag, byte, next pointer) = 257 columns
 ```
 
-The ix stage1 width remains 195. Copy propagation of the 64 result bytes and
-constant propagation of the 64 matched tags remain separate opportunities;
-they are not part of this change. The earlier 129-column algebraic candidate
-therefore remains a proposal. The compression chip is still 612 columns;
-its packed-addition opportunity is independent of memory validation.
+At this stage the ix stage1 width remained 195, and propagation of the 64
+result copies and 64 matched tags remained separate opportunities. The
+compression chip stayed at 612 columns; its packed-addition opportunity is
+independent of memory validation.
+
+## Follow-up: certified value propagation
+
+The [implemented propagation pass](value-propagation.md) now realizes the
+129-column target for `bytes_to_block`. Its provided result reuses the loaded
+bytes, and its ROM lookups contain constant `Cons` tags. No local equations
+remain in this chip. Its width is one input pointer, 64 bytes, and 64 next
+pointers. ix's recorded width is 195, including its active-row and multiplicity
+columns.
+
+| Chip | Before propagation | After propagation | Recorded ix stage1 |
+| --- | ---: | ---: | ---: |
+| `bytes_to_block` | 257 | 129 | 195 |
+| `compress_layer` | 144 | 143 | 141 |
+| `compress_chunks` | 19 | 17 | 17 |
+| `pad_block` | 8 | 7 | 8 |
+| `u64_succ` | 32 | 24 | 19 |
+| `compress` | 612 | 612 | 533 |
+| `next_layer` | 224 | 224 | 175 |
+
+Across the example, this saves **143 columns**, reducing the optimized total
+from 1,729 to **1,586**. `u64_succ` loses eight output copies; its byte/carry
+lookup algorithm still differs from ix. Required lookup counts and precommitted
+tables are unchanged. All constraints remain degree at most three and all
+provided/required message expressions affine.
+
+The pass uses actual unconditional equations and proves complete local-rule
+equivalence, including arbitrary cyclic graphs. Scoped propagation, further
+known-constructor validation simplification, slimmer table outputs, and packed
+word addition remain opportunities.

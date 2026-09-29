@@ -16,7 +16,9 @@ away lookup arguments, fingerprints, and cryptographic protocol details.
 function without unfolding callees, and retains shared tables and map references.
 All interface leaves are allocated before
 auxiliary variables. `WireValue` stores a type and flat words: field expressions
-during lowering, variable indices at interfaces, and field elements in messages.
+during lowering and in provided outputs, variable indices for inputs and call
+results, and field elements in messages. A provided result can reuse an existing
+column or contain arithmetic and constants directly, without an output column.
 Type metadata preserves tuple shape, nominal enum identity, and pointer targets.
 
 ## Statistics
@@ -25,17 +27,18 @@ Type metadata preserves tuple shape, nominal enum identity, and pointer targets.
 the report. It includes allocated field columns, maximum structural constraint
 degree, and the number of function/map and ROM lookup slots. All declared slots
 count, including guarded ones; the provided conclusion does not count as a
-lookup. It also reports maximum lookup-expression degree, including enables.
+lookup. It also reports maximum lookup-expression degree, including enables and
+the provided output expressions.
 Degrees are conservative expression-tree bounds without algebraic simplification,
 and an empty maximum is zero. See [the example](../Examples/CircuitStats.lean).
 
 The [experimental alternative compiler](constraint-compiler.md) uses these
 statistics to compare columns under a configurable degree cap. Call
 `prepared.compileOptimized` for scoped auxiliary sharing, affine selector
-elimination, degree reduction, and recursive chip deduplication. It emits the
-same circuit datatype and carries a proof of the degree bounds. Its
-source-correctness proofs remain separate work; the proofs described below
-apply to the reference compiler.
+elimination, degree reduction, copy/constant propagation, and recursive chip
+deduplication. It emits the same circuit datatype and carries proofs of degree
+bounds and source-entrypoint soundness/completeness. See
+[optimized equivalence](optimized-equivalence.md) for the full theorem boundaries.
 
 ## Arithmetic and calls
 

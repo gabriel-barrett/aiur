@@ -18,6 +18,7 @@ def localSource : Program Nat := aiur% "
 enum Inner { Zero, Value(Field) }
 enum Outer { Empty, Wrap(Inner) }
 fn pair(x: Field, y: Field) -> (Field, Field) { (-x, y + 1) }
+fn literal_result() -> Field { 7 }
 fn overlap(p: (Field, Field)) -> Field {
   match p { (0, _) => 1, (_, 0) => 2, _ => 0 }
 }
@@ -123,7 +124,8 @@ private def rowFor (system : Circuit.System K) (rom : WireROM K) (claim : Circui
     (allowed : Circuit.Message K → Bool) : Option (Circuit.Row K) := do
   let chip ← system.findChip? claim.channel
   let fixed := (chip.inputs.flatMap WireValue.words).zip (claim.args.flatMap WireValue.words) ++
-    chip.output.words.zip claim.result.words
+    ((chip.output.words.zip claim.result.words).filterMap fun (expr, value) =>
+      match expr with | .var id => some (id, value) | _ => none)
   search chip rom claim allowed fixed chip.numVars []
 
 /-- These call-oracle cases have pointer-free interfaces; ROM cases below have
@@ -162,8 +164,10 @@ def run : IO Unit := do
   let program := localSource.toField K
   let entries := (program.functions.map (·.name)).filter (· != "load_unused")
   let compiled ← get <| Optimized.compile program entries
+  let unpropagated ← get <| Optimized.compile program entries { propagateValues := false }
   let unshared ← get <| Optimized.compile program entries { shareAuxiliaries := false }
-  let uneliminated ← get <| Optimized.compile program entries { eliminateSelectors := false }
+  let uneliminated ← get <| Optimized.compile program entries
+    { eliminateSelectors := false, propagateValues := false }
   let original := fun name => do
     let some function := program.findFunction? name | throw s!"missing test function {name}"
     Optimized.Compiler.function program {} function
@@ -195,7 +199,12 @@ def run : IO Unit := do
       { nestedLayout.logical with choices := nestedLayout.logical.choices.map fun choice =>
           { choice with parent := nestedLayout.logical.scopes.size } }))
   ensure "exclusive auxiliaries were not shared" (width compiled "divide" < width unshared "divide")
-  ensure "parent selector was not eliminated" (width compiled "nested" < width uneliminated "nested")
+  ensure "parent selector was not eliminated" (width unpropagated "nested" < width uneliminated "nested")
+  ensure "affine outputs retained dedicated columns"
+    (width compiled "pair" == 2 && width compiled "pair" < width unpropagated "pair")
+  ensure "literal result retained a column" (width compiled "literal_result" == 0)
+  checkCase program compiled "literal_result" [] (.field 1) true
+  checkCase program compiled "literal_result" [] (.field 2) false
   ensure "direct call did not reuse output" (width compiled "forward" == 2)
   let some repeated := compiled.system.findChip? "repeated" | throw (IO.userError "missing repeated")
   ensure "repeated call occurrences were merged" (repeated.sends.length == 2)

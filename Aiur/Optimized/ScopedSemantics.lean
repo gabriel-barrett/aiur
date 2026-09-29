@@ -120,7 +120,8 @@ theorem emitChip_validRow (chip : ScopedChip F) (layout : ColumnLayout) (rom : W
 
 theorem emitChip_receive (chip : ScopedChip F) (layout : ColumnLayout) (row : Circuit.Row F) :
     (emitChip chip layout).receive row = chip.conclusion (row.assignment ∘ layout.column) := by
-  simp [emitChip, Circuit.Chip.receive, ScopedChip.conclusion, WireValue.map_map, List.map_map]
+  simp [emitChip, Circuit.Chip.receive, ScopedChip.conclusion, WireValue.map_map, List.map_map,
+    Function.comp_def, Scalar.Circuit.ArithExpr.denote]
 
 theorem emitChip_premises (chip : ScopedChip F) (layout : ColumnLayout) (row : Circuit.Row F) :
     (emitChip chip layout).premises row = chip.premises (row.assignment ∘ layout.column) := by

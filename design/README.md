@@ -56,6 +56,8 @@ design, and keep proposals and unanswered questions explicitly separate.
 - [Alternative constraint compiler](constraint-compiler.md): per-chip statistics
   and a separate path with activation scopes, explicit layouts, shared auxiliary
   columns, and configurable degree bounds, emitting the existing circuit datatype.
+- [Value propagation](value-propagation.md): expression-valued conclusions,
+  certified copy/constant propagation, and dense column compaction.
 - [Circuit deduplication](circuit-deduplication.md): implemented sharing of internal
   chips, fixed entrypoints, recursive structural comparison, and planned proof transport.
 - [Blake3 comparison](blake3-example.md): generated U8 tables, a byte-stream hash

@@ -331,7 +331,7 @@ def lowerFunction [Field F] [DecidableEq F] (program : Program F) (fn : Function
     constrainValue (.const 1) (output.map ArithExpr.var) body
     return (inputs, output)
   let ((inputs, output), state) ← build.run {}
-  return ⟨fn.name, inputs, output, state.nextVar, state.constraints.toList, state.sends.toList,
+  return ⟨fn.name, inputs, output.map ArithExpr.var, state.nextVar, state.constraints.toList, state.sends.toList,
     state.memory.toList⟩
 
 end Compiler
