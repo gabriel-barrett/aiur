@@ -24,7 +24,7 @@ theorem Compiler.lowerFunction_stages [Field F] [DecidableEq F]
         ((fn.params.map Prod.fst).zip (inputs.map (WireValue.map ArithExpr.var)))
         (.const 1) fn.body s₄ = .ok (body, s₅) ∧
       Compiler.constrainValue (.const 1) (output.map ArithExpr.var) body s₅ = .ok ((), s₆) ∧
-      chip = ⟨fn.name, inputs, output, s₆.nextVar, s₆.constraints.toList, s₆.sends.toList, s₆.memory.toList⟩ := by
+      chip = ⟨fn.name, inputs, output.map ArithExpr.var, s₆.nextVar, s₆.constraints.toList, s₆.sends.toList, s₆.memory.toList⟩ := by
   unfold Compiler.lowerFunction at compiled
   obtain ⟨⟨⟨inputs, output⟩, state⟩, run, finished⟩ := except_bind_ok.mp compiled
   simp only [pure, Except.pure, Except.ok.injEq] at finished

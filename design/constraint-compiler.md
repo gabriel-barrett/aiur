@@ -3,7 +3,7 @@
 Status: implemented and proved in [`Aiur/Optimized`](../Aiur/Optimized.lean).
 The executable compiler is connected to source semantics through scoped
 compilation, selector elimination, degree reduction, column allocation,
-physical emission, and recursive chip deduplication.
+physical emission, value propagation, column compaction, and recursive chip deduplication.
 [`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean) proves reference/optimized
 equivalence at selected entrypoints for finite trees, acyclic memoized graphs,
 and unit-checker acceptance. Weighted acceptance has reference-to-optimized
@@ -47,7 +47,7 @@ The implementation uses the separate namespace `Aiur.Optimized`:
 | --- | --- |
 | Prepared program | Concrete reachable instances and the fixed entrypoint set; existing preparation stages can be reused. |
 | `ScopedChip` | Typed interfaces, logical witnesses, activation scopes, exclusive alternatives, arithmetic expressions, and individual call/ROM occurrences. |
-| `LaidOutChip` | Physical column assignments, affine activation expressions, guarded gadgets, and an explicit description of column roles and sharing. |
+| `LaidOutChip` | Allocation and sharing metadata before propagation, plus the final compacted chip with affine provided expressions. |
 | `Dedup.Result` | Representative chip names, rewritten call targets, and a record of the original implementations represented by each chip. |
 | Existing circuit datatype | Erase layout bookkeeping and emit a normal `Circuit.System`; statistics and both checkers operate on it directly. |
 
@@ -57,7 +57,8 @@ witnesses, and distinguish interface or shared values that cross scope
 boundaries. Activations need not have their own columns: they can be affine
 expressions over selector witnesses.
 
-The layout records a mapping from logical witnesses to physical columns. It
+The layout records a mapping from logical witnesses to physical columns before
+the final propagation/compaction pass. It
 can map auxiliaries from exclusive scopes to the same column; its ownership
 information must explain why every simultaneous use is compatible. Keep this
 information through layout and deduplication so that correctness proofs can
@@ -86,9 +87,10 @@ certificate. `Generic.Specialized.compileOptimized` and the lower-level
 enforce the original entrypoint whitelist and resolve external module names.
 
 `Optimized.Config` defaults to degree three and enables auxiliary sharing,
-selector elimination, and deduplication. Set `maxDegree` to any larger bound;
-bounds below three are rejected. Each optimization can be disabled separately
-using `shareAuxiliaries`, `eliminateSelectors`, or `deduplicate`.
+selector elimination, value propagation, and deduplication. Set `maxDegree` to
+any larger bound; bounds below three are rejected. Each optimization can be
+disabled separately
+using `shareAuxiliaries`, `eliminateSelectors`, `propagateValues`, or `deduplicate`.
 
 Run `lake env lean Examples/Optimized.lean` for a comparison:
 
@@ -106,8 +108,8 @@ branch sharing.
 
 The larger [Blake3 example](blake3-example.md) uses generated U8 tables and the
 same byte-stream hash program for both compilers. It reduces the sum of chip
-widths from 3,661 to 2,509 columns and maximum degree from nine to three, while
-retaining all 958 call/map/ROM lookup slots. Run `lake exe blake3_stats` for the
+widths from 2,861 to 1,586 columns and maximum degree from nine to three, while
+retaining all 446 call/map/ROM lookup slots. Run `lake exe blake3_stats` for the
 per-chip comparison and precommitted table sizes. These are static costs;
 the example does not execute the hash or construct witnesses.
 
@@ -136,7 +138,8 @@ See [the runnable example](../Examples/CircuitStats.lean).
   count individually, even if a guard is statically zero. A chip's provided
   conclusion is not included. Static tables/maps do not create their own chips.
 - `maxLookupDegree` includes enables and every argument, result, address, and
-  payload word used in those lookup slots. Its empty maximum is also zero.
+  payload word used in those lookup slots, plus the chip's provided input/output
+  expressions. Its empty maximum is also zero.
 
 Degrees are conservative bounds computed from the stored expression tree,
 without cancellation or zero simplification. These are static costs per chip
@@ -163,6 +166,13 @@ output columns for its fresh logical result, eliminating an extra result buffer
 and equality equations. This must preserve the caller/callee interface and all
 uses of the value. Fresh logical results remain distinct until physical column
 allocation is justified.
+
+The final physical chip can provide expressions directly: `Chip.output` contains
+`WireValue (ArithExpr F)`. The certified [value-propagation pass](value-propagation.md)
+substitutes unconditional copies, constants, and affine definitions through the
+chip, then removes unused columns. A returned loaded byte reuses the load's
+column; a constant tag or result is a literal expression. This runs after
+allocation and before deduplication, and preserves the exact local rule.
 
 Share repeated *pure arithmetic expressions* over the same logical operands.
 Independent hints, calls, allocations, and lookup occurrences cannot simply be

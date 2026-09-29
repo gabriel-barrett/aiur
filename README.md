@@ -256,16 +256,24 @@ pattern conditions are rejected after field conversion, ignoring binder names.
 Call `compiled.circuit.system.printStats` on a module compilation result to print
 each chip's column count, maximum constraint degree, and call/map/ROM lookup
 counts. `system.stats` returns the same measurements as structured data. The
-report also includes lookup-expression degree. Degrees are structural upper
-bounds without polynomial simplification; counts include guarded lookup slots.
+report also includes lookup-expression degree, including provided claims.
+Degrees are structural upper bounds without polynomial simplification; counts
+include guarded lookup slots.
 See [the statistics example](Examples/CircuitStats.lean).
 
 `prepared.compileOptimized` selects an experimental alternative compiler. It
 shares auxiliary columns across exclusive branches, removes selectors defined
-by sums of child selectors, and merges structurally equivalent internal chips,
-including mutually recursive groups. Public entrypoints remain fixed. It emits
+by sums of child selectors, propagates copies and constants, and merges
+structurally equivalent internal chips, including mutually recursive groups.
+Public entrypoints remain fixed. It emits
 the existing `Circuit.System` and defaults to a maximum constraint degree of
-three, with affine lookup expressions:
+three, with affine lookup expressions.
+
+Provided results can be expressions directly, so returning a constant, an
+existing loaded value, or an affine expression needs no dedicated output copy.
+The [propagation pass](design/value-propagation.md) proves local-rule equivalence
+and removes the resulting unused columns. Set `propagateValues := false` to
+disable it for comparisons.
 
 ```lean
 let optimized ← prepared.compileOptimized
@@ -280,7 +288,8 @@ checker, including recursive chip deduplication. Memoized equivalence requires
 acyclic support; reference-to-optimized completeness also covers cyclic proofs.
 `layOut_correct` proves the stronger local-rule equivalence for selector
 elimination, degree reduction, shared-column allocation, and physical-row
-emission. Successful artifacts also carry proofs of the degree bounds.
+emission, followed by copy/constant propagation and column compaction.
+Successful artifacts also carry proofs of the degree bounds.
 
 `Optimized.ModulesArtifact.check_complete` and `check_sound` connect the original
 source predicate directly to the optimized checker. Completeness requires enough
@@ -298,7 +307,7 @@ For a larger comparison, `lake exe blake3_stats` compiles the
 [Blake3 example](Examples/Blake3.lean), including programmatically generated U8
 tables and an entrypoint that builds a byte stream. It prints each chip's
 statistics for both compilers and the shared table sizes, without executing
-the hash. The current totals are 2,861 versus 1,729 chip columns, maximum
+the hash. The current totals are 2,861 versus 1,586 chip columns, maximum
 constraint degree nine versus three, and 446 lookup slots in either version.
 See the [adaptation and measured report](design/blake3-example.md).
 

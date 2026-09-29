@@ -122,18 +122,19 @@ execution of the Aiur hash or a formal BLAKE3 correctness theorem.
 ## Measured statistics
 
 These are the results from `lake exe blake3_stats` with the default optimized
-configuration (degree three, sharing, selector elimination, and deduplication).
+configuration (degree three, sharing, selector elimination, value propagation,
+and deduplication).
 
 | Metric | Reference | Optimized |
 | --- | ---: | ---: |
 | Chips | 14 | 14 |
-| Sum of chip columns | 2,861 | 1,729 |
+| Sum of chip columns | 2,861 | 1,586 |
 | Maximum constraint degree | 9 | 3 |
 | Call/map lookup slots | 342 | 342 |
 | ROM lookup slots | 104 | 104 |
 | Maximum lookup expression degree | 2 | 1 |
 
-The sum of chip widths decreases by **1,132 columns, about 39.6%**. This sum
+The sum of chip widths decreases by **1,275 columns, about 44.6%**. This sum
 allocates one row's width to each chip; it is not a trace-size or proving-time
 estimate. Deduplication finds no equivalent internal chips in this example.
 
@@ -142,20 +143,20 @@ agree between compilers and include statically declared inactive slots.
 
 | Chip | Reference columns | Optimized columns | Reference degree | Optimized degree | Lookups |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Benchmark::main` | 78 | 42 | 2 | 2 | 7 |
-| `Blake3::compress_layer` | 292 | 144 | 3 | 3 | 6 |
+| `Benchmark::main` | 78 | 40 | 2 | 2 | 7 |
+| `Blake3::compress_layer` | 292 | 143 | 3 | 3 | 6 |
 | `Blake3::next_layer` | 394 | 224 | 3 | 3 | 11 |
 | `Blake3::compress` | 709 | 612 | 2 | 3 | 289 |
-| `Blake3::compress_chunks` | 35 | 19 | 3 | 3 | 5 |
+| `Blake3::compress_chunks` | 35 | 17 | 3 | 3 | 5 |
 | `Blake3::finish` | 314 | 166 | 9 | 3 | 20 |
 | `Words::u64_is_zero` | 28 | 19 | 8 | 3 | 0 |
 | `Blake3::eq_zero` | 7 | 5 | 2 | 3 | 0 |
-| `Blake3::bytes_to_block` | 641 | 257 | 2 | 1 | 64 |
-| `Blake3::pad_block` | 14 | 8 | 3 | 3 | 2 |
+| `Blake3::bytes_to_block` | 641 | 129 | 2 | 0 | 64 |
+| `Blake3::pad_block` | 14 | 7 | 3 | 3 | 2 |
 | `Blake3::compress_block` | 282 | 182 | 3 | 3 | 29 |
 | `Blake3::is_empty` | 14 | 8 | 2 | 3 | 1 |
-| `Words::u64_succ` | 32 | 32 | 1 | 1 | 8 |
-| `Benchmark::generate` | 21 | 11 | 3 | 3 | 4 |
+| `Words::u64_succ` | 32 | 24 | 1 | 0 | 8 |
+| `Benchmark::generate` | 21 | 10 | 3 | 3 | 4 |
 
 Compared with the original nibble-table library, the full byte-pair maps reduce
 the optimized compression chip from **1,252 to 612 columns**, and its lookup
@@ -166,12 +167,21 @@ The remaining compression-width gap with ix (533 stage1 columns in the
 [original comparison](ix-blake3-widths.md)) comes from its packed word-addition
 strategy, offset by its provide-multiplicity column: `612 - 80 + 1 = 533`.
 
-Removing independent load validation now saves a further **140 columns**:
+Removing independent load validation saved a further **140 columns**:
 `bytes_to_block` falls from 385 to 257, `compress_layer` from 148 to 144,
 `next_layer` from 228 to 224, `compress_chunks` from 21 to 19, and `is_empty`
-from 10 to 8. `bytes_to_block` needs only degree-one equations afterward.
+from 10 to 8. `bytes_to_block` needed only degree-one equations afterward.
 All 104 ROM lookups remain. [Store provenance](load-provenance.md) proves
 that these loads inherit value validity from their stored contents.
+
+Certified [copy/constant propagation](value-propagation.md) now removes another
+**143 columns**, reducing the optimized total from **1,729 to 1,586**.
+`bytes_to_block` loses 64 output copies and 64 fixed constructor tags, reaching
+**129 columns with no local equations**. Its 64 ROM lookups still carry the
+constant `Cons` tag. `u64_succ` returns its eight byte lookup results directly,
+falling from 32 to 24 columns, also with no local equations. The remaining seven
+columns are saved in `main`, `compress_layer`, `compress_chunks`, `pad_block`,
+and `generate`. All lookup counts and table sizes are unchanged.
 
 The optimized artifact carries Lean certificates that constraint degrees are
 at most three, lookup expressions are affine, and chip deduplication preserves

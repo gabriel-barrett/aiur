@@ -70,7 +70,8 @@ def MemoryLookup.Valid [Field F] (rom : WireROM F) (assignment : Var → F)
 structure Chip (F : Type) where
   name : String
   inputs : List (WireValue Var)
-  output : WireValue Var
+  /-- The provided result can reuse columns or contain expressions and constants. -/
+  output : WireValue (ArithExpr F)
   numVars : Nat
   constraints : List (Constraint F)
   sends : List (Send F)
@@ -78,7 +79,8 @@ structure Chip (F : Type) where
   deriving Repr, BEq
 
 def Chip.wellFormed (chip : Chip F) : Bool :=
-  (chip.inputs.flatMap WireValue.words ++ chip.output.words).all (· < chip.numVars) &&
+  (chip.inputs.flatMap WireValue.words).all (· < chip.numVars) &&
+    chip.output.words.all (ArithExpr.inBounds chip.numVars) &&
     chip.constraints.all (ArithExpr.inBounds chip.numVars) &&
     chip.sends.all (Send.inBounds chip.numVars) &&
     chip.memory.all (MemoryLookup.inBounds chip.numVars)
@@ -89,7 +91,8 @@ def Chip.ValidRow [Field F] (chip : Chip F) (rom : WireROM F) (row : Row F) : Pr
     ∀ lookup ∈ chip.memory, lookup.Valid rom row.assignment
 
 def Chip.receive [Field F] (chip : Chip F) (row : Row F) : Message F :=
-  ⟨chip.name, chip.inputs.map (WireValue.map row.assignment), chip.output.map row.assignment⟩
+  ⟨chip.name, chip.inputs.map (WireValue.map row.assignment),
+    chip.output.map (ArithExpr.denote row.assignment)⟩
 
 def Chip.premises [Field F] [DecidableEq F] (chip : Chip F) (row : Row F) : List (Message F) :=
   chip.sends.filterMap fun send =>

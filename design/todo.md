@@ -178,8 +178,12 @@ without admitted proof steps.
   aggregates, and dereferences. Keep ROM lookups and store validation; reuse the
   existing checker/derivation bridges and acyclic memoized soundness. See
   [load provenance](load-provenance.md). Saves 140 Blake3 columns.
-- [ ] Pursue the measured [ix/Blake3 optimization opportunities](ix-blake3-widths.md):
-  certified constant/copy propagation and remaining validation simplification; compare
+- [x] Add expression-valued provided results, certified constant/copy/affine
+  propagation, and dense column compaction. Preserve the complete local rule,
+  including repeated premises, guards, and ROM cells. See
+  [value propagation](value-propagation.md).
+- [ ] Pursue the remaining [ix/Blake3 optimization opportunities](ix-blake3-widths.md):
+  further validation simplification; compare
   slimmer table outputs and packed additions with the current byte library.
   Preserve the existing semantic boundary and certify any new circuit pass.
 - [x] Generate full U8 byte-pair tables with shared inputs and direct XOR/split

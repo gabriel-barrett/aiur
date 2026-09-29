@@ -1,14 +1,5 @@
 import Aiur.Optimized.AllocationCertificate
-
-namespace Aiur.Circuit
-
-/-- A physical local rule, retaining the exact ordered list of call slots. -/
-def Chip.LocalRule [Field F] [DecidableEq F] (chip : Chip F) (rom : WireROM F)
-    (conclusion : Message F) (premises : List (Message F)) : Prop :=
-  ∃ row, row.chip = chip.name ∧ chip.ValidRow rom row ∧
-    chip.receive row = conclusion ∧ chip.premises row = premises
-
-end Aiur.Circuit
+import Aiur.Optimized.Propagation
 
 namespace Aiur.Optimized
 
@@ -46,15 +37,23 @@ def checkedLayOut (config : Config) (chip : ScopedChip F) : Except String (Check
   let physical := emitChip logical layout
   if allocation : Allocation.Certificate logical layout then
     if formed : physical.wellFormed = true then
-      if physical.stats.maxConstraintDegree > config.maxDegree || physical.stats.maxLookupDegree > 1 then
-        throw s!"degree reduction failed in {chip.name}"
-      return {
-        logical, layout, chip := physical
-        equivalent := realizes_emit (aliases.equivalent.trans degree.equivalent) allocation formed
-        name_eq := degree.name_eq.trans aliases.name_eq
-        inputTypes := by simp [physical, emitChip, logical, degree.inputs_eq, aliases.inputs_eq,
-          List.map_map, Function.comp_def]
-        outputType := by simp [physical, emitChip, logical, degree.output_eq, aliases.output_eq] }
+      let values ← if config.propagateValues then Propagation.run physical
+        else pure (Propagation.Checked.identity physical)
+      if finalFormed : values.chip.wellFormed = true then
+        if values.chip.stats.maxConstraintDegree > config.maxDegree || values.chip.stats.maxLookupDegree > 1 then
+          throw s!"degree reduction failed in {chip.name}"
+        return {
+          logical, layout, chip := values.chip
+          equivalent := fun rom root premises =>
+            (realizes_emit (aliases.equivalent.trans degree.equivalent) allocation formed rom root premises).trans
+              (values.equivalent.localRule formed finalFormed rom root premises)
+          name_eq := values.name_eq.trans (degree.name_eq.trans aliases.name_eq)
+          inputTypes := values.inputTypes.trans (by
+            simp [physical, emitChip, logical, degree.inputs_eq, aliases.inputs_eq,
+              List.map_map, Function.comp_def])
+          outputType := values.outputType.trans (by
+            simp [physical, emitChip, logical, degree.output_eq, aliases.output_eq]) }
+      else throw s!"invalid propagated layout in {chip.name}"
     else throw s!"invalid optimized layout in {chip.name}"
   else throw s!"invalid column-allocation certificate in {chip.name}"
 
@@ -62,7 +61,7 @@ def layOut (config : Config) (chip : ScopedChip F) : Except String (LaidOutChip 
   (checkedLayOut config chip).map CheckedLayout.toLaidOutChip
 
 /-- The actual layout pipeline preserves the entire local rule: selector
-elimination, degree reduction, sharing, emission, and zero-equation removal. -/
+elimination, degree reduction, sharing, emission, value propagation, and compaction. -/
 theorem layOut_correct {config : Config} {source : ScopedChip F} {result : LaidOutChip F}
     (compiled : layOut config source = .ok result) : source.Realizes result.chip := by
   unfold layOut at compiled

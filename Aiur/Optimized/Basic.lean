@@ -13,6 +13,7 @@ structure Config where
   maxDegree : Nat := 3
   shareAuxiliaries : Bool := true
   eliminateSelectors : Bool := true
+  propagateValues : Bool := true
   deduplicate : Bool := true
   deriving Repr, BEq
 
@@ -83,7 +84,9 @@ structure ColumnLayout where
 
 structure LaidOutChip (F : Type) where
   logical : ScopedChip F
+  /-- Allocation before final copy/constant propagation and column compaction. -/
   layout : ColumnLayout
+  /-- Final physical chip, after value propagation when enabled. -/
   chip : Circuit.Chip F
   deriving Repr, BEq
 

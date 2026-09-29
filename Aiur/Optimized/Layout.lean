@@ -179,7 +179,7 @@ def emitChip [Field F] [DecidableEq F] (chip : ScopedChip F) (layout : ColumnLay
   return {
     name := chip.name
     inputs := chip.inputs.map (WireValue.map column)
-    output := chip.output.map column
+    output := chip.output.map (Polynomial.var ∘ column)
     numVars := layout.occupants.size
     constraints
     sends := chip.calls.toList.map fun call =>

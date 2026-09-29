@@ -62,7 +62,7 @@ theorem lowerFunction_complete [Field F] [DecidableEq F]
   have inputFinal : ∀ input ∈ inputs, Bounded (F := F) s₆.nextVar (input.map ArithExpr.var) :=
     fun input member => (inputsBound input member).mono ((throughInterface.trans e₅).trans e₆).increase
   have outputFinal := outputBound.mono (throughOutput.trans e₆).increase
-  have rowValid : (Chip.mk fn.name inputs output s₆.nextVar s₆.constraints.toList s₆.sends.toList s₆.memory.toList).ValidRow rom row :=
+  have rowValid : (Chip.mk fn.name inputs (output.map ArithExpr.var) s₆.nextVar s₆.constraints.toList s₆.sends.toList s₆.memory.toList).ValidRow rom row :=
     ⟨chip_wellFormed e₆.layout inputFinal outputFinal, Row.ofAssignment_length _ _ _,
       finiteExt.valid.constraints, finiteExt.valid.memory⟩
   refine ⟨row, rfl, rowValid, ?_, ?_, ?_⟩

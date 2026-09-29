@@ -78,7 +78,8 @@ theorem lowerFunction_sound [Field F] [DecidableEq F]
   have equal := resultEq rfl
   simp only [WireValue.map_map] at equal
   change output.map row.assignment = body.map (ArithExpr.denote row.assignment) at equal
-  simpa only [Chip.receive, equal] using resultDecode
+  simpa only [Chip.receive, WireValue.map_map, Function.comp_def,
+    ArithExpr.denote, Scalar.Circuit.ArithExpr.denote, equal] using resultDecode
 
 end Compiler
 end Aiur.Circuit

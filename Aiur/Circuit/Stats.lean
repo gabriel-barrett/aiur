@@ -24,13 +24,14 @@ def MemoryLookup.maxDegree (lookup : MemoryLookup F) : Nat :=
 /-- Static costs of one chip row, independent of any assignment or trace. -/
 structure ChipStats where
   name : String
-  /-- All allocated field columns: inputs, output, and auxiliaries. -/
+  /-- All allocated field columns; provided expressions need no dedicated columns. -/
   columns : Nat
   maxConstraintDegree : Nat
   /-- Function and map sends, counted with repetitions and inactive slots. -/
   callLookups : Nat
   /-- Store/load requirements, counted with repetitions and inactive slots. -/
   romLookups : Nat
+  /-- Includes the provided input/output expressions as well as required lookups. -/
   maxLookupDegree : Nat
   deriving Repr, BEq, DecidableEq
 
@@ -44,8 +45,10 @@ def Chip.stats (chip : Chip F) : ChipStats := {
   callLookups := chip.sends.length
   romLookups := chip.memory.length
   maxLookupDegree := max
-    ((chip.sends.map Send.maxDegree).foldl max 0)
-    ((chip.memory.map MemoryLookup.maxDegree).foldl max 0)
+    (max (ArithExpr.maxDegree chip.output.words)
+      (if (chip.inputs.flatMap WireValue.words).isEmpty then 0 else 1))
+    (max ((chip.sends.map Send.maxDegree).foldl max 0)
+      ((chip.memory.map MemoryLookup.maxDegree).foldl max 0))
 }
 
 /-- One record per chip, preserving circuit order. Static maps have no chip. -/
