@@ -8,6 +8,8 @@ stage2 widths. The investigation changes no compiler implementation.
 The measurements below record the original nibble-table baseline. Full byte-pair
 tables were subsequently implemented; see the follow-up at the end and the
 [current example statistics](blake3-example.md).
+The [current comparison of every chip](#current-comparison-of-every-chip)
+includes all optimizations through constant division and slimmer carry tables.
 
 The large differences are explained by the byte libraries and by redundant
 columns in our current compiler. No stage1 counting error or missing constraint
@@ -337,3 +339,93 @@ versus ix's two paired range checks. ix's active-row/multiplicity conventions
 and backend costs still differ; this width comparison is not a proving-cost
 comparison. Scoped propagation and constructor-validation simplification
 remain candidates for the other chips.
+
+## Current comparison of every chip
+
+Rechecked both repositories on 2026-09-29: Aiur `0212066`, ix `a1c6badf`
+with the existing stage1/stage2 statistics change. Our `blake3_stats` executable
+and ix's `Source.Toplevel.compile` reproduce the following widths. The ix
+source is the merge of `IxVM.core`, `IxVM.byteStream`, and `IxVM.blake3`;
+the reported width is `circuit.layout.width`, which the Rust constraint builder
+uses for stage1. No hash execution is involved.
+
+Difference is our optimized width minus ix's stage1 width; negative means
+fewer columns here. This accounts for all fourteen of our chips.
+
+| Our chip | ix counterpart | Our columns | ix stage1 | Difference |
+| --- | --- | ---: | ---: | ---: |
+| `Benchmark::main` | `blake3_test` (different entry plumbing) | 40 | 42 | — |
+| `Blake3::compress_layer` | `blake3_compress_layer` | 143 | 141 | +2 |
+| `Blake3::next_layer` | `blake3_next_layer` | 224 | 175 | +49 |
+| `Blake3::compress` | `blake3_compress` | 484 | 533 | −49 |
+| `Blake3::compress_chunks` | `blake3_compress_chunks` | 17 | 17 | 0 |
+| `Blake3::finish` | `blake3_finish` | 166 | 168 | −2 |
+| `Words::u64_is_zero` | `u64_is_zero` | 19 | 19 | 0 |
+| `Blake3::eq_zero` | `eq_zero` primitive inside callers | 5 | — | — |
+| `Blake3::bytes_to_block` | `bytes_to_block` | 129 | 195 | −66 |
+| `Blake3::pad_block` | `pad_block` | 7 | 8 | −1 |
+| `Blake3::compress_block` | `blake3_compress_block` | 182 | 177 | +5 |
+| `Blake3::is_empty` | `list_is_empty.U8` | 8 | 7 | +1 |
+| `Words::u64_succ` | `relaxed_u64_succ` | 16 | 19 | −3 |
+| `Benchmark::generate` | Unconstrained stream input, no corresponding chip | 9 | — | — |
+
+The eleven corresponding helpers total **1,395 versus 1,459 columns**, a
+64-column reduction (about 4.4%). Five are smaller here, two tie, and four are
+larger. This is a sum of static widths, not a trace-size or proving-cost
+estimate; it excludes our entrypoint, generator, and separate zero-test chip.
+Our total including those three is 1,449.
+
+The largest remaining gap is `next_layer`, at +49. The other deficits are
+`compress_block` (+5), `compress_layer` (+2), and `is_empty` (+1).
+The largest savings are `bytes_to_block` (−66) and `compress` (−49).
+
+A layout inspection accounts for the `next_layer` gap exactly:
+
+| Column role | Our `next_layer` | ix `blake3_next_layer` |
+| --- | ---: | ---: |
+| Inputs | 34 | 34 |
+| Dedicated outputs | 34 | 0 |
+| Selectors | 16 | 4 |
+| Other auxiliaries | 140 | 137 |
+| Total | 224 | 175 |
+
+Our propagation pass removes no columns from this chip. The excess is therefore
+`34 + 12 + 3 = 49`; ix's auxiliary count includes its multiplicity column.
+This identifies where to investigate, rather than proving all 49 removable:
+ix can combine branch results into selector-weighted provided expressions,
+whereas our final lookup words must remain affine. Guarded result equalities
+also do not license the unconditional substitutions our propagation pass uses.
+
+The entrypoint comparison is approximate: our main builds a constrained stream
+of 1,025 bytes, whereas `blake3_test` obtains its stream through I/O and an
+unconstrained call. ix also emits `blake3_bench` at 46 columns, with no direct
+counterpart here. Its `eq_zero` has no separate chip: a nonconstant invocation
+adds two auxiliary columns and guarded equations inside the caller. Its
+`relaxed_u64_succ` uses branching and no byte-table lookups; our successor uses
+eight byte-sum lookups. The earlier algorithm and backend caveats still apply.
+
+Lookup slots also use different conventions. Our counts enumerate every
+required call/map/ROM occurrence. ix reserves slot zero for the provided claim
+and shares other slots across exclusive branches. Subtracting that provided
+slot gives the following required-slot counts; remaining differences include
+branch sharing, primitive zero tests, and different byte algorithms:
+
+| Corresponding helper | Our required slots | ix required slots |
+| --- | ---: | ---: |
+| `compress_layer` | 6 | 5 |
+| `next_layer` | 11 | 5 |
+| `compress` | 289 | 193 |
+| `compress_chunks` | 5 | 3 |
+| `finish` | 20 | 8 |
+| `u64_is_zero` | 0 | 0 |
+| `bytes_to_block` | 64 | 64 |
+| `pad_block` | 2 | 2 |
+| `compress_block` | 29 | 14 |
+| `is_empty` | 1 | 1 |
+| `u64_succ` | 8 | 0 |
+
+Stage2 accumulator columns and quotient columns are excluded from both width
+tables. ix also has separate memory circuits and byte gadgets; our model uses
+ROM membership and precommitted tables without corresponding backend chips.
+All our optimized chip constraints remain degree at most three and all lookup
+expressions affine. No stage2 or end-to-end proving-cost comparison is claimed.
