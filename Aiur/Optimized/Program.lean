@@ -1,12 +1,12 @@
 import Aiur.Optimized.Compile
-import Aiur.Optimized.Layout
+import Aiur.Optimized.CheckedLayout
 import Aiur.Optimized.Dedup
 import Aiur.Modules.Correctness
 
 namespace Aiur.Optimized
 
-/-- Experimental compiler artifact. Degree bounds and deduplication equivalence
-are certified; source soundness/completeness still needs the earlier pass proofs. -/
+/-- Experimental compiler artifact. Layout, degree bounds, and deduplication
+are certified; source soundness/completeness still needs the scoped compiler proof. -/
 structure Artifact (F : Type) [Field F] [DecidableEq F] where
   config : Config
   entries : List String

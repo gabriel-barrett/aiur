@@ -1,6 +1,8 @@
 import Aiur.Circuit.Compile
 import Aiur.Circuit.Stats
 
+deriving instance DecidableEq for Aiur.Scalar.Circuit.ArithExpr
+
 namespace Aiur.Optimized
 
 abbrev Polynomial := Circuit.ArithExpr
@@ -31,25 +33,32 @@ inductive Role where
 structure Scope (F : Type) where
   activation : Polynomial F
   path : Path
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 structure Equation (F : Type) where
   scope : ScopeId
   polynomial : Polynomial F
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 structure Call (F : Type) where
   scope : ScopeId
   channel : String
   args : List (WireValue (Polynomial F))
   result : WireValue Witness
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 structure Cell (F : Type) where
   scope : ScopeId
   address : Polynomial F
   value : WireValue (Polynomial F)
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
+
+/-- The coverage and exclusion equations for a choice are checked separately;
+this record describes their intended parent/child relationship. -/
+structure Choice where
+  parent : ScopeId
+  children : List ScopeId
+  deriving Repr, BEq, DecidableEq
 
 /-- Logical witnesses have roles and scopes; selector aliases need no column. -/
 structure ScopedChip (F : Type) where
@@ -62,6 +71,7 @@ structure ScopedChip (F : Type) where
   equations : Array (Equation F)
   calls : Array (Call F)
   cells : Array (Cell F)
+  choices : Array Choice := #[]
   deriving Repr, BEq
 
 structure ColumnLayout where

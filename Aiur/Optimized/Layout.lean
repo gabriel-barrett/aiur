@@ -3,7 +3,7 @@ import Aiur.Optimized.Basic
 namespace Aiur.Optimized
 
 /-- Resolve forward selector definitions once, keeping every activation affine. -/
-def resolveAliases [Field F] [DecidableEq F] (chip : ScopedChip F) : Except String (ScopedChip F) := do
+def resolveAliasValues [Field F] [DecidableEq F] (chip : ScopedChip F) : Except String (Array (Polynomial F)) := do
   let mut resolved : Array (Polynomial F) := (List.range chip.roles.size).toArray.map Polynomial.var
   for id in (List.range chip.roles.size).reverse do
     if let some expr := chip.aliases[id]?.getD none then
@@ -12,15 +12,22 @@ def resolveAliases [Field F] [DecidableEq F] (chip : ScopedChip F) : Except Stri
       let value := (expr.subst fun v => resolved[v]?.getD (.var v)).simplify
       if value.degree > 1 then throw "non-affine selector definition"
       resolved := resolved.set! id value
-  let replace := fun (expr : Polynomial F) =>
-    (expr.subst fun v => resolved[v]?.getD (.var v)).simplify
-  return { chip with
+  return resolved
+
+def ScopedChip.substitute [Field F] [DecidableEq F]
+    (replacement : Witness → Polynomial F) (chip : ScopedChip F) : ScopedChip F :=
+  let replace := fun (expr : Polynomial F) => (expr.subst replacement).simplify
+  { chip with
     scopes := chip.scopes.map fun scope => { scope with activation := replace scope.activation }
     equations := chip.equations.map fun eq => { eq with polynomial := replace eq.polynomial }
     calls := chip.calls.map fun call => { call with args := call.args.map (WireValue.map replace) }
     cells := chip.cells.map fun cell =>
       { cell with address := replace cell.address, value := cell.value.map replace }
   }
+
+def resolveAliases [Field F] [DecidableEq F] (chip : ScopedChip F) : Except String (ScopedChip F) := do
+  let resolved ← resolveAliasValues chip
+  return chip.substitute fun v => resolved[v]?.getD (.var v)
 
 namespace Degree
 
@@ -72,7 +79,7 @@ def reduce [Field F] [DecidableEq F] (scope : ScopeId) (budget : Nat) :
         if left.degree + right.degree > budget then left ← materialize scope left
       return .mul left right
 
-def bound [Field F] [DecidableEq F] (config : Config) (chip : ScopedChip F) : Except String (ScopedChip F) := do
+def boundState [Field F] [DecidableEq F] (config : Config) (chip : ScopedChip F) : Except String (State F) := do
   if config.maxDegree < 3 then throw "the optimized compiler requires a degree cap of at least three"
   for scope in chip.scopes do
     if scope.activation.degree > 1 then throw "non-affine activation"
@@ -91,7 +98,10 @@ def bound [Field F] [DecidableEq F] (config : Config) (chip : ScopedChip F) : Ex
       return { cell with address, value := { cell.value with words } }
     modify fun state => { state with chip.calls := calls, chip.cells := cells }
   let (_, state) ← build.run { chip := { chip with equations := #[] } }
-  return state.chip
+  return state
+
+def bound [Field F] [DecidableEq F] (config : Config) (chip : ScopedChip F) : Except String (ScopedChip F) :=
+  (boundState config chip).map (·.chip)
 
 end Degree
 
@@ -177,16 +187,5 @@ def emitChip [Field F] [DecidableEq F] (chip : ScopedChip F) (layout : ColumnLay
     memory := chip.cells.toList.map fun cell =>
       ⟨expr cell.address, cell.value.map expr, enable cell.scope⟩
   }
-
-def layOut [Field F] [DecidableEq F] (config : Config) (chip : ScopedChip F) : Except String (LaidOutChip F) := do
-  let logical ← resolveAliases chip
-  let logical ← Degree.bound config logical
-  unless logical.wellScoped do throw s!"auxiliary escaped its activation scope in {chip.name}"
-  let layout := allocateColumns config logical
-  let physical := emitChip logical layout
-  unless physical.wellFormed do throw s!"invalid optimized layout in {chip.name}"
-  if physical.stats.maxConstraintDegree > config.maxDegree || physical.stats.maxLookupDegree > 1 then
-    throw s!"degree reduction failed in {chip.name}"
-  return ⟨logical, layout, physical⟩
 
 end Aiur.Optimized

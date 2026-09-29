@@ -90,8 +90,14 @@ witness extension/projection for a nonrecursive selector definition.
 - Coverage equal to one selects exactly one arm; coverage zero forces all
   children to zero. These results do not rely on a characteristic bound.
 
-These algebraic results still need to be connected to the scoped compiler's
-state transitions and its recursive pattern/enum processing.
+`PatternCorrectness.lean` now connects the actual optimized `Compiler.pattern`
+and `patternList` implementations to source pattern matching. On canonical
+decoded values, all emitted differences are zero exactly for a matching pattern,
+and symbolic bindings decode to the source bindings. `pattern_failure_iff`
+connects the linear failure certificate to a source pattern returning `none`.
+This includes nested tuples and enums, without decoding an inactive constructor's
+payload under the wrong layout. Static slicing reuses the reference compiler's
+existing decoding lemmas through `splitValues_reference`.
 
 [`ScopedSemantics.lean`](../Aiur/Optimized/ScopedSemantics.lean) defines the
 simultaneous equation/ROM relation of a logical chip. Its `emitChip_validRow`,
@@ -106,24 +112,75 @@ of active equations/calls/ROM lookups. `emitChip_complete` packs a logical
 witness into a finite physical row when those variables have bounded columns
 and simultaneously relevant variables agree whenever their columns coincide.
 Inactive auxiliaries may have unrelated values and still share a column.
-This proves the witness-packing argument; the premise about compatibility is
-still to be discharged for `allocateColumns` using the choice/scope invariants.
+The compatibility premises are now discharged by the checked allocation pass,
+as described below.
+
+## Complete layout equivalence
+
+[`CheckedLayout.lean`](../Aiur/Optimized/CheckedLayout.lean) proves
+`layOut_correct` for the **actual successful layout pipeline**:
+
+```lean
+layOut config source = .ok result → source.Realizes result.chip
+```
+
+`Realizes` says, for every ROM, conclusion, and exact ordered list of premises:
+there is a valid assignment to the input scoped chip iff there is a valid row
+of the returned physical chip with that conclusion and those premises. Auxiliary
+values and widths may change. No witness-compatibility, scope-correctness, or
+local-equivalence hypothesis is left for callers of this theorem to supply.
+
+The compiler checks finite structural certificates at each boundary:
+
+- [`AliasCertificate.lean`](../Aiur/Optimized/AliasCertificate.lean) checks the
+  global defining equation of every eliminated selector, strict forward
+  references, the computed expansions, and unchanged interfaces/call results.
+  Source witnesses project to substituted equations; target witnesses extend
+  to eliminated selectors. Neither direction trusts an alias annotation alone.
+- [`DegreeCertificate.lean`](../Aiur/Optimized/DegreeCertificate.lean) records
+  the actual cache of fresh total-expression definitions. It checks strictly
+  earlier dependencies, actual scoped defining equations, both directions of
+  equation correspondence, and ordered calls and ROM cells. Fresh variables
+  may be reused only within the certified scope. Expansion constructs a target
+  witness; induction on witness indices recovers definitions from active target
+  equations. Inactive definitions remain unconstrained.
+- [`ControlCertificate.lean`](../Aiur/Optimized/ControlCertificate.lean) checks
+  choice coverage and sibling exclusion against actual global equations, and
+  verifies each scope's parent/path relationship. The `Choice` records are
+  compiler metadata, never additional circuit assumptions. Active descendants
+  force every branch on their path to be active, so exclusive paths cannot both
+  be active. This is valid in every field, including small characteristic.
+- [`AllocationCertificate.lean`](../Aiur/Optimized/AllocationCertificate.lean)
+  checks all variable occurrences, including unconditionally relevant interface
+  and guard variables, ownership, column bounds, and every actual collision in
+  the selected layout. Its proof discharges `emitChip_complete`'s compatibility
+  premises. It does not trust the allocator's greedy search.
+
+Polynomial identity checks use the proved executable simplifier and structural
+equality. This is deliberately conservative: successful certificates imply
+semantic equality, but failure to recognize an identity may reject a candidate.
+No general field decision procedure or noncomputable checker is assumed.
+
+`checkedLayOut` returns its equivalence proof together with the layout;
+`layOut` exposes the existing data-only API and has the theorem above. The
+certificate proofs are erased during execution. The original reference compiler
+and the source evaluation predicate are unchanged.
 
 ## Remaining work
 
-1. Prove scoped expression compilation agrees with the reference local rules,
-   including first-match patterns, inactive code, nested enum validation,
-   destination reuse, hints, and ROM operations. Preserve premise occurrences.
-2. Lift the single-definition and materialization lemmas through
-   `resolveAliases` and `Degree.bound`, including same-scope cache reuse.
-3. Prove the generated choice/path invariants and show `allocateColumns`
-   satisfies the witness-packing hypotheses. The executable ownership check
-   alone is not yet a Lean proof of those semantic invariants.
-4. Compose these earlier stages with the proved emission and deduplication
+1. Prove scoped expression compilation agrees with source evaluation/reference
+   local rules. The pattern compiler is proved; recursive expression compilation,
+   inactive code, nested enum validation, destination reuse, hints, and ROM
+   operations still need their full soundness/completeness induction.
+   `StateSemantics.lean` provides validity under an arbitrary call relation,
+   backward validity under state extension, and primitive operation facts.
+2. Compose that scoped compilation result with the proved layout and deduplication
    results, then with the existing native-source entrypoint theorems. Retain
    their root validity, ROM, allocation-capacity, and acyclicity hypotheses.
 
-Regression checks reject certificates with dropped call occurrences, weakened
-equations, changed static maps, duplicate chip names, or merged pinned entries.
+Regression checks reject certificates with missing degree definitions/defining
+equations, missing selector coverage equations, conflicting shared columns,
+forged scope parents, dropped call occurrences, weakened equations, changed
+static maps, duplicate chip names, or merged pinned entries.
 The Blake3 comparison keeps its previous columns, degree, and lookup counts;
 benchmark agreement remains evidence rather than the missing equivalence proof.

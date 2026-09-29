@@ -1,7 +1,6 @@
 import Aiur.Optimized.Basic
 import Aiur.Circuit.RuleTranslation
 
-deriving instance DecidableEq for Aiur.Scalar.Circuit.ArithExpr
 deriving instance DecidableEq for Aiur.Circuit.Send
 deriving instance DecidableEq for Aiur.Circuit.MemoryLookup
 deriving instance DecidableEq for Aiur.Circuit.Chip

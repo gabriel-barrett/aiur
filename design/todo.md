@@ -162,11 +162,15 @@ without admitted proof steps.
   uniform reverse lifting for every original name. Transport trees and cyclic
   memoized graphs, preserve acyclicity, and prove both integer checker
   equivalences at fixed roots. The actual pass carries a checked certificate.
-- [ ] Finish the optimized compiler's layout and local-rule correspondence and
-  compose the source-to-checker entrypoint theorems. Polynomial simplification,
-  branch algebra, emission, and conditional witness packing are proved.
-  Scoped compilation, alias/degree pass composition, and the generated
-  allocation invariants remain. See [proof status](optimized-equivalence.md).
+- [x] Prove the optimized layout pipeline's complete local-rule equivalence:
+  selector elimination, degree reduction including cache reuse, shared-column
+  allocation, and emission. The compiler checks finite certificates, and
+  `layOut_correct` proves both directions for every successful result.
+- [ ] Prove the scoped expression compiler's source soundness/completeness and
+  compose the source-to-checker entrypoint theorems. Complex pattern conditions
+  and their failure certificates are connected to source pattern matching;
+  recursive expression compilation and enum validation remain. See
+  [proof status](optimized-equivalence.md).
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern

@@ -276,9 +276,11 @@ let alternative ← prepared.compileOptimized { maxDegree := 4, deduplicate := f
 
 Every successful optimized artifact carries Lean proofs of these degree bounds
 and of deduplication equivalence for trees, memoized graphs, and both integer
-checkers at the fixed entrypoints. Polynomial simplification and physical-row
-emission are also proved. **Full equivalence with the reference compiler remains
-pending**, including the scoped expression compiler and allocation invariants.
+checkers at the fixed entrypoints. `layOut_correct` proves the complete local-rule
+equivalence for selector elimination, degree reduction, shared-column allocation,
+and physical-row emission. The compiler checks executable certificates for these
+passes. **Full equivalence with the reference compiler remains pending**: the
+scoped expression compiler still needs its source soundness/completeness proof.
 See the precise [proof status](design/optimized-equivalence.md).
 The existing reference proofs remain checked. Run
 `lake env lean Examples/Optimized.lean` for a comparison that reduces six chips
