@@ -345,7 +345,8 @@ def checkEnumTags (F : Type) [NatCast F] [DecidableEq F] (declaration : EnumDecl
 def compile [Field F] [DecidableEq F] (program : Program F) : Except CompileError (System F) := do
   let _ ← (typecheck program).mapError CompileError.invalidProgram
   for declaration in program.enums do checkEnumTags F declaration
-  return ⟨← program.functions.mapM (Compiler.lowerFunction program), program.enums,
-    program.tables, program.maps⟩
+  let chips ← program.functions.mapM (Compiler.lowerFunction program)
+  let _ ← (checkChips [] chips).mapError (fun _ => CompileError.invalidShape)
+  return ⟨chips, program.enums, program.tables, program.maps⟩
 
 end Aiur.Circuit

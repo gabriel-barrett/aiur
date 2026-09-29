@@ -10,7 +10,7 @@ variable {F : Type} [Field F] [DecidableEq F]
 
 /-- The implemented deduplication pass preserves each public entry claim.
 This theorem concerns the optimized system before and after deduplication;
-equivalence with the reference compiler requires the earlier pass proofs. -/
+`Equivalence.lean` composes it with the earlier passes and reference compiler. -/
 theorem Artifact.dedup_derives_iff (compiled : Artifact F) {rom : WireROM F} {root : Circuit.Message F}
     (entry : root.channel ∈ compiled.entries) :
     Circuit.Derives compiled.unmerged rom root ↔ Circuit.Derives compiled.system rom root := by

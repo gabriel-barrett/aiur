@@ -349,13 +349,16 @@ end Certificate
 structure Checked (source : ScopedChip F) where
   chip : ScopedChip F
   equivalent : source.Equivalent chip
+  name_eq : chip.name = source.name
+  inputs_eq : chip.inputs = source.inputs
+  output_eq : chip.output = source.output
 
 /-- Check the actual optimizer output; no correctness claim about its search
 or cache heuristics is trusted by the certificate theorem. -/
 def certify (source : ScopedChip F) (state : State F) : Except String (Checked source) := do
   let values := expand state.chip.roles.size state.cache
   if checked : Certificate source state.chip state.cache values then
-    return ⟨state.chip, checked.equivalent⟩
+    return ⟨state.chip, checked.equivalent, checked.1, checked.2.1, checked.2.2.1⟩
   else throw s!"invalid degree-reduction certificate in {source.name}"
 
 def checkedBound (config : Config) (source : ScopedChip F) : Except String (Checked source) := do

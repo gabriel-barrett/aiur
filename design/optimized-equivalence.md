@@ -1,8 +1,70 @@
 # Optimized compiler equivalence
 
-The full reference-compiler / optimized-compiler equivalence theorem is **not
-finished**. The results below are checked Lean proofs without admitted steps.
-The source AST and evaluation predicate are unchanged.
+The full reference-compiler / optimized-compiler equivalence is proved, including
+the scoped expression compiler, physical layout passes, and recursive chip
+deduplication. Both integer checkers accept exactly the same selected entry
+claims. The optimized path also has direct soundness/completeness theorems from
+the original module/source evaluation predicate to checker acceptance.
+
+All results are checked Lean proofs without admitted steps or added axioms.
+The source AST and evaluation predicate are unchanged. Memoized soundness still
+requires an acyclic support graph; acceptance equivalence also covers cyclic
+graphs, without a source totality assumption.
+
+## Full compiler and source theorems
+
+[`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean) proves, given actual
+successful reference and optimized compilations of the same `Program F`:
+
+```lean
+reference_derives_iff
+reference_memoDerives_iff
+reference_acyclic_iff
+reference_check_iff
+reference_checkMemo_iff
+```
+
+For a root whose channel is a selected entrypoint, `reference_check_iff` says:
+
+```text
+(exists rows, reference.check ROM root rows = ok ())
+  iff
+(exists rows, optimized.system.check ROM root rows = ok ())
+```
+
+`reference_checkMemo_iff` gives the same statement for the weighted checker.
+The ROM and root claim are identical on both sides; row widths, row counts,
+internal channels, and premise occurrences may differ. These are equivalences
+of existence of accepted rows. They cover invalid root/ROM contexts too, which
+both sides reject. Successful compilation establishes global layout validity;
+callers need not supply a separate `WellFormed` hypothesis or semantic
+certificate. The reference compiler now checks the emitted chip layouts as the
+optimized compiler already did.
+
+[`NativeCorrectness.lean`](../Aiur/Optimized/NativeCorrectness.lean) composes
+specialization, late source lowering, mandatory inlining, optimized compilation,
+and deduplication. Its public module results are:
+
+- `ModulesArtifact.check_complete` and `checkMemo_complete`: a source evaluation
+  produces accepted rows, provided its allocation heap fits the field.
+- `ModulesArtifact.run_complete` and `runMemo_complete`: the same conclusion
+  follows from a successful executor run.
+- `ModulesArtifact.check_sound`: accepted rows and decoded arguments/results
+  yield the original module's `EvalCall`, with pointer-containing results related
+  through `Represents`.
+- `ModulesArtifact.checkMemo_acyclic_sound`: the same soundness result when the
+  support graph chosen through `checkMemo_sound` is acyclic.
+
+Completeness over a finite field assumes `heap.length ≤ Fintype.card F`.
+The underlying `GenericArtifact.heap_complete` alternatively accepts an
+injective embedding of allocated addresses. Soundness uses the valid ROM
+established by the checker and requires neither this capacity bound nor equal
+source/circuit pointer addresses. The memoized condition is on
+`Classical.choice (system.checkMemo_sound checked)`, not totality of the source
+program. This witness selection is noncomputable.
+
+These source theorems need only the successful optimized compilation stored in
+`GenericArtifact.compiled`; they do not require running the reference compiler.
 
 ## Reusable rule interface
 
@@ -19,8 +81,45 @@ reuse the existing integer checker/derivation equivalences. These last two
 theorems require both checker contexts to be valid: local rule equivalence alone
 does not equate global namespace and entry-shape checks.
 
-These are generic transfer theorems. They do **not** assume away the obligation
-to prove that the optimized expression compiler has the same rules.
+These generic transfer theorems are useful when a pass preserves premise
+multiplicities exactly. The whole-compiler comparison uses the shared local
+semantic interface below, while layout and deduplication retain their stronger
+correspondences.
+
+## Shared local semantics and scoped compilation
+
+[`SemanticModel.lean`](../Aiur/Circuit/SemanticModel.lean) exposes local compiler
+obligations: a valid rule evaluates its source function with calls left as
+premises; conversely such a body evaluation constructs a valid rule. It also
+records the declared result type. Both executable compilers discharge this
+interface with `compile_semanticModel`; static maps are membership leaves.
+The interface is a proved intermediate theorem, not an assumption required of
+the user.
+
+The open evaluation relation records which calls are available, rather than an
+ordered trace of call occurrences. Consequently the shared comparison uses
+[`SupportedEquivalence.lean`](../Aiur/Circuit/SupportedEquivalence.lean): a source
+rule with local providers for its premises can be reproduced using those
+premises. Premises may be omitted or reused. This suffices for closed trees and
+finite memoized graphs, including cyclic ones. Each new graph edge follows an
+old edge, so acyclicity is preserved. The construction can remove cycles; it
+does not assert that a particular graph remains cyclic. No premise is assumed
+to have a terminating evaluation. Redundant checker rows are handled by the
+existing row-to-derivation theorems.
+
+The optimized compiler's actual recursive soundness and witness proofs are in
+`ExpressionCorrectness.lean`, `ExpressionWitness.lean`, `LocalCorrectness.lean`,
+and `LocalWitness.lean`. They cover first-match branches, refutable patterns,
+inactive code, nested enum validation, destination reuse, hints, and ROM
+operations. `InactiveWitness.lean` constructs witnesses for disabled paths;
+`ChoiceFacts.lean` and `ChoiceWitness.lean` connect the emitted selector equations
+to the chosen branch. State layout and scope invariants are established by the
+compiler, not imposed on public callers.
+
+`ReferenceState.lean` translates builder states and reuses the existing
+constructive allocation/equation witness lemmas. This is proof reuse; the two
+expression compilers remain separate algorithms. `SemanticCorrectness.lean`
+and `SemanticMemory.lean` share the closing and heap/ROM arguments across them.
 
 ## Certified deduplication
 
@@ -163,31 +262,21 @@ No general field decision procedure or noncomputable checker is assumed.
 
 `checkedLayOut` returns its equivalence proof together with the layout;
 `layOut` exposes the existing data-only API and has the theorem above. The
-certificate proofs are erased during execution. The original reference compiler
-and the source evaluation predicate are unchanged.
+certificate proofs are erased during execution. The source evaluation predicate
+is unchanged.
 
-## Remaining work
+## Validation and remaining scope
 
-1. Prove scoped expression compilation agrees with source evaluation/reference
-   local rules. The pattern compiler is proved; recursive expression compilation,
-   inactive code, nested enum validation, destination reuse, hints, and ROM
-   operations still need their full soundness/completeness induction.
-   `StateSemantics.lean` provides validity under an arbitrary call relation,
-   backward validity under state extension, and primitive operation facts.
-   `PrimitiveCorrectness.lean` connects emitted failure equations and value
-   equalities to that state semantics. `ReferenceState.lean` translates a
-   scoped builder state to the reference builder state and proves their
-   validity predicates equivalent. Its allocation and equation bridges reuse
-   the existing constructive witness-extension proofs, including bulk typed
-   values. This translation of builder states does not identify the two
-   expression compilation algorithms; their recursive proof still remains.
-2. Compose that scoped compilation result with the proved layout and deduplication
-   results, then with the existing native-source entrypoint theorems. Retain
-   their root validity, ROM, allocation-capacity, and acyclicity hypotheses.
+`AiurTests/Optimized.lean` audits the final local, checker-equivalence, and
+source/checker theorem axioms. Only `propext`, `Classical.choice`, and `Quot.sound`
+occur; there are no admitted proofs. The executable regressions exercise small
+fields, enums, hints, ROM, both checkers, recursive deduplication, layouts, and
+source features.
 
 Regression checks reject certificates with missing degree definitions/defining
 equations, missing selector coverage equations, conflicting shared columns,
 forged scope parents, dropped call occurrences, weakened equations, changed
 static maps, duplicate chip names, or merged pinned entries.
-The Blake3 comparison keeps its previous columns, degree, and lookup counts;
-benchmark agreement remains evidence rather than the missing equivalence proof.
+The Blake3 comparison keeps its previous columns, degree, and lookup counts.
+Production witness generation and connection to a concrete cryptographic backend
+remain separate work; neither is assumed by these abstract acceptance theorems.

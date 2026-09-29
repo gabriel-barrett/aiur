@@ -33,6 +33,9 @@ theorem realizes_emit {source logical : ScopedChip F} {layout : ColumnLayout}
 
 structure CheckedLayout (source : ScopedChip F) extends LaidOutChip F where
   equivalent : source.Realizes chip
+  name_eq : chip.name = source.name
+  inputTypes : chip.inputs.map WireValue.type = source.inputs.map WireValue.type
+  outputType : chip.output.type = source.output.type
 
 def checkedLayOut (config : Config) (chip : ScopedChip F) : Except String (CheckedLayout chip) := do
   let aliases ← Alias.checkedResolve chip
@@ -47,7 +50,11 @@ def checkedLayOut (config : Config) (chip : ScopedChip F) : Except String (Check
         throw s!"degree reduction failed in {chip.name}"
       return {
         logical, layout, chip := physical
-        equivalent := realizes_emit (aliases.equivalent.trans degree.equivalent) allocation formed }
+        equivalent := realizes_emit (aliases.equivalent.trans degree.equivalent) allocation formed
+        name_eq := degree.name_eq.trans aliases.name_eq
+        inputTypes := by simp [physical, emitChip, logical, degree.inputs_eq, aliases.inputs_eq,
+          List.map_map, Function.comp_def]
+        outputType := by simp [physical, emitChip, logical, degree.output_eq, aliases.output_eq] }
     else throw s!"invalid optimized layout in {chip.name}"
   else throw s!"invalid column-allocation certificate in {chip.name}"
 
@@ -65,5 +72,17 @@ theorem layOut_correct {config : Config} {source : ScopedChip F} {result : LaidO
       have same : checked.toLaidOutChip = result := by simpa [found, Except.map] using compiled
       cases same
       exact checked.equivalent
+
+theorem layOut_interface {config : Config} {source : ScopedChip F} {result : LaidOutChip F}
+    (compiled : layOut config source = .ok result) :
+    result.chip.name = source.name ∧ result.chip.inputs.map WireValue.type = source.inputs.map WireValue.type ∧
+      result.chip.output.type = source.output.type := by
+  unfold layOut at compiled
+  cases found : checkedLayOut config source with
+  | error error => simp [found, Except.map] at compiled
+  | ok checked =>
+      have same : checked.toLaidOutChip = result := by simpa [found, Except.map] using compiled
+      cases same
+      exact ⟨checked.name_eq, checked.inputTypes, checked.outputType⟩
 
 end Aiur.Optimized

@@ -5,8 +5,9 @@ import Aiur.Modules.Correctness
 
 namespace Aiur.Optimized
 
-/-- Experimental compiler artifact. Layout, degree bounds, and deduplication
-are certified; source soundness/completeness still needs the scoped compiler proof. -/
+/-- Alternative compiler artifact with certified layout, degree bounds, and
+deduplication. `Equivalence` and `NativeCorrectness` connect successful compilation
+to both integer checkers and the original source evaluation predicate. -/
 structure Artifact (F : Type) [Field F] [DecidableEq F] where
   config : Config
   entries : List String
@@ -30,8 +31,9 @@ def compile [Field F] [DecidableEq F] (program : Program F) (entries : List Stri
   let layouts ← program.functions.mapM fun fn => do
     layOut config (← Compiler.function program config fn)
   let initial : Circuit.System F := ⟨layouts.map (·.chip), program.enums, program.tables, program.maps⟩
-  let result ← if config.deduplicate then Dedup.run initial entries
+  let deduplicate : Except String (Dedup.CheckedResult initial entries) := if config.deduplicate then Dedup.run initial entries
     else Dedup.certify initial entries (Dedup.identity initial)
+  let result ← deduplicate
   let _ ← (Circuit.checkChips [] result.system.chips).mapError reprStr
   if h : result.system.chips.all (fun chip => decide
       (chip.stats.maxConstraintDegree ≤ config.maxDegree ∧ chip.stats.maxLookupDegree ≤ 1)) = true then
@@ -61,6 +63,8 @@ variable {F : Type} [Field F] [DecidableEq F]
 structure GenericArtifact (prepared : Generic.Specialized source entries) where
   inlined : Inlining.Prepared prepared.program prepared.inlineNames entries
   artifact : Artifact F
+  config : Config
+  compiled : compile inlined.program entries config = .ok artifact
 
 def GenericArtifact.system {prepared : Generic.Specialized source entries}
     (compiled : GenericArtifact prepared) : Circuit.System F := compiled.artifact.system
@@ -90,8 +94,9 @@ def Specialized.compileOptimized {F : Type} [Field F] [DecidableEq F]
     (prepared : Specialized source entries) (config : Optimized.Config := {}) :
     Except String (Optimized.GenericArtifact prepared) := do
   let inlined ← Inlining.prepare prepared.program prepared.inlineNames entries
-  let artifact ← Optimized.compile inlined.program entries config
-  return ⟨inlined, artifact⟩
+  match compiled : Optimized.compile inlined.program entries config with
+  | .error error => throw error
+  | .ok artifact => return ⟨inlined, artifact, config, compiled⟩
 
 end Aiur.Generic
 

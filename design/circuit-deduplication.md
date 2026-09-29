@@ -1,10 +1,13 @@
 # Circuit deduplication
 
-Status: implemented for the experimental [optimized circuit path](constraint-compiler.md)
+Status: implemented and proved for the [optimized circuit path](constraint-compiler.md)
 in [`Aiur/Optimized/Dedup.lean`](../Aiur/Optimized/Dedup.lean). Stable partition,
 representative, and fixed-entrypoint checks are executable. The pass now carries
 a checked structural certificate, with proved equivalence for trees, memoized
-graphs, acyclicity, and both integer checkers. See
+graphs, acyclicity, and both integer checkers. The complete compiler composition
+is proved in [`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean); the original
+source and executor connections are in
+[`NativeCorrectness.lean`](../Aiur/Optimized/NativeCorrectness.lean). See
 [the exact theorem boundaries](optimized-equivalence.md#certified-deduplication).
 
 ## Boundary and fixed entrypoints
@@ -167,9 +170,10 @@ renamed conclusion and premise multiset.
 
 This uniform reverse condition matters. Allowing a representative to implement
 the union of two functions' rules could let a call to one use behavior belonging
-only to the other. Structural matching modulo final callee classes is intended
-to supply the stronger correspondence, with explicit column bijections and
-premise-occurrence matching.
+only to the other. The checked structural match modulo final callee classes
+proves the stronger correspondence. The current pass retains column indices
+and matches call occurrences; column-permutation searches remain a possible
+future extension.
 
 Transport closed derivation trees forward by renaming their local instances.
 Lift a tree backward starting from its fixed original entrypoint: each lifted
@@ -177,9 +181,10 @@ rule supplies the original labels required for its children. This gives
 equivalence for public roots even when internal labels disappear.
 
 Transport memoized graphs without identifying their node indices. Forward
-translation keeps the same graph edges, so an acyclic graph remains acyclic
-even when several claims acquire the same channel. Backward translation may
-need copies of a shared node for different original function names. A finite
+translation keeps the original node indices and routes each new premise
+through an existing edge, so an acyclic graph remains acyclic even when several
+claims acquire the same channel. Backward translation may need copies of a
+shared node for different original function names. A finite
 construction can index nodes by an optimized node and a compatible original
 channel; each lifted edge projects to an existing optimized edge. This supports
 cyclic graphs and preserves acyclicity when it is present. It does not require
@@ -193,14 +198,37 @@ Compose these tree and graph results with the existing integer checker
 equivalences to obtain equivalence of **existence** of accepted traces at the
 fixed roots. Renamed messages preserve forward integer balance, but a particular
 optimized balanced trace need not lift by independently renaming each row;
-the derivation route provides the needed global reconstruction. Preserve unit
-require multiplicities, and carry provide weights in the weighted model.
+the derivation route provides the needed global reconstruction. The unit
+checker still counts every require and provide once. The memoized checker
+retains unit requires and integer provide weights; reconstructed traces may
+use different rows and weights.
 Memoized semantic soundness continues to require an acyclic graph; arbitrary
 cyclic acceptance remains intentionally possible.
 
-Finally compose with the source theorems, keeping their root well-formedness,
-pointer-free entry types, ROM correspondence, and allocation-capacity hypotheses.
-Deduplication transport is now proved, including the finite copied-node graph
-construction. The remaining source composition obligations are in the earlier
-scoped compilation, alias/degree, and allocation stages; deduplication
-equivalence alone does not certify the entire optimized compiler.
+The complete composition with source semantics is now proved. The earlier
+scoped compiler, enum and pattern validation, alias elimination, degree
+materialization, allocation, and emission proofs feed this deduplication
+transport, including its finite copied-node graph construction.
+
+The proof boundaries have different strengths. `layOut_correct` preserves the
+exact ordered local premise list from a scoped chip to its physical chip.
+Deduplication preserves the conclusion and premise multiset under channel
+renaming. The comparison of the two complete compiler implementations uses
+`SupportEquiv`, which requires only that replacement rules use available
+premise claims. Consequently, the entrypoint theorems in
+[`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean) establish existence of
+equivalent trees, memoized graphs, and accepted traces for both integer
+checkers, rather than equality of individual row lists or premise
+multiplicities. Unused balanced components may be discarded during transport.
+
+[`NativeCorrectness.lean`](../Aiur/Optimized/NativeCorrectness.lean) composes this
+with the original module/generic source predicate, specialization, preparation,
+and inlining. `ModulesArtifact.check_complete` and `checkMemo_complete` prove
+completeness for both public checkers, with `heap.length ≤ Fintype.card F` for
+finite-field address capacity. `check_sound` proves unit-checker soundness;
+`checkMemo_acyclic_sound` requires acyclicity of the support graph chosen through
+`checkMemo_sound`.
+Successful execution also supplies accepted rows through `run_complete` and
+`runMemo_complete`. Decoded entry values, statically pointer-free entry types,
+valid ROM tables, and source/circuit pointer correspondence retain their
+existing roles; no source-totality hypothesis is introduced.

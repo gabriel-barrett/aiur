@@ -47,33 +47,56 @@ def splitValues (decls : Declarations) : List Ty → List α → Build F (List (
         (← splitValues decls types (words.drop layout.width))
   | [], _ :: _ => throw "invalid flat value shape"
 
+/-- Logical selector variables allocated by a choice, in arm order. -/
+def choiceSelectors (before : State F) (count : Nat) : List (Polynomial F) :=
+  (List.range count).map fun arm => .var (before.roles.size + arm)
+
+def choiceChildren (before : State F) (count : Nat) : List ScopeId :=
+  (List.range count).map fun arm => before.scopes.size + arm
+
+/-- Booleanity and pairwise exclusion are emitted before the coverage equation,
+with the same ordering as the incremental selector allocator. -/
+def choiceEquations [Field F] (before : State F) (enclosing : Scope F) (count : Nat) :
+    List (Equation F) :=
+  (List.range count).flatMap (fun arm =>
+    let selector : Polynomial F := .var (before.roles.size + arm)
+    ⟨0, .mul selector (.sub selector (.const 1))⟩ ::
+      (List.range arm).map fun previous =>
+        ⟨0, .mul selector (.var (before.roles.size + previous))⟩) ++
+    [⟨0, .sub ((choiceSelectors before count).foldl Polynomial.add (.const 0)) enclosing.activation⟩]
+
+/-- Resolve only the optional parent alias; control equations remain present. -/
+def choiceAliases [Field F] (before : State F) (enclosing : Scope F) (count : Nat) :
+    Array (Option (Polynomial F)) :=
+  let aliases := before.aliases ++ (List.replicate count none).toArray
+  let roles := before.roles ++ (List.replicate count Role.selector).toArray
+  if before.config.eliminateSelectors && count > 0 then
+    if let .var id := enclosing.activation then
+      if roles[id]? == some .selector && (aliases[id]?.getD none).isNone then
+        aliases.set! id (some ((choiceSelectors before count).foldl Polynomial.add (.const 0)))
+      else aliases
+    else aliases
+  else aliases
+
+/-- The fresh block of selectors and scopes can be allocated in bulk because
+all indices are determined by the original state and the number of arms. -/
+def choiceState [Field F] (before : State F) (parent : ScopeId) (enclosing : Scope F)
+    (count : Nat) : State F :=
+  { before with
+    roles := before.roles ++ (List.replicate count Role.selector).toArray
+    aliases := choiceAliases before enclosing count
+    scopes := before.scopes ++ ((List.range count).map fun arm =>
+      ⟨.var (before.roles.size + arm), enclosing.path ++ [(before.nextChoice, arm)]⟩).toArray
+    nextChoice := before.nextChoice + 1
+    equations := before.equations ++ (choiceEquations before enclosing count).toArray
+    choices := before.choices.push ⟨parent, choiceChildren before count⟩ }
+
 /-- All control equations are global. Branch payload equations use the new scopes. -/
 def choice [Field F] (parent : ScopeId) (count : Nat) : Build F (List ScopeId) := do
   let enclosing ← getScope parent
-  let choiceId := (← get).nextChoice
-  modify fun state => { state with nextChoice := choiceId + 1 }
-  let mut children := []
-  let mut selectors : List (Polynomial F) := []
-  for arm in List.range count do
-    let selector := Polynomial.var (← fresh .selector)
-    equation 0 (.mul selector (.sub selector (.const 1)))
-    for previous in selectors do equation 0 (.mul selector previous)
-    let id := (← get).scopes.size
-    let child : Scope F := ⟨selector, enclosing.path ++ [(choiceId, arm)]⟩
-    modify fun state => { state with scopes := state.scopes.push child }
-    children := children ++ [id]
-    selectors := selectors ++ [selector]
-  let total := selectors.foldl Polynomial.add (.const 0)
-  equation 0 (.sub total enclosing.activation)
-  modify fun state => { state with choices := state.choices.push ⟨parent, children⟩ }
-  -- Define a parent by the first choice that covers it. Later choices retain
-  -- their coverage equations, relating their sums to this same activation.
-  if (← get).config.eliminateSelectors && count > 0 then
-    if let .var id := enclosing.activation then
-      let state ← get
-      if state.roles[id]? == some .selector && (state.aliases[id]?.getD none).isNone then
-        modify fun state => { state with aliases := state.aliases.set! id (some total) }
-  return children
+  let before ← get
+  set (choiceState before parent enclosing count)
+  return choiceChildren before count
 
 mutual
   def validate [Field F] (scope : ScopeId) : Layout → List (Polynomial F) → Build F Unit
@@ -179,95 +202,97 @@ mutual
   def lower [Field F] [DecidableEq F] (program : Program F) (function : String)
       (locals : Locals F) (scope : ScopeId) (expr : Expr F)
       (target : Option (WireValue Witness) := none) : Build F (Symbolic F) := do
-    let value ← match expr with
-    | .literal value => pure (WireValue.field (.const value))
-    | .var name => do
-        let some (_, value) := locals.find? (·.1 == name) | throw s!"unbound variable {name}"
-        pure value
-    | .tuple items => do
-        pure (.tuple (← lowerArgs program function locals scope items))
-    | .construct name ctor args => do
-        let some definition := program.enums.findEnum? name | throw "unknown enum"
-        let index := definition.constructors.findIdx (·.name == ctor)
-        let some constructor := definition.constructors[index]? | throw "unknown constructor"
-        let values ← lowerArgs program function locals scope args
-        if values.map WireValue.type ≠ constructor.fields then throw "constructor argument types"
-        let layout ← getLayout program.enums (.enum name)
-        let payload := values.flatMap WireValue.words
-        if payload.length + 1 > layout.width then throw "constructor payload width"
-        pure ⟨.enum name, .const (index : F) ::
-          (payload ++ List.replicate (layout.width - 1 - payload.length) (.const 0))⟩
-    | .project operand index => do
-        let value ← lower program function locals scope operand
-        let .tuple types := value.type | throw "non-tuple projection"
-        let items ← splitValues program.enums types value.words
-        let some result := items[index]? | throw "projection out of bounds"
-        pure result
-    | .letValue pat value body => do
-        let value ← lower program function locals scope value
-        let (conditions, bindings) ← pattern program.enums pat value
-        for condition in conditions do equation scope condition
-        lower program function (bindings ++ locals) scope body target
-    | .store operand => do
-        let value ← lower program function locals scope operand
-        let result ← destination program.enums scope (.ptr value.type) target
-        let [address] := result.words | throw "pointer width"
-        validateValue program.enums scope value
-        modify fun state => { state with cells := state.cells.push ⟨scope, .var address, value⟩ }
-        pure (result.map Polynomial.var)
-    | .load operand => do
-        let pointer ← lower program function locals scope operand
-        let ⟨.ptr type, [address]⟩ := pointer | throw "non-pointer load"
-        let result ← destination program.enums scope type target
-        let value := result.map Polynomial.var
-        validateValue program.enums scope value
-        modify fun state => { state with cells := state.cells.push ⟨scope, address, value⟩ }
-        pure value
-    | .neg operand => do
-        pure (.field (.sub (.const 0) (← asField (← lower program function locals scope operand))))
-    | .hint type key => do
-        let _ ← lower program function locals scope key
-        if !type.pointerFree program.enums then throw "hint result contains pointers"
-        let result ← destination program.enums scope type target
-        validateValue program.enums scope (result.map Polynomial.var)
-        pure (result.map Polynomial.var)
-    | .assertEq _ left right => do
-        let left ← lower program function locals scope left
-        let right ← lower program function locals scope right
-        if !left.type.pointerFree program.enums then throw "assertion contains pointers"
-        equalValue scope left right
-        pure (.tuple [])
-    | .binary op left right => do
-        let left ← asField (← lower program function locals scope left)
-        let right ← asField (← lower program function locals scope right)
-        match op with
-        | .add => pure (.field (.add left right))
-        | .sub => pure (.field (.sub left right))
-        | .mul => pure (.field (.mul left right))
-        | .div => do
-            let inverse ← fresh (.auxiliary scope)
-            equation scope (.sub (.mul right (.var inverse)) (.const 1))
-            pure (.field (.mul left (.var inverse)))
-    | .call name args => do
-        let some callee := program.findSignature? name | throw s!"unknown function {name}"
-        let args ← lowerArgs program function locals scope args
-        if args.map WireValue.type ≠ callee.params.map Prod.snd then throw "call argument types"
-        let result ← destination program.enums scope callee.result target
-        for arg in args do validateValue program.enums scope arg
-        validateValue program.enums scope (result.map Polynomial.var)
-        modify fun state => { state with calls := state.calls.push ⟨scope, name, args, result⟩ }
-        pure (result.map Polynomial.var)
-    | .matchValue scrutinee arms => do
-        let _ ← liftM ((Circuit.Compiler.checkPatterns program.enums function arms []).mapError reprStr)
-        let type ← liftM ((inferType program function
-          (locals.map fun (name, value) => (name, value.type)) expr).mapError reprStr)
-        let scrutinee ← lower program function locals scope scrutinee
-        let result ← destination program.enums scope type target
-        validateValue program.enums scope (result.map Polynomial.var)
-        let retained := retainArms program.enums arms
-        let branches ← choice scope retained.length
-        lowerArms program function locals scrutinee result branches arms []
-        pure (result.map Polynomial.var)
+    let step : Build F (Symbolic F) := do
+      match expr with
+      | .literal value => pure (WireValue.field (.const value))
+      | .var name => do
+          let some (_, value) := locals.find? (·.1 == name) | throw s!"unbound variable {name}"
+          pure value
+      | .tuple items => do
+          pure (.tuple (← lowerArgs program function locals scope items))
+      | .construct name ctor args => do
+          let some definition := program.enums.findEnum? name | throw "unknown enum"
+          let index := definition.constructors.findIdx (·.name == ctor)
+          let some constructor := definition.constructors[index]? | throw "unknown constructor"
+          let values ← lowerArgs program function locals scope args
+          if values.map WireValue.type ≠ constructor.fields then throw "constructor argument types"
+          let layout ← getLayout program.enums (.enum name)
+          let payload := values.flatMap WireValue.words
+          if payload.length + 1 > layout.width then throw "constructor payload width"
+          pure ⟨.enum name, .const (index : F) ::
+            (payload ++ List.replicate (layout.width - 1 - payload.length) (.const 0))⟩
+      | .project operand index => do
+          let value ← lower program function locals scope operand
+          let .tuple types := value.type | throw "non-tuple projection"
+          let items ← splitValues program.enums types value.words
+          let some result := items[index]? | throw "projection out of bounds"
+          pure result
+      | .letValue pat value body => do
+          let value ← lower program function locals scope value
+          let (conditions, bindings) ← pattern program.enums pat value
+          for condition in conditions do equation scope condition
+          lower program function (bindings ++ locals) scope body target
+      | .store operand => do
+          let value ← lower program function locals scope operand
+          let result ← destination program.enums scope (.ptr value.type) target
+          let [address] := result.words | throw "pointer width"
+          validateValue program.enums scope value
+          modify fun state => { state with cells := state.cells.push ⟨scope, .var address, value⟩ }
+          pure (result.map Polynomial.var)
+      | .load operand => do
+          let pointer ← lower program function locals scope operand
+          let ⟨.ptr type, [address]⟩ := pointer | throw "non-pointer load"
+          let result ← destination program.enums scope type target
+          let value := result.map Polynomial.var
+          validateValue program.enums scope value
+          modify fun state => { state with cells := state.cells.push ⟨scope, address, value⟩ }
+          pure value
+      | .neg operand => do
+          pure (.field (.sub (.const 0) (← asField (← lower program function locals scope operand))))
+      | .hint type key => do
+          let _ ← lower program function locals scope key
+          if !type.pointerFree program.enums then throw "hint result contains pointers"
+          let result ← destination program.enums scope type target
+          validateValue program.enums scope (result.map Polynomial.var)
+          pure (result.map Polynomial.var)
+      | .assertEq _ left right => do
+          let left ← lower program function locals scope left
+          let right ← lower program function locals scope right
+          if !left.type.pointerFree program.enums then throw "assertion contains pointers"
+          equalValue scope left right
+          pure (.tuple [])
+      | .binary op left right => do
+          let left ← asField (← lower program function locals scope left)
+          let right ← asField (← lower program function locals scope right)
+          match op with
+          | .add => pure (.field (.add left right))
+          | .sub => pure (.field (.sub left right))
+          | .mul => pure (.field (.mul left right))
+          | .div => do
+              let inverse ← fresh (.auxiliary scope)
+              equation scope (.sub (.mul right (.var inverse)) (.const 1))
+              pure (.field (.mul left (.var inverse)))
+      | .call name args => do
+          let some callee := program.findSignature? name | throw s!"unknown function {name}"
+          let args ← lowerArgs program function locals scope args
+          if args.map WireValue.type ≠ callee.params.map Prod.snd then throw "call argument types"
+          let result ← destination program.enums scope callee.result target
+          for arg in args do validateValue program.enums scope arg
+          validateValue program.enums scope (result.map Polynomial.var)
+          modify fun state => { state with calls := state.calls.push ⟨scope, name, args, result⟩ }
+          pure (result.map Polynomial.var)
+      | .matchValue scrutinee arms => do
+          let _ ← liftM ((Circuit.Compiler.checkPatterns program.enums function arms []).mapError reprStr)
+          let type ← liftM ((inferType program function
+            (locals.map fun (name, value) => (name, value.type)) expr).mapError reprStr)
+          let scrutinee ← lower program function locals scope scrutinee
+          let result ← destination program.enums scope type target
+          validateValue program.enums scope (result.map Polynomial.var)
+          let retained := retainArms program.enums arms
+          let branches ← choice scope retained.length
+          lowerArms program function locals scrutinee result branches arms []
+          pure (result.map Polynomial.var)
+    let value ← step
     if let some result := target then
       equalValue scope (result.map Polynomial.var) value
       return result.map Polynomial.var

@@ -1,13 +1,17 @@
 # Optimized circuit path
 
-Status: experimental alternative compiler implemented in
-[`Aiur/Optimized`](../Aiur/Optimized.lean), including scoped layout, degree
-reduction, and recursive chip deduplication. Every successful artifact carries
-Lean proofs of its structural degree bounds and deduplication equivalence.
-Reusable local-rule transport, polynomial/branch lemmas, physical emission,
-and conditional witness packing are proved. The earlier pass invariants and
-end-to-end source soundness/completeness remain open. See the detailed
-[proof status](optimized-equivalence.md).
+Status: implemented and proved in [`Aiur/Optimized`](../Aiur/Optimized.lean).
+The executable compiler is connected to source semantics through scoped
+compilation, selector elimination, degree reduction, column allocation,
+physical emission, and recursive chip deduplication.
+[`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean) proves reference/optimized
+equivalence at selected entrypoints for derivation trees, memoized graphs,
+acyclic graphs, and existence of accepted rows for both integer checkers.
+[`NativeCorrectness.lean`](../Aiur/Optimized/NativeCorrectness.lean) connects the
+original module/generic source predicate and successful execution to the final
+checkers. Memoized soundness requires an acyclic support graph; heap completeness
+retains the field-capacity condition. See the detailed
+[theorem boundaries](optimized-equivalence.md).
 
 ## Goal and semantic boundary
 
@@ -63,13 +67,13 @@ values shared by simultaneously active scopes. Eliminating a selector through
 an affine definition is a separate operation from sharing its storage with an
 auxiliary. The layout policy can be refined without changing the output format.
 
-The existing `Generic.Compiled` artifact contains a proof that the reference
-compiler produced its system. The experimental `Optimized.Artifact` is separate;
-it does not claim that equality or reuse the certified wrapper by inserting
-admitted proofs. Its `degreeBound` field proves, for every emitted chip, that
+The existing `Generic.Compiled` artifact records reference compilation. The
+alternative `Optimized.Artifact` records its own compiler output, layouts, and
+deduplication certificate. Its `degreeBound` field proves, for every emitted chip, that
 `maxConstraintDegree ≤ config.maxDegree` and `maxLookupDegree ≤ 1`.
 This certificate comes from a checked decidable proposition about the final
-system, after deduplication. It does not certify semantic correspondence.
+system, after deduplication. Semantic correspondence is proved separately from
+actual successful optimized compilation, using the theorems linked above.
 
 ## API and current measurements
 
@@ -111,8 +115,9 @@ small-field rows for accepted and rejected outputs, including overlapping
 patterns, inactive division and ROM operations, nested enums, hints, static
 maps, and separate calls. It constructs accepted traces for both existing
 integer checkers, tests recursive deduplication and fixed entrypoints, and
-exercises the existing source preparation paths. This is regression evidence;
-production witness generation and semantic correctness proofs remain separate.
+exercises the existing source preparation paths. These tests provide regression
+evidence alongside the semantic correctness proofs. Production witness
+generation remains a separate implementation task.
 
 ## Measure the current circuits first
 
@@ -212,9 +217,10 @@ payloads use named quadratic products. Its cache reuses materialized pure
 expressions only within the same activation scope.
 
 Materialization can be shared across scopes only when the defining equations
-and guards suffice in every scope where it is used. Start conservatively with
-scope-local reuse. Witness extension and projection for each rewrite remain
-proof work; the final emitted expressions' bounds are already certified.
+and guards suffice in every scope where it is used. The current implementation
+uses scope-local reuse. Witness extension and projection are proved for the
+actual alias and degree passes. The checked allocation invariants then justify
+physical column sharing; `layOut_correct` composes these proofs with emission.
 
 ## Branch certificates and first-match order
 
@@ -349,38 +355,62 @@ Rule(chip, ROM, conclusion, premises) :=
     and (chip.premises row).Perm premises
 ```
 
-Auxiliary assignments are existentially quantified. Premises are a multiset,
-represented here by list permutation: their order is irrelevant, but their
-multiplicity must be preserved. Active ROM membership requirements are included
-in `ValidRow`; compare chips using the same ROM and preserve their static table
-and map interpretation.
+Auxiliary assignments are existentially quantified. This `RuleEquiv` interface
+preserves premise multiplicities, allowing only permutation. Active ROM
+membership requirements are included in `ValidRow`; both sides use the same
+ROM and static table/map interpretation.
 
-For each corresponding pair of chips, prove for all conclusions and premise
-lists, under the required shared ROM assumptions,
+The implemented proof separates three boundaries:
 
-```text
-Rule(referenceChip, ROM, conclusion, premises)
-  iff Rule(newChip, ROM, conclusion, premises)
-```
+1. **Scoped chip to physical chip.**
+   [`layOut_correct`](../Aiur/Optimized/CheckedLayout.lean) proves
+   `ScopedChip.Realizes`: for every ROM, conclusion, and exact ordered premise
+   list, a valid logical assignment exists iff a valid emitted row exists.
+   Selector elimination, degree materialization, and shared physical columns
+   are included. Witness extension and projection preserve the full local rule,
+   even though row widths and variable indices differ.
+2. **Reference system to unmerged optimized system.** The actual function
+   proofs, including optimized scoped compilation and layout, establish
+   [`System.SemanticModel`](../Aiur/Circuit/SemanticModel.lean) for both systems.
+   It relates local rows to source body evaluation with calls interpreted by an
+   arbitrary premise relation. This yields
+   [`SupportEquiv`](../Aiur/Circuit/SupportedEquivalence.lean): a supported local
+   rule can be reproduced with the same conclusion using available premise
+   claims. Support uses list membership, so this boundary does not assert exact
+   local premise multiplicities. Closed trees can copy needed subproofs, and
+   memoized graphs route each new edge through an existing edge. Cycles are
+   allowed, and acyclic graphs remain acyclic.
+3. **Deduplication.** Checked structural correspondence gives uniform rule
+   lifting for every member of a merged class, preserving renamed conclusions
+   and premise multisets while fixing entrypoint claims. See
+   [circuit deduplication](circuit-deduplication.md).
 
-Witness extension proves one direction; projection proves the other. Physical
-row lengths and column indices can differ. Local equivalence transports closed
-derivation trees and memoized graphs while retaining claims and edges, hence
-acyclicity. It also transports existential accepted traces for both integer
-checkers, preserving provided claims, required occurrences, and provide weights.
-Static map leaves stay unchanged. Compose these transfer theorems with the
-existing source soundness/completeness theorems, including their root validity,
-allocation-capacity, and memoized acyclicity conditions.
+The resulting whole-compiler theorems prove equality of accepted claims at
+selected entrypoints through the **existence** of derivation trees, memoized
+graphs, and integer-balanced row lists. Particular row counts, provide weights,
+and per-row premise multiplicities
+may differ between witnesses. Redundant rows need not participate in the proof
+extracted from a balanced trace. The implementation still retains separate
+call and lookup occurrences; implementation sharing does not merge them.
 
-This same-channel equivalence is appropriate for column allocation, selector
-gadgets, and degree reduction. Deduplication additionally needs a system-level
-relation allowing internal channels to change while fixing entrypoint claims.
-Prove uniform rule lifting for every member of a merged class; equality of the
-union of their behaviors is insufficient. See the deduplication proposal for
-tree and memoized proof transport. Inlining already has its own proved
-entrypoint equivalence before this stage.
+[`Optimized.compiler_correct`](../Aiur/Optimized/Equivalence.lean) connects ROM
+evaluation of the prepared program to final optimized derivations. The source
+composition in [`NativeCorrectness.lean`](../Aiur/Optimized/NativeCorrectness.lean)
+also includes existing module resolution, specialization, source preparation,
+and inlining equivalences. `ModulesArtifact.check_complete` and
+`checkMemo_complete` start from the original source predicate;
+`run_complete` and `runMemo_complete` start from successful execution.
+For finite fields, completeness assumes `heap.length ≤ Fintype.card F` so
+allocated addresses can be embedded injectively.
 
-## Implementation and remaining proofs
+`ModulesArtifact.check_sound` reconstructs a source evaluation from accepted
+unit-checker rows. `checkMemo_acyclic_sound` does the same when the support graph
+chosen through `checkMemo_sound` is acyclic. These soundness results use
+decoded entry values and relate circuit pointers to the resulting source heap
+through `Represents`; they do not identify the two address spaces or assume
+source functions are total.
+
+## Implementation and proof status
 
 1. Measure current chips and retain representative examples. **Implemented.**
 2. Define the scoped and laid-out representations and the intended invariants.
@@ -389,7 +419,7 @@ entrypoint equivalence before this stage.
    destination reuse, and structural allocation across exclusive branches.
    **Implemented.**
 4. Emit the original circuit datatype and compare the reports on representative
-   programs. Keep this experimental path distinct from the certified compiler.
+   programs. Keep this alternative path distinct from the reference compiler.
    **Implemented.**
 5. Add internal-chip deduplication and retain a checked representative mapping;
    use structural partition refinement to handle recursive groups from the
@@ -397,14 +427,15 @@ entrypoint equivalence before this stage.
    **Implemented.**
 6. Certify structural degree bounds on every successful artifact.
    **Implemented without admitted proofs.**
-7. Prove local and layout correspondence and system-level deduplication
-   transport. **Partially proved:** the reusable transfer interface and the
-   actual deduplication pass are certified for both checkers, including cyclic
-   memoized graphs and preservation of acyclicity. Polynomial simplification,
-   branch algebra, physical emission, and conditional witness packing are also
-   proved. Scoped compilation, alias/degree pass composition, and the generated
-   layout invariants remain; see [the theorem list](optimized-equivalence.md).
+7. Prove actual AST-to-scoped compilation, local layout correspondence, and
+   system-level deduplication transport. **Proved**, including enum validation,
+   inactive branch witnesses, first-match patterns, alias/degree composition,
+   and generated allocation invariants. Whole-compiler support equivalence
+   transports both integer checkers, including cyclic memoized acceptance and
+   preservation of acyclicity; see [the theorem list](optimized-equivalence.md).
 8. Compose the complete pass correspondence with the existing source and
    checker results to certify the alternative path at the fixed entrypoints.
+   **Proved** for the original source predicate and successful execution, with
+   the memory-capacity and conditional memoized-soundness hypotheses above.
 
 No change to the source evaluation relation is needed for any of these steps.

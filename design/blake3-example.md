@@ -142,8 +142,9 @@ agree between compilers and include statically declared inactive slots.
 
 The optimized artifact carries Lean certificates that constraint degrees are
 at most three, lookup expressions are affine, and chip deduplication preserves
-entrypoint acceptance. Full optimized/reference compiler equivalence remains
-pending, as described in the [proof status](optimized-equivalence.md).
+entrypoint acceptance. Full optimized/reference compiler equivalence is proved
+for both integer checkers, including deduplication, as described in the
+[theorem boundaries](optimized-equivalence.md).
 No BLAKE3 execution, test-vector
 validation, or cryptographic correctness proof is claimed by this benchmark.
 
