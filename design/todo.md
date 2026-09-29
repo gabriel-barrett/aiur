@@ -173,6 +173,11 @@ without admitted proof steps.
   module/source predicate and executor to the optimized checker, retaining the
   allocation-capacity and acyclic memoized soundness conditions. See
   [theorem boundaries](optimized-equivalence.md).
+- [ ] Pursue the measured [ix/Blake3 optimization opportunities](ix-blake3-widths.md):
+  certified constant/copy propagation and known-constructor validation; compare
+  slimmer table outputs, fused byte-pair maps, and packed additions against the
+  current small-table library.
+  Preserve the existing semantic boundary and certify any new circuit pass.
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern
