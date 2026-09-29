@@ -182,9 +182,14 @@ without admitted proof steps.
   propagation, and dense column compaction. Preserve the complete local rule,
   including repeated premises, guards, and ROM cells. See
   [value propagation](value-propagation.md).
+- [x] Fold division by known nonzero field constants before degree reduction,
+  preserving operand effects and guarded failure. Slim the Blake3 carry table
+  to byte-only outputs and reconstruct carries with affine expressions; prove
+  the exact map relation and retain the compiler correctness proofs. See
+  [constant division](constant-division.md). Saves another 137 Blake3 columns.
 - [ ] Pursue the remaining [ix/Blake3 optimization opportunities](ix-blake3-widths.md):
-  further validation simplification; compare
-  slimmer table outputs and packed additions with the current byte library.
+  scoped propagation and further validation simplification; compare packed
+  additions with the current byte library and consider other slimmer outputs.
   Preserve the existing semantic boundary and certify any new circuit pass.
 - [x] Generate full U8 byte-pair tables with shared inputs and direct XOR/split
   maps, and use them in the Blake3 comparison. Prove a faster input-uniqueness

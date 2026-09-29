@@ -448,26 +448,43 @@ mutual
               exact ⟨_, WireValue.decode_field _ _, .binary xEval yEval (by
                 simp [evalBinOp, Scalar.Circuit.ArithExpr.denote])⟩
           | div =>
-              obtain ⟨inverse, s₅, inverseRun, inverseBind⟩ := bind_ok.mp rest
-              obtain ⟨⟨⟩, s₆, equationRun, finished⟩ := bind_ok.mp inverseBind
-              obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-              have beforeEquation := beforeOperation.trans (fresh_extends inverseRun)
-              refine ⟨beforeEquation.trans (equation_extends equationRun), fun assignment root valid => ?_⟩
-              obtain ⟨s₅valid, equation⟩ := equation_valid equationRun valid
-              have s₃valid := fresh_valid inverseRun s₅valid
-              obtain ⟨s₁valid, rightEval⟩ := rightMeaning assignment (leftExtension.active root) s₃valid
-              obtain ⟨previous, leftEval⟩ := leftMeaning assignment root s₁valid
-              refine ⟨previous, fun active environment decoded trusted => ?_⟩
-              obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded trusted
-              obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded trusted
-              simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq] at xDecode yDecode
-              subst x; subst y
-              change (s₅.activation scope).denote assignment *
-                (rightPoly.denote assignment * assignment inverse - 1) = 0 at equation
-              rw [beforeEquation.active active, one_mul] at equation
-              exact ⟨_, WireValue.decode_field _ _, .binary xEval yEval (by
-                simp [evalBinOp, Scalar.Circuit.ArithExpr.denote, Scalar.Circuit.inverse_nonzero equation,
-                  Scalar.Circuit.inverse_eq equation, div_eq_mul_inv])⟩
+              cases folded : rightPoly.constantInverse? with
+              | some inverse =>
+                  simp only [folded] at rest
+                  obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
+                  refine ⟨beforeOperation, fun assignment root valid => ?_⟩
+                  obtain ⟨s₁valid, rightEval⟩ := rightMeaning assignment (leftExtension.active root) valid
+                  obtain ⟨previous, leftEval⟩ := leftMeaning assignment root s₁valid
+                  refine ⟨previous, fun active environment decoded trusted => ?_⟩
+                  obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded trusted
+                  obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded trusted
+                  simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq] at xDecode yDecode
+                  subst x; subst y
+                  have known := Polynomial.constantInverse?_sound folded assignment
+                  exact ⟨_, WireValue.decode_field _ _, .binary xEval yEval (by
+                    simp [evalBinOp, Scalar.Circuit.ArithExpr.denote, known.1, known.2, div_eq_mul_inv])⟩
+              | none =>
+                  simp only [folded] at rest
+                  obtain ⟨inverse, s₅, inverseRun, inverseBind⟩ := bind_ok.mp rest
+                  obtain ⟨⟨⟩, s₆, equationRun, finished⟩ := bind_ok.mp inverseBind
+                  obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
+                  have beforeEquation := beforeOperation.trans (fresh_extends inverseRun)
+                  refine ⟨beforeEquation.trans (equation_extends equationRun), fun assignment root valid => ?_⟩
+                  obtain ⟨s₅valid, equation⟩ := equation_valid equationRun valid
+                  have s₃valid := fresh_valid inverseRun s₅valid
+                  obtain ⟨s₁valid, rightEval⟩ := rightMeaning assignment (leftExtension.active root) s₃valid
+                  obtain ⟨previous, leftEval⟩ := leftMeaning assignment root s₁valid
+                  refine ⟨previous, fun active environment decoded trusted => ?_⟩
+                  obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded trusted
+                  obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded trusted
+                  simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq] at xDecode yDecode
+                  subst x; subst y
+                  change (s₅.activation scope).denote assignment *
+                    (rightPoly.denote assignment * assignment inverse - 1) = 0 at equation
+                  rw [beforeEquation.active active, one_mul] at equation
+                  exact ⟨_, WireValue.decode_field _ _, .binary xEval yEval (by
+                    simp [evalBinOp, Scalar.Circuit.ArithExpr.denote, Scalar.Circuit.inverse_nonzero equation,
+                      Scalar.Circuit.inverse_eq equation, div_eq_mul_inv])⟩
       | call name args =>
           cases found : program.findSignature? name with
           | none => simp [found] at valueRun

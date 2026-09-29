@@ -25,6 +25,12 @@ fn overlap(p: (Field, Field)) -> Field {
 fn conjunction(x: Field, y: Field) -> Field { match (x, y) { (0, 0) => 1, _ => 2 } }
 fn partial_match(x: Field) -> Field { match x { 0 => 1 } }
 fn divide(x: Field, y: Field) -> Field { match x { 0 => y / y, _ => x / x } }
+fn constant_division(x: Field) -> Field { x / 2 }
+fn computed_division(x: Field) -> Field { x / (4 - 2) }
+fn cancelled_division(x: Field, y: Field) -> Field { x / (y - y + 2) }
+fn zero_constant_division(x: Field) -> Field { x / 3 }
+fn guarded_constant_division(x: Field) -> Field { match x { 0 => x / 2, _ => x / 3 } }
+fn discarded_division(x: Field) -> Field { let _ = x / 3; 1 }
 fn nested(x: Field, y: Field) -> Field { match x { 0 => match y { 0 => 0, _ => 1 }, _ => 2 } }
 fn separate(x: Field, y: Field) -> Field {
   let a = match x { 0 => 0, _ => 1 };
@@ -33,10 +39,12 @@ fn separate(x: Field, y: Field) -> Field {
 }
 fn product(a: Field, b: Field, c: Field, d: Field) -> Field { a * b * c * d }
 fn helper(x: Field) -> Field { x * x }
+fn called_divisor(x: Field) -> Field { let y = helper(x); x / (y - y + 2) }
 fn forward(x: Field) -> Field { helper(x) }
 fn repeated(x: Field) -> Field { let a = helper(x); let b = helper(x); a + b }
 fn lookup_product(a: Field, b: Field, c: Field) -> Field { helper(a * b * c) }
 fn require(x: Field) -> () { let 0 = x; () }
+fn effectful_divisor(x: Field) -> Field { x / { let () = require(x); 2 } }
 fn unit_call(x: Field) -> Field { let _ = require(x); 1 }
 fn memory(x: Field) -> Field { let p = &x; *p }
 fn guarded_memory(x: Field) -> Field { match x { 0 => 0, _ => { let p = &(1 / x); *p } } }
@@ -175,6 +183,15 @@ def run : IO Unit := do
   ensure "enum load allocated validation selectors"
     (unusedLoad.roles.size == 4 && unusedLoad.equations.isEmpty && unusedLoad.cells.size == 1)
   ensure "enum load width includes redundant validation" (width compiled "load_unused" == 4)
+  for name in ["constant_division", "computed_division"] do
+    let lowered ← get (original name)
+    ensure s!"{name}: constant division allocated an inverse witness" (lowered.roles.size == 2)
+    ensure s!"{name}: affine quotient retained an output column" (width compiled name == 1)
+  let zeroDivision ← get (original "zero_constant_division")
+  ensure "zero field denominator lost its inverse constraint" (zeroDivision.roles.size == 3)
+  for name in ["called_divisor", "effectful_divisor"] do
+    let some chip := compiled.system.findChip? name | throw (IO.userError s!"missing {name}")
+    ensure s!"{name}: constant folding discarded a call" (chip.sends.length == 1)
   let product ← get (original "product")
   let aliases ← get (Optimized.Alias.checkedResolve product)
   let reduced ← get (Optimized.Degree.boundState {} aliases.chip)
@@ -237,6 +254,8 @@ def run : IO Unit := do
           (out == if x == 0 && y == 0 then 1 else 2)
         checkCase program compiled "divide" [.field x, .field y] (.field out)
           (out == 1 && (x != 0 || y != 0))
+        checkCase program compiled "cancelled_division" [.field x, .field y] (.field out)
+          (out == x / 2)
         checkCase program compiled "nested" [.field x, .field y] (.field out)
           (out == if x == 0 then (if y == 0 then 0 else 1) else 2)
         checkCase program compiled "separate" [.field x, .field y] (.field out)
@@ -248,6 +267,12 @@ def run : IO Unit := do
         checkCase program compiled "lookup_product" [.field x, .field y, .field 2] (.field out)
           (out == (x * y * 2) * (x * y * 2))
     for out in ([0, 1, 2] : List K) do
+      for name in ["constant_division", "computed_division", "called_divisor"] do
+        checkCase program compiled name [.field x] (.field out) (out == x / 2)
+      for name in ["zero_constant_division", "discarded_division"] do
+        checkCase program compiled name [.field x] (.field out) false
+      for name in ["guarded_constant_division", "effectful_divisor"] do
+        checkCase program compiled name [.field x] (.field out) (x == 0 && out == 0)
       checkCase program compiled "partial_match" [.field x] (.field out) (x == 0 && out == 1)
       checkCase program compiled "preimage" [.field x] (.field out) (out * out == x)
       checkCase program compiled "failed_key" [] (.field out) false
@@ -316,7 +341,9 @@ def run : IO Unit := do
     (rowFor reference cyclicROM cyclicRoot (fun _ => true)).isNone
   -- Produce actual accepted trees of rows for both existing checkers.
   for (name, args, out) in [("repeated", [.field 2], .field 2),
-      ("unit_call", [.field 0], .field 1), ("table_call", [.field 2], .field 0)] do
+      ("unit_call", [.field 0], .field 1), ("table_call", [.field 2], .field 0),
+      ("constant_division", [.field 2], .field 1), ("called_divisor", [.field 2], .field 1),
+      ("effectful_divisor", [.field 0], .field 0)] do
     let claim : Circuit.Message K := ⟨name, args, out⟩
     let some rows := rowsFor program compiled.system ⟨[]⟩ 20 claim |
       throw (IO.userError s!"could not construct rows for {name}")
@@ -373,6 +400,7 @@ end AiurOptimizedTests
 #print axioms Aiur.Optimized.emitChip_validRow
 #print axioms Aiur.Optimized.emitChip_complete
 #print axioms Aiur.Optimized.Polynomial.denote_simplify
+#print axioms Aiur.Optimized.Polynomial.constantInverse?_sound
 #print axioms Aiur.Optimized.failure_certificate_iff
 #print axioms Aiur.Optimized.selector_exactly_one
 #print axioms Aiur.Optimized.Degree.Certificate.equivalent

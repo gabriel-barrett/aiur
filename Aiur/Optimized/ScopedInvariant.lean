@@ -474,14 +474,22 @@ mutual
               subst middle
               exact ⟨prefixExtension, rightLayout⟩
           | div =>
-              obtain ⟨inverse, s₅, inverseRun, equationBind⟩ := bind_ok.mp operatorRun
-              obtain ⟨⟨⟩, s₆, equationRun, pureRun⟩ := bind_ok.mp equationBind
-              obtain ⟨_, stateEq⟩ := pure_ok.mp pureRun
-              subst middle
-              have inverseExtension := prefixExtension.trans (fresh_extends inverseRun)
-              exact ⟨inverseExtension.trans (equation_grow equationRun),
-                equation_scoped equationRun (fresh_scoped inverseRun rightLayout)
-                  (inverseExtension.scopeValid scopeValid)⟩
+              cases folded : rightWord.constantInverse? with
+              | some inverse =>
+                  simp only [folded] at operatorRun
+                  obtain ⟨_, stateEq⟩ := pure_ok.mp operatorRun
+                  subst middle
+                  exact ⟨prefixExtension, rightLayout⟩
+              | none =>
+                  simp only [folded] at operatorRun
+                  obtain ⟨inverse, s₅, inverseRun, equationBind⟩ := bind_ok.mp operatorRun
+                  obtain ⟨⟨⟩, s₆, equationRun, pureRun⟩ := bind_ok.mp equationBind
+                  obtain ⟨_, stateEq⟩ := pure_ok.mp pureRun
+                  subst middle
+                  have inverseExtension := prefixExtension.trans (fresh_extends inverseRun)
+                  exact ⟨inverseExtension.trans (equation_grow equationRun),
+                    equation_scoped equationRun (fresh_scoped inverseRun rightLayout)
+                      (inverseExtension.scopeValid scopeValid)⟩
       | call name args =>
           cases found : program.findSignature? name with
           | none => simp [found] at stepRun

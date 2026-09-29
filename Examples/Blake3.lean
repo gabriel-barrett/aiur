@@ -1,4 +1,5 @@
 import Aiur.Modules
+import Aiur.Library.Carry
 import Mathlib.Algebra.Field.Rat
 
 /-!
@@ -30,7 +31,7 @@ module U8 {
     table pair_xor_parts7: (Field, Field) {}
     table pair_units: () {}
     table sum_inputs: (Field,) {}
-    table sum_parts: (Field, Field) {}
+    table sum_bytes: Field {}
 
     map from_field(x: Field) -> Byte = byte_inputs => byte_values;
     map range_pair(a: Field, b: Field) -> () = pair_inputs => pair_units;
@@ -40,7 +41,12 @@ module U8 {
     map mul(a: Byte, b: Byte) -> (Byte, Byte) = pair_inputs => pair_products;
     map xor_split4(a: Byte, b: Byte) -> (Field, Field) = pair_inputs => pair_xor_parts4;
     map xor_split7(a: Byte, b: Byte) -> (Field, Field) = pair_inputs => pair_xor_parts7;
-    map split_sum(sum: Field) -> (Byte, Field) = sum_inputs => sum_parts;
+    map sum_byte(sum: Field) -> Byte = sum_inputs => sum_bytes;
+
+    inline fn split_sum(sum: Field) -> (Byte, Field) {
+        let byte = sum_byte(sum);
+        (byte, (sum - byte) / 256)
+    }
 }
 
 module Words {
@@ -48,7 +54,7 @@ module Words {
     type U64 = [U8::Byte; 8];
 
     // All sums are in 0..767 for byte operands and the propagated carry.
-    // The table determines both the result byte and the carry; no advice.
+    // The table gives the byte; the input and byte determine the carry.
     inline fn add(a: U32, b: U32) -> U32 {
         let (s0, c1) = U8::split_sum(a[0] + b[0]);
         let (s1, c2) = U8::split_sum(a[1] + b[1] + c1);
@@ -427,10 +433,11 @@ module Benchmark {
 
 /-- Full byte-pair tables, sharing one input trace across the operations from
 ix's `Bytes2` gadget. Output traces have the same order: row `256*a + b`.
-The separate carry table keeps word addition deterministic and hint-free. -/
+The separate sum table provides one byte; an affine expression recovers its carry. -/
 def u8Tables : List (Generic.Table Nat) :=
   let byteInputs := (List.range 256).map fun n => Generic.Expr.tuple [.literal n]
   let pairs := (List.range 256).flatMap fun a => (List.range 256).map fun b => (a, b)
+  let sums := Library.Carry.rows 256 768
   [
     ⟨"byte_inputs", .tuple [.field], byteInputs⟩,
     ⟨"byte_values", .field, (List.range 256).map (.literal ·)⟩,
@@ -448,9 +455,8 @@ def u8Tables : List (Generic.Table Nat) :=
       let x := Nat.xor a b
       .tuple [.literal (x / 128), .literal ((x % 128) * 2)]⟩,
     ⟨"pair_units", .tuple [], pairs.map fun _ => .tuple []⟩,
-    ⟨"sum_inputs", .tuple [.field], (List.range 768).map fun n => .tuple [.literal n]⟩,
-    ⟨"sum_parts", .tuple [.field, .field],
-      (List.range 768).map fun n => .tuple [.literal (n % 256), .literal (n / 256)]⟩
+    ⟨"sum_inputs", .tuple [.field], sums.map fun (n, _) => .tuple [.literal n]⟩,
+    ⟨"sum_bytes", .field, sums.map fun (_, byte) => .literal byte⟩
   ]
 
 def source : Modules.Program Nat :=
@@ -494,7 +500,7 @@ def checkU8Tables : Except String Unit := do
   let parts7 ← (← tableRows "pair_xor_parts7").mapM pair
   let units ← tableRows "pair_units"
   let sumInputs ← tableRows "sum_inputs"
-  let sums ← (← tableRows "sum_parts").mapM pair
+  let sums ← (← tableRows "sum_bytes").mapM scalar
   ensure "incomplete byte tables" (byteInputs.size == 256 && values.size == 256)
   ensure "incomplete byte-pair tables" ([inputs.size, xors.size, adds.size, subs.size,
     muls.size, parts4.size, parts7.size, units.size].all (· == 65536))
@@ -502,9 +508,10 @@ def checkU8Tables : Except String Unit := do
   for n in List.range 256 do
     ensure "byte table alignment" (byteInputs[n]! == .tuple [.literal n] && values[n]! == n)
   for n in List.range 768 do
-    let (byte, carry) := sums[n]!
+    let byte := sums[n]!
     ensure "carry table alignment" (sumInputs[n]! == .tuple [.literal n])
-    ensure "carry decomposition" (byte < 256 && carry < 3 && byte + 256 * carry == n)
+    ensure "carry decomposition" (byte < 256 && n / 256 < 3 && byte + 256 * (n / 256) == n)
+    ensure "field carry reconstruction" (((n : Rat) - byte) / 256 == (n / 256 : Nat))
   for a in List.range 256 do
     for b in List.range 256 do
       let index := 256 * a + b

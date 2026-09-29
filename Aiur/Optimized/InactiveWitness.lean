@@ -237,19 +237,28 @@ unconditional Boolean/coverage equations introduced by nested choices. -/
               refine ⟨b, e₁.trans e₂, c₂, Circuit.Compiler.bounded_field.mpr ?_⟩
               simp [Scalar.Circuit.ArithExpr.inBounds, leftWordBound, rightWordBound]
           | div =>
-              obtain ⟨inverse, s₅, inverseRun, equationBind⟩ := bind_ok.mp operatorRun
-              obtain ⟨⟨⟩, s₆, equationRun, pureRun⟩ := bind_ok.mp equationBind
-              obtain ⟨rfl, stateEq⟩ := pure_ok.mp pureRun
-              subst middle
-              obtain ⟨c, e₃, c₃, inverseBound⟩ := c₂.fresh inverseRun
-              have inversePolyBound : (Polynomial.var inverse : Polynomial F).inBounds s₅.roles.size = true := by
-                simpa [Scalar.Circuit.ArithExpr.inBounds] using inverseBound
-              obtain ⟨e₄, c₄⟩ := c₃.equation equationRun (by
-                simp only [Scalar.Circuit.ArithExpr.inBounds, Bool.and_eq_true, and_true]
-                exact ⟨e₃.bound rightWordBound, inversePolyBound⟩)
-              refine ⟨c, ((e₁.trans e₂).trans e₃).trans e₄, c₄, Circuit.Compiler.bounded_field.mpr ?_⟩
-              simpa only [Scalar.Circuit.ArithExpr.inBounds, Bool.and_eq_true] using
-                And.intro ((e₃.trans e₄).bound leftWordBound) (e₄.bound inversePolyBound)
+              cases folded : rightWord.constantInverse? with
+              | some inverse =>
+                  simp only [folded] at operatorRun
+                  obtain ⟨rfl, stateEq⟩ := pure_ok.mp operatorRun
+                  subst middle
+                  refine ⟨b, e₁.trans e₂, c₂, Circuit.Compiler.bounded_field.mpr ?_⟩
+                  simpa [Scalar.Circuit.ArithExpr.inBounds] using leftWordBound
+              | none =>
+                  simp only [folded] at operatorRun
+                  obtain ⟨inverse, s₅, inverseRun, equationBind⟩ := bind_ok.mp operatorRun
+                  obtain ⟨⟨⟩, s₆, equationRun, pureRun⟩ := bind_ok.mp equationBind
+                  obtain ⟨rfl, stateEq⟩ := pure_ok.mp pureRun
+                  subst middle
+                  obtain ⟨c, e₃, c₃, inverseBound⟩ := c₂.fresh inverseRun
+                  have inversePolyBound : (Polynomial.var inverse : Polynomial F).inBounds s₅.roles.size = true := by
+                    simpa [Scalar.Circuit.ArithExpr.inBounds] using inverseBound
+                  obtain ⟨e₄, c₄⟩ := c₃.equation equationRun (by
+                    simp only [Scalar.Circuit.ArithExpr.inBounds, Bool.and_eq_true, and_true]
+                    exact ⟨e₃.bound rightWordBound, inversePolyBound⟩)
+                  refine ⟨c, ((e₁.trans e₂).trans e₃).trans e₄, c₄, Circuit.Compiler.bounded_field.mpr ?_⟩
+                  simpa only [Scalar.Circuit.ArithExpr.inBounds, Bool.and_eq_true] using
+                    And.intro ((e₃.trans e₄).bound leftWordBound) (e₄.bound inversePolyBound)
       | call name args =>
           cases found : program.findSignature? name with
           | none => simp [found] at stepRun

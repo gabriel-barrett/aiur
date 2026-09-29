@@ -1,4 +1,4 @@
-import Aiur.Optimized.Basic
+import Aiur.Optimized.ConstantDivision
 
 namespace Aiur.Optimized
 namespace Compiler
@@ -269,10 +269,13 @@ mutual
           | .add => pure (.field (.add left right))
           | .sub => pure (.field (.sub left right))
           | .mul => pure (.field (.mul left right))
-          | .div => do
-              let inverse ← fresh (.auxiliary scope)
-              equation scope (.sub (.mul right (.var inverse)) (.const 1))
-              pure (.field (.mul left (.var inverse)))
+          | .div =>
+              match right.constantInverse? with
+              | some inverse => pure (.field (.mul left (.const inverse)))
+              | none => do
+                  let inverse ← fresh (.auxiliary scope)
+                  equation scope (.sub (.mul right (.var inverse)) (.const 1))
+                  pure (.field (.mul left (.var inverse)))
       | .call name args => do
           let some callee := program.findSignature? name | throw s!"unknown function {name}"
           let args ← lowerArgs program function locals scope args

@@ -58,6 +58,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   columns, and configurable degree bounds, emitting the existing circuit datatype.
 - [Value propagation](value-propagation.md): expression-valued conclusions,
   certified copy/constant propagation, and dense column compaction.
+- [Constant division](constant-division.md): proved early inverse folding on
+  the circuit path and byte-only carry tables with affine carry reconstruction.
 - [Circuit deduplication](circuit-deduplication.md): implemented sharing of internal
   chips, fixed entrypoints, recursive structural comparison, and planned proof transport.
 - [Blake3 comparison](blake3-example.md): generated U8 tables, a byte-stream hash

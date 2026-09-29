@@ -30,6 +30,7 @@ import AiurTests.Inlining
 import AiurTests.CircuitStats
 import AiurTests.Optimized
 import AiurTests.Propagation
+import AiurTests.Carry
 import Mathlib.Algebra.Field.Rat
 import Mathlib.Algebra.Field.ZMod
 
@@ -208,4 +209,5 @@ def main : IO Unit := do
   AiurInlineTests.run
   AiurCircuitStatsTests.run
   AiurPropagationTests.run
+  AiurCarryTests.run
   AiurOptimizedTests.run
