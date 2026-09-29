@@ -168,13 +168,18 @@ without admitted proof steps.
   `layOut_correct` proves both directions for every successful result.
 - [x] Prove the scoped expression compiler's source soundness/completeness,
   including inactive code, nested enum validation, hints, and ROM operations.
-  Compose full reference/optimized equivalence for trees, cyclic memoized
-  graphs, and both integer checkers at fixed entrypoints. Connect the original
+  Compose reference/optimized equivalence for finite trees, acyclic memoized
+  graphs, and unit checking at fixed entrypoints; preserve weighted completeness. Connect the original
   module/source predicate and executor to the optimized checker, retaining the
   allocation-capacity and acyclic memoized soundness conditions. See
   [theorem boundaries](optimized-equivalence.md).
+- [x] Remove independent validation at optimized loads. Prove that stores and
+  pointer-free public inputs establish provenance, preserved through calls,
+  aggregates, and dereferences. Keep ROM lookups and store validation; reuse the
+  existing checker/derivation bridges and acyclic memoized soundness. See
+  [load provenance](load-provenance.md). Saves 140 Blake3 columns.
 - [ ] Pursue the measured [ix/Blake3 optimization opportunities](ix-blake3-widths.md):
-  certified constant/copy propagation and known-constructor validation; compare
+  certified constant/copy propagation and remaining validation simplification; compare
   slimmer table outputs and packed additions with the current byte library.
   Preserve the existing semantic boundary and certify any new circuit pass.
 - [x] Generate full U8 byte-pair tables with shared inputs and direct XOR/split

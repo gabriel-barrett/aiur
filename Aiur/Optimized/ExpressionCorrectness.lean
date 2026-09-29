@@ -1,12 +1,21 @@
 import Aiur.Optimized.ValidationCorrectness
 import Aiur.Optimized.CompileFacts
 import Aiur.Circuit.ExpressionCorrectness
+import Aiur.Memory.WireProvenance
 
 namespace Aiur.Optimized.Compiler
 
-open Circuit.Compiler (CallsSound ExpressionMeaning localsEnvironment localsEnvironment_append)
+open Circuit.Compiler (ExpressionMeaning localsEnvironment localsEnvironment_append)
 
 variable {F : Type} [Field F] [DecidableEq F]
+/-- Call premises are needed only for arguments whose pointers originate in
+stores. This is the invariant supplied by finite entrypoint derivations. -/
+def CallsSound (decls : Declarations) (rom : WireROM F)
+    (calls : Circuit.CallRelation F) (sourceCalls : Aiur.CallRelation F) : Prop :=
+  ∀ name args result, calls name args result → ∀ values value,
+    DecodesValues decls args values → result.decode decls = some value →
+    (∀ v ∈ values, (rom.decode decls).Provenance v) → sourceCalls name values value
+
 set_option maxHeartbeats 4000000
 set_option maxRecDepth 8192
 
@@ -132,29 +141,35 @@ mutual
   theorem lower_sound {program : Program F} (checked : checkDeclarations program.enums = .ok ())
       (tags : program.enums.tagsValid F = true)
       {calls : Circuit.CallRelation F} {sourceCalls : Aiur.CallRelation F}
-      (callSound : CallsSound program.enums calls sourceCalls)
+      {rom : WireROM F} (romValid : rom.Valid)
+      (callSound : CallsSound program.enums rom calls sourceCalls)
+      (callProvenance : ∀ name args result, sourceCalls name args result →
+        (∀ v ∈ args, (rom.decode program.enums).Provenance v) →
+        (rom.decode program.enums).Provenance result)
       {function : String} {locals : Locals F} {scope : ScopeId} {expr : Expr F}
       {target : Option (WireValue Witness)} {output : Symbolic F} {before after : State F}
       (compiled : lower program function locals scope expr target before = .ok (output, after)) :
-      before.Extends after ∧ ∀ (rom : WireROM F) (assignment : Witness → F),
+      before.Extends after ∧ ∀ (assignment : Witness → F),
         (before.activation 0).denote assignment = 1 → after.Valid rom calls assignment →
         before.Valid rom calls assignment ∧ ((before.activation scope).denote assignment = 1 → ∀ environment,
           DecodesEnvironment program.enums (localsEnvironment locals assignment) environment →
+          environment.Provenance (rom.decode program.enums) →
           ExpressionMeaning program.enums rom sourceCalls environment expr
             (output.map (Circuit.ArithExpr.denote assignment))) := by
     rw [lower.eq_def] at compiled
     obtain ⟨value, middle, valueRun, finishRun⟩ := bind_ok.mp compiled
     obtain ⟨finishExtension, finishMeaning⟩ := finish_sound finishRun
-    have body : before.Extends middle ∧ ∀ (rom : WireROM F) (assignment : Witness → F),
+    have body : before.Extends middle ∧ ∀ (assignment : Witness → F),
         (before.activation 0).denote assignment = 1 → middle.Valid rom calls assignment →
         before.Valid rom calls assignment ∧ ((before.activation scope).denote assignment = 1 → ∀ environment,
           DecodesEnvironment program.enums (localsEnvironment locals assignment) environment →
+          environment.Provenance (rom.decode program.enums) →
           ExpressionMeaning program.enums rom sourceCalls environment expr
             (value.map (Circuit.ArithExpr.denote assignment))) := by
       cases expr with
       | literal literal =>
           obtain ⟨rfl, rfl⟩ := pure_ok.mp valueRun
-          exact ⟨.refl _, fun _ _ _ valid => ⟨valid, fun _ _ _ =>
+          exact ⟨.refl _, fun _ _ valid => ⟨valid, fun _ _ _ _ =>
             ⟨.field literal, by simp [Scalar.Circuit.ArithExpr.denote], .literal⟩⟩⟩
       | var name =>
           cases found : locals.find? (·.1 == name) with
@@ -164,7 +179,7 @@ mutual
               have same : bindingName = name := by simpa using List.find?_some found
               subst bindingName
               obtain ⟨rfl, rfl⟩ := pure_ok.mp (by simpa only [found] using valueRun)
-              refine ⟨.refl _, fun _ assignment _ valid => ⟨valid, fun _ environment decoded => ?_⟩⟩
+              refine ⟨.refl _, fun assignment _ valid => ⟨valid, fun _ environment decoded _ => ?_⟩⟩
               obtain ⟨value, lookup, valueDecode⟩ := decoded.find name
                 (wire := (name, wire.map (Circuit.ArithExpr.denote assignment)))
                 (by simp [localsEnvironment, List.find?_map, Function.comp_def, found])
@@ -172,11 +187,11 @@ mutual
       | tuple items =>
           obtain ⟨wires, last, argsRun, finished⟩ := bind_ok.mp valueRun
           obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-          obtain ⟨extension, meaning⟩ := lowerArgs_sound checked tags callSound argsRun
-          refine ⟨extension, fun rom assignment root valid => ?_⟩
-          obtain ⟨previous, evaluated⟩ := meaning rom assignment root valid
-          refine ⟨previous, fun active environment decoded => ?_⟩
-          obtain ⟨values, decodedValues, evaluations⟩ := evaluated active environment decoded
+          obtain ⟨extension, meaning⟩ := lowerArgs_sound checked tags romValid callSound callProvenance argsRun
+          refine ⟨extension, fun assignment root valid => ?_⟩
+          obtain ⟨previous, evaluated⟩ := meaning assignment root valid
+          refine ⟨previous, fun active environment decoded trusted => ?_⟩
+          obtain ⟨values, decodedValues, evaluations⟩ := evaluated active environment decoded trusted
           exact ⟨.tuple values, by
             simpa only [WireValue.map_tuple] using WireValue.decode_tuple checked tags decodedValues,
             .tuple evaluations⟩
@@ -204,11 +219,11 @@ mutual
                       obtain ⟨_, stateEq⟩ := pure_ok.mp unchanged
                       subst unchangedState
                       obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-                      obtain ⟨extension, meaning⟩ := lowerArgs_sound checked tags callSound argsRun
-                      refine ⟨extension, fun rom assignment root valid => ?_⟩
-                      obtain ⟨previous, evaluated⟩ := meaning rom assignment root valid
-                      refine ⟨previous, fun active environment decoded => ?_⟩
-                      obtain ⟨values, argsDecode, argsEval⟩ := evaluated active environment decoded
+                      obtain ⟨extension, meaning⟩ := lowerArgs_sound checked tags romValid callSound callProvenance argsRun
+                      refine ⟨extension, fun assignment root valid => ?_⟩
+                      obtain ⟨previous, evaluated⟩ := meaning assignment root valid
+                      refine ⟨previous, fun active environment decoded trusted => ?_⟩
+                      obtain ⟨values, argsDecode, argsEval⟩ := evaluated active environment decoded trusted
                       have ctorName : constructor.name = ctor := by
                         simpa using List.findIdx_of_getElem?_eq_some atIndex
                       refine ⟨.construct name ctor values, ?_, .construct argsEval⟩
@@ -230,11 +245,11 @@ mutual
               | none => simp [projected] at resultBind
               | some result =>
                   obtain ⟨rfl, rfl⟩ := pure_ok.mp (by simpa only [projected] using resultBind)
-                  obtain ⟨extension, meaning⟩ := lower_sound checked tags callSound inputRun
-                  refine ⟨extension, fun rom assignment root valid => ?_⟩
-                  obtain ⟨previous, evaluated⟩ := meaning rom assignment root valid
-                  refine ⟨previous, fun active environment decoded => ?_⟩
-                  obtain ⟨value, inputDecode, inputEval⟩ := evaluated active environment decoded
+                  obtain ⟨extension, meaning⟩ := lower_sound checked tags romValid callSound callProvenance inputRun
+                  refine ⟨extension, fun assignment root valid => ?_⟩
+                  obtain ⟨previous, evaluated⟩ := meaning assignment root valid
+                  refine ⟨previous, fun active environment decoded trusted => ?_⟩
+                  obtain ⟨value, inputDecode, inputEval⟩ := evaluated active environment decoded trusted
                   obtain ⟨values, rfl, decodedValues⟩ := Circuit.Compiler.splitValues_decode checked (reference {}) inputDecode
                   obtain ⟨value, valueAt, valueDecode⟩ := decodedValues.getElem (index := index)
                     (wire := result.map (Circuit.ArithExpr.denote assignment))
@@ -248,22 +263,28 @@ mutual
           obtain ⟨⟨⟩, s₃, guardRun, bodyRun⟩ := bind_ok.mp guardBind
           have guardRun' : (do for condition in conditions do equation scope condition : Build F Unit)
               s₁ = .ok ((), s₃) := bind_ok.mpr ⟨(), s₃, guardRun, rfl⟩
-          obtain ⟨inputExtension, inputMeaning⟩ := lower_sound checked tags callSound inputRun
+          obtain ⟨inputExtension, inputMeaning⟩ := lower_sound checked tags romValid callSound callProvenance inputRun
           have guardExtension := equations_extends guardRun'
-          obtain ⟨bodyExtension, bodyMeaning⟩ := lower_sound checked tags callSound bodyRun
+          obtain ⟨bodyExtension, bodyMeaning⟩ := lower_sound checked tags romValid callSound callProvenance bodyRun
           have beforeBody := inputExtension.trans guardExtension
-          refine ⟨beforeBody.trans bodyExtension, fun rom assignment root valid => ?_⟩
-          obtain ⟨s₃valid, bodyEval⟩ := bodyMeaning rom assignment (beforeBody.active root) valid
+          refine ⟨beforeBody.trans bodyExtension, fun assignment root valid => ?_⟩
+          obtain ⟨s₃valid, bodyEval⟩ := bodyMeaning assignment (beforeBody.active root) valid
           obtain ⟨s₁valid, equations⟩ := equations_sound guardRun' s₃valid
-          obtain ⟨previous, inputEval⟩ := inputMeaning rom assignment root s₁valid
-          refine ⟨previous, fun active environment decoded => ?_⟩
-          obtain ⟨inputValue, inputDecode, inputEval⟩ := inputEval active environment decoded
+          obtain ⟨previous, inputEval⟩ := inputMeaning assignment root s₁valid
+          refine ⟨previous, fun active environment decoded trusted => ?_⟩
+          obtain ⟨inputValue, inputDecode, inputEval⟩ := inputEval active environment decoded trusted
           have zeros : AllZero conditions assignment := fun condition member => by
             simpa only [inputExtension.active active, one_mul] using equations condition member
           rcases matched assignment inputValue inputDecode with
             ⟨values, matched, _, decodedBindings⟩ | ⟨_, failed⟩
           · obtain ⟨value, resultDecode, evaluated⟩ := bodyEval (beforeBody.active active) (values ++ environment)
               (by simpa only [localsEnvironment_append] using decodedBindings.append decoded)
+              (by
+                intro binding member
+                rcases List.mem_append.mp member with member | member
+                · exact Pattern.bindings_provenance
+                    (inputEval.provenance (WireROM.decode_valid romValid) callProvenance trusted) matched binding member
+                · exact trusted binding member)
             exact ⟨value, resultDecode, .letValue inputEval matched evaluated⟩
           · exact (failed zeros).elim
       | store operand =>
@@ -283,17 +304,17 @@ mutual
                   obtain ⟨⟨⟩, s₃, validationRun, cellBind⟩ := bind_ok.mp shapeBind
                   obtain ⟨⟨⟩, s₄, cellRun, finished⟩ := bind_ok.mp cellBind
                   obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-                  obtain ⟨inputExtension, inputMeaning⟩ := lower_sound checked tags callSound inputRun
+                  obtain ⟨inputExtension, inputMeaning⟩ := lower_sound checked tags romValid callSound callProvenance inputRun
                   have beforeValidation := inputExtension.trans (destination_extends destRun)
                   obtain ⟨validationExtension, validationMeaning⟩ := validateValue_sound checked tags validationRun
                   have beforeCell := beforeValidation.trans validationExtension
                   obtain ⟨cellExtension, cellMeaning⟩ := cell_sound cellRun
-                  refine ⟨beforeCell.trans cellExtension, fun rom assignment root valid => ?_⟩
+                  refine ⟨beforeCell.trans cellExtension, fun assignment root valid => ?_⟩
                   obtain ⟨s₃valid, cell⟩ := cellMeaning valid
                   obtain ⟨s₂valid, _⟩ := validationMeaning rom calls assignment (beforeValidation.active root) s₃valid
-                  obtain ⟨previous, evaluated⟩ := inputMeaning rom assignment root (destination_valid destRun s₂valid)
-                  refine ⟨previous, fun active environment decoded => ?_⟩
-                  obtain ⟨value, valueDecode, valueEval⟩ := evaluated active environment decoded
+                  obtain ⟨previous, evaluated⟩ := inputMeaning assignment root (destination_valid destRun s₂valid)
+                  refine ⟨previous, fun active environment decoded trusted => ?_⟩
+                  obtain ⟨value, valueDecode, valueEval⟩ := evaluated active environment decoded trusted
                   obtain ⟨type, _, layout, expansion, _⟩ := WireValue.decode_spec valueDecode
                   have names := (Declarations.layout_parts expansion).1
                   refine ⟨.ptr value.type (assignment address), ?_, .store valueEval ?_⟩
@@ -313,37 +334,35 @@ mutual
                   | cons => simp at shapeBind
                   | nil =>
                       dsimp only at shapeBind
-                      obtain ⟨result, s₂, destRun, validationBind⟩ := bind_ok.mp shapeBind
-                      obtain ⟨⟨⟩, s₃, validationRun, cellBind⟩ := bind_ok.mp validationBind
-                      obtain ⟨⟨⟩, s₄, cellRun, finished⟩ := bind_ok.mp cellBind
+                      obtain ⟨result, s₂, destRun, cellBind⟩ := bind_ok.mp shapeBind
+                      obtain ⟨⟨⟩, s₃, cellRun, finished⟩ := bind_ok.mp cellBind
                       obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-                      obtain ⟨inputExtension, inputMeaning⟩ := lower_sound checked tags callSound inputRun
-                      have beforeValidation := inputExtension.trans (destination_extends destRun)
-                      obtain ⟨validationExtension, validationMeaning⟩ := validateValue_sound checked tags validationRun
-                      have beforeCell := beforeValidation.trans validationExtension
+                      obtain ⟨inputExtension, inputMeaning⟩ :=
+                        lower_sound checked tags romValid callSound callProvenance inputRun
+                      have beforeCell := inputExtension.trans (destination_extends destRun)
                       obtain ⟨cellExtension, cellMeaning⟩ := cell_sound cellRun
-                      refine ⟨beforeCell.trans cellExtension, fun rom assignment root valid => ?_⟩
-                      obtain ⟨s₃valid, cell⟩ := cellMeaning valid
-                      obtain ⟨s₂valid, resultDecoded⟩ := validationMeaning rom calls assignment (beforeValidation.active root) s₃valid
-                      obtain ⟨previous, evaluated⟩ := inputMeaning rom assignment root (destination_valid destRun s₂valid)
-                      refine ⟨previous, fun active environment decoded => ?_⟩
-                      obtain ⟨value, valueDecode, valueEval⟩ := evaluated active environment decoded
+                      refine ⟨beforeCell.trans cellExtension, fun assignment root valid => ?_⟩
+                      obtain ⟨s₂valid, cell⟩ := cellMeaning valid
+                      obtain ⟨previous, evaluated⟩ := inputMeaning assignment root (destination_valid destRun s₂valid)
+                      refine ⟨previous, fun active environment decoded trusted => ?_⟩
+                      obtain ⟨value, valueDecode, valueEval⟩ := evaluated active environment decoded trusted
                       have same := WireValue.ptr_decoded_eq valueDecode
                       subst value
-                      obtain ⟨value, resultDecode⟩ := resultDecoded (beforeValidation.active active)
-                      refine ⟨value, resultDecode, .load valueEval
-                        (WireROM.mem_decode.mpr ⟨_, cell (beforeCell.active active), resultDecode⟩) ?_⟩
-                      exact (WireValue.decode_spec resultDecode).1.trans (destination_spec destRun).2.2
+                      have pointerTrusted := valueEval.provenance (WireROM.decode_valid romValid) callProvenance trusted
+                      obtain ⟨value, resultDecode, resultType, _⟩ :=
+                        WireROM.load_of_provenance romValid pointerTrusted (cell (beforeCell.active active))
+                      exact ⟨value, resultDecode, .load valueEval
+                        (WireROM.mem_decode.mpr ⟨_, cell (beforeCell.active active), resultDecode⟩) resultType⟩
       | neg operand =>
           obtain ⟨input, s₁, inputRun, rest⟩ := bind_ok.mp valueRun
           obtain ⟨polynomial, s₂, fieldRun, finished⟩ := bind_ok.mp rest
           obtain ⟨rfl, rfl⟩ := asField_eq fieldRun
           obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-          obtain ⟨extension, meaning⟩ := lower_sound checked tags callSound inputRun
-          refine ⟨extension, fun rom assignment root valid => ?_⟩
-          obtain ⟨previous, evaluated⟩ := meaning rom assignment root valid
-          refine ⟨previous, fun active environment decoded => ?_⟩
-          obtain ⟨value, valueDecode, valueEval⟩ := evaluated active environment decoded
+          obtain ⟨extension, meaning⟩ := lower_sound checked tags romValid callSound callProvenance inputRun
+          refine ⟨extension, fun assignment root valid => ?_⟩
+          obtain ⟨previous, evaluated⟩ := meaning assignment root valid
+          refine ⟨previous, fun active environment decoded trusted => ?_⟩
+          obtain ⟨value, valueDecode, valueEval⟩ := evaluated active environment decoded trusted
           simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq] at valueDecode
           subst value
           exact ⟨.field (0 - polynomial.denote assignment), by simp [Scalar.Circuit.ArithExpr.denote],
@@ -360,15 +379,15 @@ mutual
             obtain ⟨result, s₂, destRun, validationBind⟩ := bind_ok.mp destBind
             obtain ⟨⟨⟩, s₃, validationRun, finished⟩ := bind_ok.mp validationBind
             obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-            obtain ⟨keyExtension, keyMeaning⟩ := lower_sound checked tags callSound keyRun
+            obtain ⟨keyExtension, keyMeaning⟩ := lower_sound checked tags romValid callSound callProvenance keyRun
             have destExtension := destination_extends destRun
             obtain ⟨validationExtension, validationMeaning⟩ := validateValue_sound checked tags validationRun
             have beforeValidation := keyExtension.trans destExtension
-            refine ⟨beforeValidation.trans validationExtension, fun rom assignment root valid => ?_⟩
+            refine ⟨beforeValidation.trans validationExtension, fun assignment root valid => ?_⟩
             obtain ⟨s₂valid, resultDecoded⟩ := validationMeaning rom calls assignment (beforeValidation.active root) valid
-            obtain ⟨previous, keyEval⟩ := keyMeaning rom assignment root (destination_valid destRun s₂valid)
-            refine ⟨previous, fun active environment decoded => ?_⟩
-            obtain ⟨keyValue, _, keyEval⟩ := keyEval active environment decoded
+            obtain ⟨previous, keyEval⟩ := keyMeaning assignment root (destination_valid destRun s₂valid)
+            refine ⟨previous, fun active environment decoded trusted => ?_⟩
+            obtain ⟨keyValue, _, keyEval⟩ := keyEval active environment decoded trusted
             obtain ⟨value, resultDecode⟩ := resultDecoded (beforeValidation.active active)
             have spec := WireValue.decode_spec resultDecode
             have shape : value.type = type := spec.1.trans (destination_spec destRun).2.2
@@ -388,16 +407,16 @@ mutual
             subst unchangedState
             obtain ⟨⟨⟩, last, equated, finished⟩ := bind_ok.mp eqBind
             obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-            obtain ⟨leftExtension, leftMeaning⟩ := lower_sound checked tags callSound leftRun
-            obtain ⟨rightExtension, rightMeaning⟩ := lower_sound checked tags callSound rightRun
+            obtain ⟨leftExtension, leftMeaning⟩ := lower_sound checked tags romValid callSound callProvenance leftRun
+            obtain ⟨rightExtension, rightMeaning⟩ := lower_sound checked tags romValid callSound callProvenance rightRun
             have beforeEq := leftExtension.trans rightExtension
-            refine ⟨beforeEq.trans (equalValue_extends equated), fun rom assignment root valid => ?_⟩
+            refine ⟨beforeEq.trans (equalValue_extends equated), fun assignment root valid => ?_⟩
             obtain ⟨valid₂, equal⟩ := equalValue_sound equated valid
-            obtain ⟨valid₁, rightEval⟩ := rightMeaning rom assignment (leftExtension.active root) valid₂
-            obtain ⟨previous, leftEval⟩ := leftMeaning rom assignment root valid₁
-            refine ⟨previous, fun active environment decoded => ?_⟩
-            obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded
-            obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded
+            obtain ⟨valid₁, rightEval⟩ := rightMeaning assignment (leftExtension.active root) valid₂
+            obtain ⟨previous, leftEval⟩ := leftMeaning assignment root valid₁
+            refine ⟨previous, fun active environment decoded trusted => ?_⟩
+            obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded trusted
+            obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded trusted
             have same : x = y := Option.some.inj (xDecode.symm.trans ((equal (beforeEq.active active)) ▸ yDecode))
             have data := WireValue.decode_spec xDecode
             have pointerFree : x.pointerFree = true := Value.pointerFree_of_type
@@ -412,18 +431,18 @@ mutual
           obtain ⟨rightWire, s₃, rightRun, rightFieldBind⟩ := bind_ok.mp rightBind
           obtain ⟨rightPoly, s₄, rightField, rest⟩ := bind_ok.mp rightFieldBind
           obtain ⟨rfl, rfl⟩ := asField_eq rightField
-          obtain ⟨leftExtension, leftMeaning⟩ := lower_sound checked tags callSound leftRun
-          obtain ⟨rightExtension, rightMeaning⟩ := lower_sound checked tags callSound rightRun
+          obtain ⟨leftExtension, leftMeaning⟩ := lower_sound checked tags romValid callSound callProvenance leftRun
+          obtain ⟨rightExtension, rightMeaning⟩ := lower_sound checked tags romValid callSound callProvenance rightRun
           have beforeOperation := leftExtension.trans rightExtension
           cases op with
           | add | sub | mul =>
               obtain ⟨rfl, rfl⟩ := pure_ok.mp rest
-              refine ⟨beforeOperation, fun rom assignment root valid => ?_⟩
-              obtain ⟨s₁valid, rightEval⟩ := rightMeaning rom assignment (leftExtension.active root) valid
-              obtain ⟨previous, leftEval⟩ := leftMeaning rom assignment root s₁valid
-              refine ⟨previous, fun active environment decoded => ?_⟩
-              obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded
-              obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded
+              refine ⟨beforeOperation, fun assignment root valid => ?_⟩
+              obtain ⟨s₁valid, rightEval⟩ := rightMeaning assignment (leftExtension.active root) valid
+              obtain ⟨previous, leftEval⟩ := leftMeaning assignment root s₁valid
+              refine ⟨previous, fun active environment decoded trusted => ?_⟩
+              obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded trusted
+              obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded trusted
               simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq] at xDecode yDecode
               subst x; subst y
               exact ⟨_, WireValue.decode_field _ _, .binary xEval yEval (by
@@ -433,14 +452,14 @@ mutual
               obtain ⟨⟨⟩, s₆, equationRun, finished⟩ := bind_ok.mp inverseBind
               obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
               have beforeEquation := beforeOperation.trans (fresh_extends inverseRun)
-              refine ⟨beforeEquation.trans (equation_extends equationRun), fun rom assignment root valid => ?_⟩
+              refine ⟨beforeEquation.trans (equation_extends equationRun), fun assignment root valid => ?_⟩
               obtain ⟨s₅valid, equation⟩ := equation_valid equationRun valid
               have s₃valid := fresh_valid inverseRun s₅valid
-              obtain ⟨s₁valid, rightEval⟩ := rightMeaning rom assignment (leftExtension.active root) s₃valid
-              obtain ⟨previous, leftEval⟩ := leftMeaning rom assignment root s₁valid
-              refine ⟨previous, fun active environment decoded => ?_⟩
-              obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded
-              obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded
+              obtain ⟨s₁valid, rightEval⟩ := rightMeaning assignment (leftExtension.active root) s₃valid
+              obtain ⟨previous, leftEval⟩ := leftMeaning assignment root s₁valid
+              refine ⟨previous, fun active environment decoded trusted => ?_⟩
+              obtain ⟨x, xDecode, xEval⟩ := leftEval active environment decoded trusted
+              obtain ⟨y, yDecode, yEval⟩ := rightEval (leftExtension.active active) environment decoded trusted
               simp only [WireValue.map_field, WireValue.decode_field, Option.some.injEq] at xDecode yDecode
               subst x; subst y
               change (s₅.activation scope).denote assignment *
@@ -467,24 +486,25 @@ mutual
                 obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
                 have argsValidation' : (do for arg in arguments do validateValue program.enums scope arg : Build F Unit)
                     s₂ = .ok ((), s₃) := bind_ok.mpr ⟨(), s₃, argsValidation, rfl⟩
-                obtain ⟨argsExtension, argsMeaning⟩ := lowerArgs_sound checked tags callSound argsRun
+                obtain ⟨argsExtension, argsMeaning⟩ := lowerArgs_sound checked tags romValid callSound callProvenance argsRun
                 have beforeArgsValidation := argsExtension.trans (destination_extends destRun)
                 obtain ⟨argsValidationExtension, argsValidationMeaning⟩ := validateValues_sound checked tags argsValidation'
                 have beforeResultValidation := beforeArgsValidation.trans argsValidationExtension
                 obtain ⟨resultValidationExtension, resultValidationMeaning⟩ := validateValue_sound checked tags resultValidation
                 have beforeCall := beforeResultValidation.trans resultValidationExtension
                 obtain ⟨callExtension, callMeaning⟩ := call_sound callRun
-                refine ⟨beforeCall.trans callExtension, fun rom assignment root valid => ?_⟩
+                refine ⟨beforeCall.trans callExtension, fun assignment root valid => ?_⟩
                 obtain ⟨s₄valid, callValid⟩ := callMeaning valid
                 obtain ⟨s₃valid, resultDecoded⟩ := resultValidationMeaning rom calls assignment (beforeResultValidation.active root) s₄valid
                 obtain ⟨s₂valid, _⟩ := argsValidationMeaning rom calls assignment (beforeArgsValidation.active root) s₃valid
-                obtain ⟨previous, argsEval⟩ := argsMeaning rom assignment root (destination_valid destRun s₂valid)
-                refine ⟨previous, fun active environment decoded => ?_⟩
-                obtain ⟨values, argsDecode, argsEval⟩ := argsEval active environment decoded
+                obtain ⟨previous, argsEval⟩ := argsMeaning assignment root (destination_valid destRun s₂valid)
+                refine ⟨previous, fun active environment decoded trusted => ?_⟩
+                obtain ⟨values, argsDecode, argsEval⟩ := argsEval active environment decoded trusted
                 obtain ⟨value, resultDecode⟩ := resultDecoded (beforeResultValidation.active active)
                 refine ⟨value, resultDecode, .call argsEval ?_⟩
                 exact callSound name _ _ (callValid (beforeCall.active active)) values value argsDecode
                   (by simpa only [WireValue.map_map] using resultDecode)
+                  (argsEval.provenance (WireROM.decode_valid romValid) callProvenance trusted)
       | matchValue scrutinee arms =>
           obtain ⟨⟨⟩, checkState, checkRun, typeBind⟩ := bind_ok.mp valueRun
           obtain ⟨_, stateEq⟩ := lift_eq_ok checkRun
@@ -498,81 +518,93 @@ mutual
           obtain ⟨branches, s₄, choiceRun, armsBind⟩ := bind_ok.mp choiceBind
           obtain ⟨⟨⟩, s₅, armsRun, finished⟩ := bind_ok.mp armsBind
           obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-          obtain ⟨inputExtension, inputMeaning⟩ := lower_sound checked tags callSound scrutineeRun
+          obtain ⟨inputExtension, inputMeaning⟩ := lower_sound checked tags romValid callSound callProvenance scrutineeRun
           have beforeValidation := inputExtension.trans (destination_extends destRun)
           obtain ⟨validationExtension, validationMeaning⟩ := validateValue_sound checked tags validationRun
           have beforeChoice := beforeValidation.trans validationExtension
           have choiceExtension := choice_extends choiceRun
           have beforeArms := beforeChoice.trans choiceExtension
-          obtain ⟨armsExtension, armsMeaning⟩ := lowerArms_sound checked tags callSound
+          obtain ⟨armsExtension, armsMeaning⟩ := lowerArms_sound checked tags romValid callSound callProvenance
             (choice_length choiceRun) armsRun
-          refine ⟨beforeArms.trans armsExtension, fun rom assignment root valid => ?_⟩
-          obtain ⟨s₄valid, armsEval⟩ := armsMeaning rom assignment (beforeArms.active root) valid
+          refine ⟨beforeArms.trans armsExtension, fun assignment root valid => ?_⟩
+          obtain ⟨s₄valid, armsEval⟩ := armsMeaning assignment (beforeArms.active root) valid
           have s₃valid := s₄valid.of_extends choiceExtension
           obtain ⟨s₂valid, _⟩ := validationMeaning rom calls assignment (beforeValidation.active root) s₃valid
-          obtain ⟨previous, inputEval⟩ := inputMeaning rom assignment root (destination_valid destRun s₂valid)
-          refine ⟨previous, fun active environment decoded => ?_⟩
-          obtain ⟨inputValue, inputDecode, evaluated⟩ := inputEval active environment decoded
+          obtain ⟨previous, inputEval⟩ := inputMeaning assignment root (destination_valid destRun s₂valid)
+          refine ⟨previous, fun active environment decoded trusted => ?_⟩
+          obtain ⟨inputValue, inputDecode, evaluated⟩ := inputEval active environment decoded trusted
           obtain ⟨branch, member, enabled⟩ := choice_active choiceRun s₄valid (beforeChoice.active root)
             (beforeChoice.active active)
           obtain ⟨_, bindings, body, selected, value, valueDecode, bodyEval⟩ :=
-            armsEval environment decoded inputValue inputDecode branch member enabled
+            armsEval environment decoded trusted inputValue inputDecode
+              (evaluated.provenance (WireROM.decode_valid romValid) callProvenance trusted) branch member enabled
           exact ⟨value, by simpa only [WireValue.map_map] using valueDecode,
             .matchValue evaluated selected bodyEval⟩
-    refine ⟨body.1.trans finishExtension, fun rom assignment root valid => ?_⟩
+    refine ⟨body.1.trans finishExtension, fun assignment root valid => ?_⟩
     obtain ⟨middleValid, equal⟩ := finishMeaning valid
-    obtain ⟨beforeValid, evaluated⟩ := body.2 rom assignment root middleValid
-    refine ⟨beforeValid, fun active environment decoded => ?_⟩
+    obtain ⟨beforeValid, evaluated⟩ := body.2 assignment root middleValid
+    refine ⟨beforeValid, fun active environment decoded trusted => ?_⟩
     rw [equal (body.1.active active)]
-    exact evaluated active environment decoded
+    exact evaluated active environment decoded trusted
   termination_by sizeOf expr
 
   theorem lowerArgs_sound {program : Program F} (checked : checkDeclarations program.enums = .ok ())
       (tags : program.enums.tagsValid F = true)
       {calls : Circuit.CallRelation F} {sourceCalls : Aiur.CallRelation F}
-      (callSound : CallsSound program.enums calls sourceCalls)
+      {rom : WireROM F} (romValid : rom.Valid)
+      (callSound : CallsSound program.enums rom calls sourceCalls)
+      (callProvenance : ∀ name args result, sourceCalls name args result →
+        (∀ v ∈ args, (rom.decode program.enums).Provenance v) →
+        (rom.decode program.enums).Provenance result)
       {function : String} {locals : Locals F} {scope : ScopeId} {args : List (Expr F)}
       {outputs : List (Symbolic F)} {before after : State F}
       (compiled : lowerArgs program function locals scope args before = .ok (outputs, after)) :
-      before.Extends after ∧ ∀ (rom : WireROM F) (assignment : Witness → F),
+      before.Extends after ∧ ∀ (assignment : Witness → F),
         (before.activation 0).denote assignment = 1 → after.Valid rom calls assignment →
         before.Valid rom calls assignment ∧ ((before.activation scope).denote assignment = 1 → ∀ environment,
-          DecodesEnvironment program.enums (localsEnvironment locals assignment) environment → ∃ values,
+          DecodesEnvironment program.enums (localsEnvironment locals assignment) environment →
+          environment.Provenance (rom.decode program.enums) → ∃ values,
           DecodesValues program.enums (outputs.map (WireValue.map (Circuit.ArithExpr.denote assignment))) values ∧
           ROMEvalArgsWith program.enums (rom.decode program.enums) sourceCalls environment args values) := by
     cases args with
     | nil =>
         obtain ⟨rfl, rfl⟩ := pure_ok.mp (by simpa only [lowerArgs] using compiled)
-        exact ⟨.refl _, fun _ _ _ valid => ⟨valid, fun _ _ _ => ⟨[], .nil, .nil⟩⟩⟩
+        exact ⟨.refl _, fun _ _ valid => ⟨valid, fun _ _ _ _ => ⟨[], .nil, .nil⟩⟩⟩
     | cons arg args =>
         simp only [lowerArgs] at compiled
         obtain ⟨head, middle, headRun, rest⟩ := bind_ok.mp compiled
         obtain ⟨tail, last, tailRun, finished⟩ := bind_ok.mp rest
         obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
-        obtain ⟨headExtension, headMeaning⟩ := lower_sound checked tags callSound headRun
-        obtain ⟨tailExtension, tailMeaning⟩ := lowerArgs_sound checked tags callSound tailRun
-        refine ⟨headExtension.trans tailExtension, fun rom assignment root valid => ?_⟩
-        obtain ⟨middleValid, tailEval⟩ := tailMeaning rom assignment (headExtension.active root) valid
-        obtain ⟨previous, headEval⟩ := headMeaning rom assignment root middleValid
-        refine ⟨previous, fun active environment decoded => ?_⟩
-        obtain ⟨head, headDecode, headEval⟩ := headEval active environment decoded
-        obtain ⟨tail, tailDecode, tailEval⟩ := tailEval (headExtension.active active) environment decoded
+        obtain ⟨headExtension, headMeaning⟩ := lower_sound checked tags romValid callSound callProvenance headRun
+        obtain ⟨tailExtension, tailMeaning⟩ := lowerArgs_sound checked tags romValid callSound callProvenance tailRun
+        refine ⟨headExtension.trans tailExtension, fun assignment root valid => ?_⟩
+        obtain ⟨middleValid, tailEval⟩ := tailMeaning assignment (headExtension.active root) valid
+        obtain ⟨previous, headEval⟩ := headMeaning assignment root middleValid
+        refine ⟨previous, fun active environment decoded trusted => ?_⟩
+        obtain ⟨head, headDecode, headEval⟩ := headEval active environment decoded trusted
+        obtain ⟨tail, tailDecode, tailEval⟩ := tailEval (headExtension.active active) environment decoded trusted
         exact ⟨head :: tail, .cons headDecode tailDecode, .cons headEval tailEval⟩
   termination_by sizeOf args
 
   theorem lowerArms_sound {program : Program F} (checked : checkDeclarations program.enums = .ok ())
       (tags : program.enums.tagsValid F = true)
       {calls : Circuit.CallRelation F} {sourceCalls : Aiur.CallRelation F}
-      (callSound : CallsSound program.enums calls sourceCalls)
+      {rom : WireROM F} (romValid : rom.Valid)
+      (callSound : CallsSound program.enums rom calls sourceCalls)
+      (callProvenance : ∀ name args result, sourceCalls name args result →
+        (∀ v ∈ args, (rom.decode program.enums).Provenance v) →
+        (rom.decode program.enums).Provenance result)
       {function : String} {locals : Locals F} {scrutinee : Symbolic F} {result : WireValue Witness}
       {scopes : List ScopeId} {arms : List (Pattern F × Expr F)} {previous : List (List (Polynomial F))}
       (length : scopes.length = (retainArms program.enums arms).length) {before after : State F}
       (compiled : lowerArms program function locals scrutinee result scopes arms previous before = .ok ((), after)) :
-      before.Extends after ∧ ∀ (rom : WireROM F) (assignment : Witness → F),
+      before.Extends after ∧ ∀ (assignment : Witness → F),
         (before.activation 0).denote assignment = 1 → after.Valid rom calls assignment →
         before.Valid rom calls assignment ∧ ∀ environment,
-          DecodesEnvironment program.enums (localsEnvironment locals assignment) environment → ∀ input,
+          DecodesEnvironment program.enums (localsEnvironment locals assignment) environment →
+          environment.Provenance (rom.decode program.enums) → ∀ input,
           (scrutinee.map (Circuit.ArithExpr.denote assignment)).decode program.enums = some input →
+          (rom.decode program.enums).Provenance input →
           ∀ scope ∈ scopes, (before.activation scope).denote assignment = 1 →
             (∀ earlier ∈ previous, ¬AllZero earlier assignment) ∧ ∃ bindings body,
               selectArm input arms = some (bindings, body) ∧
@@ -583,7 +615,7 @@ mutual
         cases scopes with
         | nil =>
             obtain ⟨_, rfl⟩ := pure_ok.mp (by simpa only [lowerArms] using compiled)
-            exact ⟨.refl _, fun _ _ _ valid => ⟨valid, by simp⟩⟩
+            exact ⟨.refl _, fun _ _ valid => ⟨valid, by simp⟩⟩
         | cons => simp [lowerArms] at compiled
     | cons arm arms =>
         rcases hArm : arm with ⟨pat, body⟩
@@ -605,23 +637,25 @@ mutual
             have guardExtension := equations_extends guardRun'
             obtain ⟨failuresExtension, failuresMeaning⟩ := failures_sound failuresRun'
             have beforeBody := guardExtension.trans failuresExtension
-            obtain ⟨bodyExtension, bodyMeaning⟩ := lower_sound checked tags callSound bodyRun
+            obtain ⟨bodyExtension, bodyMeaning⟩ := lower_sound checked tags romValid callSound callProvenance bodyRun
             have headExtension := beforeBody.trans bodyExtension
-            have headFacts (rom : WireROM F) (assignment : Witness → F)
+            have headFacts (assignment : Witness → F)
                 (root : (before.activation 0).denote assignment = 1)
                 (valid : s₃.Valid rom calls assignment) :
                 before.Valid rom calls assignment ∧ ∀ environment,
-                  DecodesEnvironment program.enums (localsEnvironment locals assignment) environment → ∀ input,
+                  DecodesEnvironment program.enums (localsEnvironment locals assignment) environment →
+                  environment.Provenance (rom.decode program.enums) → ∀ input,
                   (scrutinee.map (Circuit.ArithExpr.denote assignment)).decode program.enums = some input →
+                  (rom.decode program.enums).Provenance input →
                   (before.activation scope).denote assignment = 1 →
                   (∀ earlier ∈ previous, ¬AllZero earlier assignment) ∧ ∃ values,
                     pat.bindings input = some values ∧
                     ExpressionMeaning program.enums rom sourceCalls (values ++ environment) body
                       (result.map assignment) := by
-              obtain ⟨s₂valid, evaluated⟩ := bodyMeaning rom assignment (beforeBody.active root) valid
+              obtain ⟨s₂valid, evaluated⟩ := bodyMeaning assignment (beforeBody.active root) valid
               obtain ⟨s₁valid, failed⟩ := failuresMeaning s₂valid
               obtain ⟨beforeValid, equations⟩ := equations_sound guardRun' s₁valid
-              refine ⟨beforeValid, fun environment decoded input inputDecoded active => ?_⟩
+              refine ⟨beforeValid, fun environment decoded trusted input inputDecoded inputTrusted active => ?_⟩
               have allZero : AllZero conditions assignment := fun condition member => by
                 simpa only [active, one_mul] using equations condition member
               refine ⟨failed (guardExtension.active active), ?_⟩
@@ -630,6 +664,11 @@ mutual
               · refine ⟨values, matched, ?_⟩
                 have resultMeaning := evaluated (beforeBody.active active) (values ++ environment)
                   (by simpa only [localsEnvironment_append] using bindingsDecoded.append decoded)
+                  (by
+                    intro binding member
+                    rcases List.mem_append.mp member with member | member
+                    · exact Pattern.bindings_provenance inputTrusted matched binding member
+                    · exact trusted binding member)
                 simpa only [lower_target bodyRun, WireValue.map_map] using resultMeaning
               · exact (unmatched allZero).elim
             split at rest
@@ -639,26 +678,26 @@ mutual
                 have zero : scopes.length = 0 := by simpa [retainArms, irrefutable] using length
                 exact List.length_eq_zero_iff.mp zero
               subst scopes
-              refine ⟨headExtension, fun rom assignment root valid => ?_⟩
-              obtain ⟨beforeValid, selected⟩ := headFacts rom assignment root valid
-              refine ⟨beforeValid, fun environment decoded input inputDecoded selectedScope member active => ?_⟩
+              refine ⟨headExtension, fun assignment root valid => ?_⟩
+              obtain ⟨beforeValid, selected⟩ := headFacts assignment root valid
+              refine ⟨beforeValid, fun environment decoded trusted input inputDecoded inputTrusted selectedScope member active => ?_⟩
               obtain rfl := List.mem_singleton.mp member
-              obtain ⟨failed, values, matched, evaluated⟩ := selected environment decoded input inputDecoded active
+              obtain ⟨failed, values, matched, evaluated⟩ := selected environment decoded trusted input inputDecoded inputTrusted active
               exact ⟨failed, values, body, by simp [selectArm, matched], evaluated⟩
             · rename_i refutable
               simp only [pure_bind] at rest
               have tailLength : scopes.length = (retainArms program.enums arms).length := by
                 simpa [retainArms, refutable] using length
-              obtain ⟨tailExtension, tailMeaning⟩ := lowerArms_sound checked tags callSound tailLength rest
-              refine ⟨headExtension.trans tailExtension, fun rom assignment root valid => ?_⟩
-              obtain ⟨s₃valid, tails⟩ := tailMeaning rom assignment (headExtension.active root) valid
-              obtain ⟨beforeValid, head⟩ := headFacts rom assignment root s₃valid
-              refine ⟨beforeValid, fun environment decoded input inputDecoded selected member active => ?_⟩
+              obtain ⟨tailExtension, tailMeaning⟩ := lowerArms_sound checked tags romValid callSound callProvenance tailLength rest
+              refine ⟨headExtension.trans tailExtension, fun assignment root valid => ?_⟩
+              obtain ⟨s₃valid, tails⟩ := tailMeaning assignment (headExtension.active root) valid
+              obtain ⟨beforeValid, head⟩ := headFacts assignment root s₃valid
+              refine ⟨beforeValid, fun environment decoded trusted input inputDecoded inputTrusted selected member active => ?_⟩
               rcases List.mem_cons.mp member with rfl | member
-              · obtain ⟨failed, values, matched, evaluated⟩ := head environment decoded input inputDecoded active
+              · obtain ⟨failed, values, matched, evaluated⟩ := head environment decoded trusted input inputDecoded inputTrusted active
                 exact ⟨failed, values, body, by simp [selectArm, matched], evaluated⟩
               · obtain ⟨failed, values, selectedBody, matched, evaluated⟩ :=
-                  tails environment decoded input inputDecoded selected member (headExtension.active active)
+                  tails environment decoded trusted input inputDecoded inputTrusted selected member (headExtension.active active)
                 have conditionFailed : ¬AllZero conditions assignment := failed conditions (by simp)
                 have noMatch : pat.bindings input = none := by
                   rcases patternMeaning assignment input inputDecoded with

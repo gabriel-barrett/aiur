@@ -127,13 +127,13 @@ configuration (degree three, sharing, selector elimination, and deduplication).
 | Metric | Reference | Optimized |
 | --- | ---: | ---: |
 | Chips | 14 | 14 |
-| Sum of chip columns | 2,861 | 1,869 |
+| Sum of chip columns | 2,861 | 1,729 |
 | Maximum constraint degree | 9 | 3 |
 | Call/map lookup slots | 342 | 342 |
 | ROM lookup slots | 104 | 104 |
 | Maximum lookup expression degree | 2 | 1 |
 
-The sum of chip widths decreases by **992 columns, about 34.7%**. This sum
+The sum of chip widths decreases by **1,132 columns, about 39.6%**. This sum
 allocates one row's width to each chip; it is not a trace-size or proving-time
 estimate. Deduplication finds no equivalent internal chips in this example.
 
@@ -143,33 +143,41 @@ agree between compilers and include statically declared inactive slots.
 | Chip | Reference columns | Optimized columns | Reference degree | Optimized degree | Lookups |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `Benchmark::main` | 78 | 42 | 2 | 2 | 7 |
-| `Blake3::compress_layer` | 292 | 148 | 3 | 3 | 6 |
-| `Blake3::next_layer` | 394 | 228 | 3 | 3 | 11 |
+| `Blake3::compress_layer` | 292 | 144 | 3 | 3 | 6 |
+| `Blake3::next_layer` | 394 | 224 | 3 | 3 | 11 |
 | `Blake3::compress` | 709 | 612 | 2 | 3 | 289 |
-| `Blake3::compress_chunks` | 35 | 21 | 3 | 3 | 5 |
+| `Blake3::compress_chunks` | 35 | 19 | 3 | 3 | 5 |
 | `Blake3::finish` | 314 | 166 | 9 | 3 | 20 |
 | `Words::u64_is_zero` | 28 | 19 | 8 | 3 | 0 |
 | `Blake3::eq_zero` | 7 | 5 | 2 | 3 | 0 |
-| `Blake3::bytes_to_block` | 641 | 385 | 2 | 2 | 64 |
+| `Blake3::bytes_to_block` | 641 | 257 | 2 | 1 | 64 |
 | `Blake3::pad_block` | 14 | 8 | 3 | 3 | 2 |
 | `Blake3::compress_block` | 282 | 182 | 3 | 3 | 29 |
-| `Blake3::is_empty` | 14 | 10 | 2 | 3 | 1 |
+| `Blake3::is_empty` | 14 | 8 | 2 | 3 | 1 |
 | `Words::u64_succ` | 32 | 32 | 1 | 1 | 8 |
 | `Benchmark::generate` | 21 | 11 | 3 | 3 | 4 |
 
 Compared with the original nibble-table library, the full byte-pair maps reduce
 the optimized compression chip from **1,252 to 612 columns**, and its lookup
-slots from **801 to 289**. The optimized total falls from **2,509 to 1,869**
-columns. The reference compression chip falls from 1,509 to 709 columns,
-including the savings in both match branches. Other chip widths are unchanged.
+slots from **801 to 289**. That table change reduced the optimized total from
+**2,509 to 1,869** columns. The reference compression chip falls from 1,509 to 709
+columns, including savings in both match branches. Other chip widths were unchanged.
 The remaining compression-width gap with ix (533 stage1 columns in the
 [original comparison](ix-blake3-widths.md)) comes from its packed word-addition
 strategy, offset by its provide-multiplicity column: `612 - 80 + 1 = 533`.
 
+Removing independent load validation now saves a further **140 columns**:
+`bytes_to_block` falls from 385 to 257, `compress_layer` from 148 to 144,
+`next_layer` from 228 to 224, `compress_chunks` from 21 to 19, and `is_empty`
+from 10 to 8. `bytes_to_block` needs only degree-one equations afterward.
+All 104 ROM lookups remain. [Store provenance](load-provenance.md) proves
+that these loads inherit value validity from their stored contents.
+
 The optimized artifact carries Lean certificates that constraint degrees are
 at most three, lookup expressions are affine, and chip deduplication preserves
-entrypoint acceptance. Full optimized/reference compiler equivalence is proved
-for both integer checkers, including deduplication, as described in the
+entrypoint acceptance. Optimized/reference equivalence is proved for finite
+entrypoint derivations and acyclic memoized graphs; both checkers retain source
+completeness, as described in the
 [theorem boundaries](optimized-equivalence.md).
 No BLAKE3 execution, test-vector
 validation, or cryptographic correctness proof is claimed by this benchmark.

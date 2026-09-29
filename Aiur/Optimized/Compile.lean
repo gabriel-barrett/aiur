@@ -244,7 +244,8 @@ mutual
           let ⟨.ptr type, [address]⟩ := pointer | throw "non-pointer load"
           let result ← destination program.enums scope type target
           let value := result.map Polynomial.var
-          validateValue program.enums scope value
+          -- Finite entry derivations supply validity through store provenance
+          -- and ROM address uniqueness; reads require only the cell lookup.
           modify fun state => { state with cells := state.cells.push ⟨scope, address, value⟩ }
           pure value
       | .neg operand => do

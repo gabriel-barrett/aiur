@@ -154,19 +154,17 @@ unconditional Boolean/coverage equations introduced by nested choices. -/
                   | cons => simp at pointerBind
                   | nil =>
                       dsimp only at pointerBind
-                      obtain ⟨result, s₂, destinationRun, validationBind⟩ := bind_ok.mp pointerBind
-                      obtain ⟨⟨⟩, s₃, validationRun, loadBind⟩ := bind_ok.mp validationBind
-                      obtain ⟨⟨⟩, s₄, loadRun, pureRun⟩ := bind_ok.mp loadBind
+                      obtain ⟨result, s₂, destinationRun, loadBind⟩ := bind_ok.mp pointerBind
+                      obtain ⟨⟨⟩, s₃, loadRun, pureRun⟩ := bind_ok.mp loadBind
                       obtain ⟨rfl, stateEq⟩ := pure_ok.mp pureRun
                       subst middle
                       obtain ⟨a, e₁, pointerBound⟩ := lower_inactive operandRun layout scopeLayout valid scopeValid localsBound (by simp) inactive
                       have c₁ := start.afterLower operandRun e₁
                       obtain ⟨b, e₂, c₂, resultBound⟩ := c₁.destination destinationRun
                         (fun candidate equal => (targetBound candidate equal).mono e₁.increase)
-                      obtain ⟨c, e₃, c₃⟩ := c₂.validate validationRun resultBound
                       have addressBound := pointerBound address (by simp)
-                      obtain ⟨e₄, c₄⟩ := c₃.cell loadRun ((e₂.trans e₃).bound addressBound) (resultBound.mono e₃.increase)
-                      exact ⟨c, ((e₁.trans e₂).trans e₃).trans e₄, c₄, resultBound.mono (e₃.trans e₄).increase⟩
+                      obtain ⟨e₃, c₃⟩ := c₂.cell loadRun (e₂.bound addressBound) resultBound
+                      exact ⟨b, (e₁.trans e₂).trans e₃, c₃, resultBound.mono e₃.increase⟩
       | neg operand =>
           obtain ⟨wire, s₁, operandRun, fieldBind⟩ := bind_ok.mp stepRun
           obtain ⟨polynomial, s₂, fieldRun, pureRun⟩ := bind_ok.mp fieldBind

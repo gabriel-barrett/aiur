@@ -45,10 +45,31 @@ fn enum_input(x: Outer) -> Field {
   match x { Outer::Empty => 0, Outer::Wrap(Inner::Zero) => 1, Outer::Wrap(Inner::Value(a)) => a }
 }
 fn enum_hint() -> Outer { hint::<Outer>(()) }
+fn enum_discard(x: Field) -> Field {
+  let p = &Outer::Wrap(Inner::Value(x));
+  let _ = *p;
+  x
+}
+fn indirect_enum(x: Field) -> Field {
+  let p = &Inner::Value(x);
+  let link = &p;
+  let recovered = *link;
+  let Inner::Value(result) = *recovered;
+  result
+}
+fn load_unused(p: &Outer) -> () { let _ = *p; () }
 table inputs: (Field,) { (0,), (1,), (2,) }
 table outputs: Field { 1, 2, 0 }
 map successor(x: Field) -> Field = inputs => outputs;
 fn table_call(x: Field) -> Field { successor(x) }
+"
+
+/-- Cyclic memo witnesses can manufacture a pointer without a store. Removing
+load validation deliberately preserves the acyclicity requirement for soundness. -/
+def cyclicMemorySource : Program Nat := aiur% "
+enum E { A, B }
+fn forge() -> &E { forge() }
+fn main() -> () { let _ = *forge(); () }
 "
 
 def recursiveSource : Modules.Program Nat := aiur% "
@@ -139,13 +160,17 @@ private def width [Field F] [DecidableEq F] (compiled : Optimized.Artifact F) (n
 
 def run : IO Unit := do
   let program := localSource.toField K
-  let entries := program.functions.map (·.name)
+  let entries := (program.functions.map (·.name)).filter (· != "load_unused")
   let compiled ← get <| Optimized.compile program entries
   let unshared ← get <| Optimized.compile program entries { shareAuxiliaries := false }
   let uneliminated ← get <| Optimized.compile program entries { eliminateSelectors := false }
   let original := fun name => do
     let some function := program.findFunction? name | throw s!"missing test function {name}"
     Optimized.Compiler.function program {} function
+  let unusedLoad ← get (original "load_unused")
+  ensure "enum load allocated validation selectors"
+    (unusedLoad.roles.size == 4 && unusedLoad.equations.isEmpty && unusedLoad.cells.size == 1)
+  ensure "enum load width includes redundant validation" (width compiled "load_unused" == 4)
   let product ← get (original "product")
   let aliases ← get (Optimized.Alias.checkedResolve product)
   let reduced ← get (Optimized.Degree.boundState {} aliases.chip)
@@ -225,12 +250,61 @@ def run : IO Unit := do
       let rom : WireROM K := if x == 0 then ⟨[]⟩ else ⟨[(0, .field x⁻¹)]⟩
       checkCase program compiled "guarded_memory" [.field x] (.field out)
         (out == if x == 0 then 0 else x⁻¹) rom
+      checkCase program compiled "enum_discard" [.field x] (.field out) (out == x)
+        ⟨[(0, ⟨.enum "Outer", [1, 1, x]⟩)]⟩
+      checkCase program compiled "indirect_enum" [.field x] (.field out) (out == x)
+        ⟨[(0, ⟨.enum "Inner", [1, x]⟩), (1, ⟨.ptr (.enum "Inner"), [0]⟩)]⟩
+    for malformed in [([2, 0, 0] : List K), [1, 2, 0], [0, 1, 0]] do
+      checkCase program compiled "enum_discard" [.field x] (.field x) false
+        ⟨[(0, ⟨.enum "Outer", malformed⟩)]⟩
+    checkCase program compiled "indirect_enum" [.field x] (.field x) false
+      ⟨[(0, ⟨.enum "Inner", [2, x]⟩), (1, ⟨.ptr (.enum "Inner"), [0]⟩)]⟩
+    checkCase program compiled "enum_discard" [.field x] (.field x) true
+      ⟨[(0, ⟨.enum "Outer", [1, 1, x]⟩), (1, ⟨.enum "Outer", [2, 0, 0]⟩)]⟩
   for (words, expected) in [([0, 0, 0], true), ([1, 0, 0], true), ([1, 1, 2], true),
       ([2, 0, 0], false), ([0, 1, 0], false), ([1, 0, 1], false)] do
     checkCase program compiled "enum_hint" [] ⟨.enum "Outer", words⟩ expected
   for (words, value) in [([0, 0, 0], 0), ([1, 0, 0], 1), ([1, 1, 2], 2)] do
     for out in ([0, 1, 2] : List K) do
       checkCase program compiled "enum_input" [⟨.enum "Outer", words⟩] (.field out) (out == value)
+  -- Whole traces need only reachable cells to decode, and may follow a pointer
+  -- recovered from another stored cell.
+  let memoryCases : List (String × WireROM K) := [
+    ("enum_discard", ⟨[(0, ⟨.enum "Outer", [1, 1, 2]⟩), (1, ⟨.enum "Outer", [2, 0, 0]⟩)]⟩),
+    ("indirect_enum", ⟨[(0, ⟨.enum "Inner", [1, 2]⟩), (1, ⟨.ptr (.enum "Inner"), [0]⟩)]⟩)]
+  for (name, rom) in memoryCases do
+    let claim : Circuit.Message K := ⟨name, [.field 2], .field 2⟩
+    let some row := rowFor compiled.system rom claim (fun _ => false) |
+      throw (IO.userError s!"missing valid memory row for {name}")
+    let _ ← get <| compiled.check rom claim [row]
+    let _ ← get <| compiled.checkMemo rom claim [⟨row, 1⟩]
+  -- A row can satisfy both lookups against conflicting cells, so address
+  -- uniqueness must still be checked by both whole-system checkers.
+  let conflictingROM : WireROM K := ⟨[(0, .field 0), (0, .field 1)]⟩
+  let conflictingClaim : Circuit.Message K := ⟨"memory", [.field 0], .field 1⟩
+  let some conflictingRow := rowFor compiled.system conflictingROM conflictingClaim
+      (allowed program compiled.system) |
+    throw (IO.userError "missing conflicting-ROM row for checker regression")
+  ensure "unit checker accepted conflicting ROM cells"
+    (compiled.check conflictingROM conflictingClaim [conflictingRow]).toOption.isNone
+  ensure "memo checker accepted conflicting ROM cells"
+    (compiled.checkMemo conflictingROM conflictingClaim [⟨conflictingRow, 1⟩]).toOption.isNone
+  -- Unrestricted cyclic memo proofs are intentionally outside load provenance.
+  let cyclicProgram := cyclicMemorySource.toField K
+  let cyclic ← get <| Optimized.compile cyclicProgram ["main"]
+  let reference ← get <| (Circuit.compile cyclicProgram).mapError reprStr
+  let cyclicROM : WireROM K := ⟨[(0, ⟨.enum "E", [2]⟩)]⟩
+  let cyclicRoot : Circuit.Message K := ⟨"main", [], .tuple []⟩
+  let forged : Circuit.Message K := ⟨"forge", [], ⟨.ptr (.enum "E"), [0]⟩⟩
+  let some rootRow := rowFor cyclic.system cyclicROM cyclicRoot (fun _ => true) |
+    throw (IO.userError "missing cyclic root row")
+  let some forgeRow := rowFor cyclic.system cyclicROM forged (fun _ => true) |
+    throw (IO.userError "missing cyclic pointer row")
+  let _ ← get <| cyclic.checkMemo cyclicROM cyclicRoot [⟨rootRow, 1⟩, ⟨forgeRow, 2⟩]
+  ensure "unit checker accepted a self-supported pointer"
+    (cyclic.check cyclicROM cyclicRoot [rootRow, forgeRow]).toOption.isNone
+  ensure "reference load accepted malformed enum tag"
+    (rowFor reference cyclicROM cyclicRoot (fun _ => true)).isNone
   -- Produce actual accepted trees of rows for both existing checkers.
   for (name, args, out) in [("repeated", [.field 2], .field 2),
       ("unit_call", [.field 0], .field 1), ("table_call", [.field 2], .field 0)] do
@@ -303,7 +377,8 @@ end AiurOptimizedTests
 #print axioms Aiur.Optimized.Compiler.function_sound
 #print axioms Aiur.Optimized.Compiler.function_complete
 #print axioms Aiur.Optimized.reference_check_iff
-#print axioms Aiur.Optimized.reference_checkMemo_iff
+#print axioms Aiur.Optimized.reference_checkMemo_complete
+#print axioms Aiur.Optimized.reference_checkMemo_acyclic_iff
 #print axioms Aiur.Optimized.reference_acyclic_iff
 #print axioms Aiur.Optimized.ModulesArtifact.check_complete
 #print axioms Aiur.Optimized.ModulesArtifact.checkMemo_complete

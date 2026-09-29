@@ -244,3 +244,30 @@ input rows by their first argument before checking whole-row duplicates
 (`tableRowsNodup_eq` proves equivalence to `List.Nodup`), and a tail-recursive
 comparison of the deduplication certificate's long map-claim lists. Neither
 change weakens the checked proposition or changes source semantics.
+
+## Follow-up: inherit load validity from stores
+
+The optimized compiler now omits independent canonical-value validation at
+loads. A proved provenance invariant connects pointers in a finite entrypoint
+derivation to stored contents; ROM uniqueness then establishes the loaded
+value's validity. Store and interface validation remain, as do all ROM lookups.
+See [the proof boundary](load-provenance.md).
+
+With the same full U8 tables, total optimized columns fall from **1,869 to
+1,729**. `bytes_to_block` loses its 128 load-validation selectors and falls from
+**385 to 257** columns; its maximum equation degree falls from two to one.
+`compress_layer` saves four, `next_layer` four, `compress_chunks` two, and
+`is_empty` two. Reference widths, call counts, ROM lookup counts, and static
+table sizes are unchanged.
+
+For `bytes_to_block`, the remaining accounting is:
+
+```text
+1 input + 64 outputs + 64*(tag, byte, next pointer) = 257 columns
+```
+
+The ix stage1 width remains 195. Copy propagation of the 64 result bytes and
+constant propagation of the 64 matched tags remain separate opportunities;
+they are not part of this change. The earlier 129-column algebraic candidate
+therefore remains a proposal. The compression chip is still 612 columns;
+its packed-addition opportunity is independent of memory validation.
