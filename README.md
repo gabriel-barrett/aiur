@@ -274,9 +274,10 @@ optimized.circuit.system.printStats
 let alternative ← prepared.compileOptimized { maxDegree := 4, deduplicate := false }
 ```
 
-**Full optimized/reference equivalence is proved without admitted steps.**
-`reference_check_iff` and `reference_checkMemo_iff` establish the same accepted
-entry claims for both integer checkers, including recursive chip deduplication.
+**Optimized entrypoint soundness and completeness are proved without admitted steps.**
+`reference_check_iff` establishes identical accepted entry claims for the unit
+checker, including recursive chip deduplication. Memoized equivalence requires
+acyclic support; reference-to-optimized completeness also covers cyclic proofs.
 `layOut_correct` proves the stronger local-rule equivalence for selector
 elimination, degree reduction, shared-column allocation, and physical-row
 emission. Successful artifacts also carry proofs of the degree bounds.
@@ -297,12 +298,15 @@ For a larger comparison, `lake exe blake3_stats` compiles the
 [Blake3 example](Examples/Blake3.lean), including programmatically generated U8
 tables and an entrypoint that builds a byte stream. It prints each chip's
 statistics for both compilers and the shared table sizes, without executing
-the hash. The current totals are 2,861 versus 1,869 chip columns, maximum
+the hash. The current totals are 2,861 versus 1,729 chip columns, maximum
 constraint degree nine versus three, and 446 lookup slots in either version.
 See the [adaptation and measured report](design/blake3-example.md).
 
 Enum encodings contain a constructor tag and payload padded with zeros to the
-largest variant. Active interface and ROM values are constrained to be canonical.
+largest variant. Active interface and stored values are constrained to be
+canonical. The optimized compiler omits independent validation of loaded values:
+[store provenance](design/load-provenance.md) and ROM uniqueness establish their
+validity along finite entrypoint derivations. All ROM lookups remain.
 Compilation checks that declaration-order tags remain distinct in the field;
 in positive characteristic `p`, each enum can have at most `p` constructors. This bound is
 separate from the allocation-capacity bound.

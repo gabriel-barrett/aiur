@@ -261,9 +261,8 @@ mutual
                     | cons => simp at shapeBind
                     | nil =>
                         dsimp only at shapeBind
-                        obtain ⟨result, s₂, destRun, validationBind⟩ := bind_ok.mp shapeBind
-                        obtain ⟨⟨⟩, s₃, validationRun, cellBind⟩ := bind_ok.mp validationBind
-                        obtain ⟨⟨⟩, s₄, cellRun, finished⟩ := bind_ok.mp cellBind
+                        obtain ⟨result, s₂, destRun, cellBind⟩ := bind_ok.mp shapeBind
+                        obtain ⟨⟨⟩, s₃, cellRun, finished⟩ := bind_ok.mp cellBind
                         obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
                         obtain ⟨a, inputExt, inputBound, pointerDecode⟩ := lower_complete checked tags typed callComplete inputRun
                           stateLayout scopeLayout valid scopeValid localsBound (by simp [TargetBound]) active decoded
@@ -279,27 +278,16 @@ mutual
                         have resultDecodeB : ((result.map Polynomial.var).map (Circuit.ArithExpr.denote b)).decode
                             program.enums = some value := by simpa only [WireValue.map_map] using resultDecode
                         have destScoped := destination_scoped destRun inputScoped
-                        have beforeValidation := inputStructure.trans (destination_extends destRun)
                         have initialExt := inputExt.trans destExt
-                        obtain ⟨c, validationExt⟩ := validateValue_complete tags validationRun destExt.layout destScoped
-                          destExt.validAssignment (beforeValidation.scopeValid scopeValid) resultBound
-                          (Or.inr ⟨(Extension.activation initialExt beforeValidation scopeLayout scopeValid).trans active,
-                            value, resultDecodeB⟩)
-                        obtain ⟨_, validationScoped⟩ := validateValue_scoped validationRun destScoped
-                          (beforeValidation.scopeValid scopeValid)
-                        have untilCell := initialExt.trans validationExt
                         have ab := inputBound address (by simp)
-                        have resultDecodeC := validationExt.decoded_value resultBound resultDecodeB
-                        have cellExt := cell_complete cellRun validationExt.layout validationExt.validAssignment
-                          (validationScoped.activation_bound scope) ((destExt.trans validationExt).bound ab)
-                          (resultBound.mono validationExt.increase) (by
+                        have cellExt := cell_complete cellRun destExt.layout destExt.validAssignment
+                          (destScoped.activation_bound scope) (destExt.bound ab) resultBound (by
                             intro _
-                            have same := WireValue.decode_injective checked resultDecodeC valueDecode
-                            change (address.denote c, (result.map Polynomial.var).map (Circuit.ArithExpr.denote c)) ∈ rom.entries
-                            rw [same, (destExt.trans validationExt).polynomial ab]
+                            have same := WireValue.decode_injective checked resultDecodeB valueDecode
+                            change (address.denote b, (result.map Polynomial.var).map (Circuit.ArithExpr.denote b)) ∈ rom.entries
+                            rw [same, destExt.polynomial ab]
                             exact rawCell)
-                        exact ⟨c, untilCell.trans cellExt, resultBound.mono (validationExt.trans cellExt).increase,
-                          resultDecodeC⟩
+                        exact ⟨b, initialExt.trans cellExt, resultBound.mono cellExt.increase, resultDecodeB⟩
       | hint type key =>
           rw [exprEq] at evaluated valueRun
           cases evaluated with

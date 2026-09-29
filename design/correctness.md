@@ -12,10 +12,12 @@ equivalence with the lowered circuit core. `Generic/NativeCircuit.lean` composes
 it with both integer checkers, including acyclic memoized soundness; see the
 [semantic boundary](source-semantics.md#proof-boundary).
 
-The alternative optimized compiler also has complete local soundness and
-completeness proofs. `Optimized/Equivalence.lean` proves reference/optimized
-equivalence for both integer checkers at selected roots, including cyclic
-memoized graphs and chip deduplication. `Optimized/NativeCorrectness.lean`
+The alternative optimized compiler has soundness and completeness proofs.
+Its load optimization uses [store provenance](load-provenance.md) in the local
+soundness invariant. `Optimized/Equivalence.lean` proves reference/optimized
+equivalence for finite entrypoint trees, acyclic memoized graphs, and the unit
+checker, including chip deduplication. Unrestricted cyclic acceptance has
+reference-to-optimized completeness. `Optimized/NativeCorrectness.lean`
 connects the original source/module predicate and executor directly to the
 optimized checkers, with the same allocation-capacity and acyclicity conditions.
 See [optimized equivalence](optimized-equivalence.md) for the exact statements.

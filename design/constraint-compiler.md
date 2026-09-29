@@ -5,8 +5,9 @@ The executable compiler is connected to source semantics through scoped
 compilation, selector elimination, degree reduction, column allocation,
 physical emission, and recursive chip deduplication.
 [`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean) proves reference/optimized
-equivalence at selected entrypoints for derivation trees, memoized graphs,
-acyclic graphs, and existence of accepted rows for both integer checkers.
+equivalence at selected entrypoints for finite trees, acyclic memoized graphs,
+and unit-checker acceptance. Weighted acceptance has reference-to-optimized
+completeness; its reverse direction requires acyclic support.
 [`NativeCorrectness.lean`](../Aiur/Optimized/NativeCorrectness.lean) connects the
 original module/generic source predicate and successful execution to the final
 checkers. Memoized soundness requires an acyclic support graph; heap completeness
@@ -275,8 +276,11 @@ handled by the same degree-reduction stage.
 Source pointer patterns and or-patterns reach this stage through the existing
 proved preparation. Their ordered reads and first-match continuations are
 ordinary core expressions; the scoped compiler retains their call and ROM
-occurrences under the corresponding activations. Enum validation uses its own
-exclusive constructor choices, guarded payload checks, and zero-padding checks.
+occurrences under the corresponding activations. Where needed, enum validation
+uses exclusive constructor choices, guarded payload checks, and zero-padding
+checks. Loads omit these checks: [store provenance](load-provenance.md) proves
+them redundant for finite entrypoint soundness. Store and interface validation
+remain.
 
 As a conservative alternative where exact Boolean tests `t_i` are already
 available, use `r_i = e - sum_{j < i} s_j` and `s_i = r_i * t_i`. This gives
@@ -369,27 +373,25 @@ The implemented proof separates three boundaries:
    Selector elimination, degree materialization, and shared physical columns
    are included. Witness extension and projection preserve the full local rule,
    even though row widths and variable indices differ.
-2. **Reference system to unmerged optimized system.** The actual function
-   proofs, including optimized scoped compilation and layout, establish
-   [`System.SemanticModel`](../Aiur/Circuit/SemanticModel.lean) for both systems.
-   It relates local rows to source body evaluation with calls interpreted by an
-   arbitrary premise relation. This yields
-   [`SupportEquiv`](../Aiur/Circuit/SupportedEquivalence.lean): a supported local
-   rule can be reproduced with the same conclusion using available premise
-   claims. Support uses list membership, so this boundary does not assert exact
-   local premise multiplicities. Closed trees can copy needed subproofs, and
-   memoized graphs route each new edge through an existing edge. Cycles are
-   allowed, and acyclic graphs remain acyclic.
+2. **Reference system to unmerged optimized system.** The reference compiler
+   proves `System.SemanticModel`; the optimized compiler proves
+   [`System.ProvenanceModel`](../Aiur/Circuit/ProvenanceModel.lean). Finite
+   derivations propagate store provenance from pointer-free entry arguments,
+   justifying loads without independent canonical-value checks. The systems
+   agree on valid public claims with finite or acyclic support. Unrestricted
+   cyclic acceptance has only reference-to-optimized refinement; cycles may
+   justify unsupported pointers. No whole-system local equivalence is assumed.
 3. **Deduplication.** Checked structural correspondence gives uniform rule
    lifting for every member of a merged class, preserving renamed conclusions
    and premise multisets while fixing entrypoint claims. See
    [circuit deduplication](circuit-deduplication.md).
 
 The resulting whole-compiler theorems prove equality of accepted claims at
-selected entrypoints through the **existence** of derivation trees, memoized
-graphs, and integer-balanced row lists. Particular row counts, provide weights,
-and per-row premise multiplicities
-may differ between witnesses. Redundant rows need not participate in the proof
+selected entrypoints through the **existence** of derivation trees, acyclic
+memoized graphs, and unit-balanced row lists. Weighted acceptance retains
+one-way completeness for arbitrary cycles. Particular row counts, provide
+weights, and per-row premise multiplicities may differ between witnesses.
+Redundant rows need not participate in the proof
 extracted from a balanced trace. The implementation still retains separate
 call and lookup occurrences; implementation sharing does not merge them.
 
@@ -430,9 +432,10 @@ source functions are total.
 7. Prove actual AST-to-scoped compilation, local layout correspondence, and
    system-level deduplication transport. **Proved**, including enum validation,
    inactive branch witnesses, first-match patterns, alias/degree composition,
-   and generated allocation invariants. Whole-compiler support equivalence
-   transports both integer checkers, including cyclic memoized acceptance and
-   preservation of acyclicity; see [the theorem list](optimized-equivalence.md).
+   and generated allocation invariants. Store provenance justifies omitting
+   load validation for finite/acyclic entrypoint soundness. Both checkers retain
+   completeness; unrestricted cyclic acceptance has one-way refinement; see
+   [the theorem list](optimized-equivalence.md).
 8. Compose the complete pass correspondence with the existing source and
    checker results to certify the alternative path at the fixed entrypoints.
    **Proved** for the original source predicate and successful execution, with

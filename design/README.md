@@ -33,6 +33,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   operand order, retained source semantics, and proved reconstruction.
 - [Pointers and ROM](pointers.md): typed opaque pointers, a prover-chosen
   heterogeneous table, allocation bounds, and source/circuit correspondence.
+- [Load provenance](load-provenance.md): removal of redundant validation at
+  optimized loads, justified by stores and finite entrypoint derivations.
 - [Pointer patterns](pointer-patterns.md): `&pattern` as a load, nested ordered
   matching, scope hygiene, and lowering to existing ROM operations.
 - [Structs](structs.md): nominal named products, generic construction and patterns,

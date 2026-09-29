@@ -400,22 +400,19 @@ mutual
                   | cons => simp at pointerBind
                   | nil =>
                       dsimp only at pointerBind
-                      obtain ⟨result, s₂, destinationRun, validationBind⟩ := bind_ok.mp pointerBind
-                      obtain ⟨⟨⟩, s₃, validationRun, loadBind⟩ := bind_ok.mp validationBind
-                      obtain ⟨⟨⟩, s₄, loadRun, pureRun⟩ := bind_ok.mp loadBind
+                      obtain ⟨result, s₂, destinationRun, loadBind⟩ := bind_ok.mp pointerBind
+                      obtain ⟨⟨⟩, s₃, loadRun, pureRun⟩ := bind_ok.mp loadBind
                       obtain ⟨_, stateEq⟩ := pure_ok.mp pureRun
                       subst middle
                       have prefixExtension := operandExtension.trans (destination_extends destinationRun)
-                      obtain ⟨validationExtension, validationLayout⟩ := validateValue_scoped validationRun
-                        (destination_scoped destinationRun operandLayout) (prefixExtension.scopeValid scopeValid)
-                      change Except.ok ((), {s₃ with cells := s₃.cells.push ⟨scope, address, result.map Polynomial.var⟩}) =
-                        .ok ((), s₄) at loadRun
+                      change Except.ok ((), {s₂ with cells := s₂.cells.push ⟨scope, address, result.map Polynomial.var⟩}) =
+                        .ok ((), s₃) at loadRun
                       have stateEq := (Prod.mk.inj (Except.ok.inj loadRun)).2
-                      subst s₄
-                      have validatedExtension := prefixExtension.trans validationExtension
-                      obtain ⟨cellExtension, finalLayout⟩ := pushCell_scoped validationLayout
-                        ⟨scope, address, result.map Polynomial.var⟩ (validatedExtension.scopeValid scopeValid)
-                      exact ⟨validatedExtension.trans cellExtension, finalLayout⟩
+                      subst s₃
+                      obtain ⟨cellExtension, finalLayout⟩ := pushCell_scoped
+                        (destination_scoped destinationRun operandLayout)
+                        ⟨scope, address, result.map Polynomial.var⟩ (prefixExtension.scopeValid scopeValid)
+                      exact ⟨prefixExtension.trans cellExtension, finalLayout⟩
       | neg operand =>
           obtain ⟨wire, s₁, operandRun, fieldBind⟩ := bind_ok.mp stepRun
           obtain ⟨polynomial, s₂, fieldRun, pureRun⟩ := bind_ok.mp fieldBind

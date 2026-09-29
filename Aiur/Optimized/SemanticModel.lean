@@ -1,19 +1,37 @@
 import Aiur.Optimized.LocalCorrectness
 import Aiur.Optimized.LocalWitness
 import Aiur.Optimized.MapFacts
-import Aiur.Circuit.SemanticMemory
+import Aiur.Circuit.ProvenanceModel
 
 namespace Aiur.Optimized
 
 variable {F : Type} [Field F] [DecidableEq F]
 
-/-- The executable optimized compiler implements each source function's local
-rule, before channel deduplication. All physical layout passes are included. -/
+/-- Optimized loads use store provenance instead of separate value validation.
+All physical layout passes preserve this guarded local semantics. -/
 theorem compile_semanticModel {program : Program F} {entries : List String} {config : Config} {artifact : Artifact F}
-    (compiled : compile program entries config = .ok artifact) : artifact.unmerged.SemanticModel program := by
+    (compiled : compile program entries config = .ok artifact) : artifact.unmerged.ProvenanceModel program := by
   have stages := compile_stages compiled
   have declarations := typecheck_declarations stages.1
-  refine ⟨declarations, ?_, ?_, ?_⟩
+  refine ⟨declarations, ?_, ?_, ?_, ?_⟩
+  · intro rom rule signature found
+    cases rule with
+    | node chip row lookup valid =>
+        obtain ⟨function, functionFound, lowered⟩ := compile_find_chip compiled lookup
+        have names : chip.name = row.chip := by simpa using List.find?_some lookup
+        have sourceSignature : program.findSignature? chip.name = some ⟨function.params, function.result⟩ := by
+          rw [names]
+          exact Program.signature_of_function functionFound
+        change program.findSignature? chip.name = some signature at found
+        obtain rfl := Option.some.inj (found.symm.trans sourceSignature)
+        simpa only [Circuit.RuleInstance.conclusion, Circuit.Chip.receive, List.map_map,
+          Function.comp_def, WireValue.type_map] using lowered.interface.2.1
+    | table message member =>
+        obtain ⟨args, constant, arguments, decoded, absent, looked⟩ := compile_map_spec compiled member
+        obtain ⟨map, _, mapFound, types, _, _, _, _⟩ := lookupMap_spec looked
+        have signatureFound := Program.signature_of_map absent mapFound
+        obtain rfl := Option.some.inj (found.symm.trans signatureFound)
+        exact arguments.types.symm.trans types.symm
   · intro rom rule signature found
     cases rule with
     | node chip row lookup valid =>
@@ -33,7 +51,7 @@ theorem compile_semanticModel {program : Program F} {entries : List String} {con
         have resultType := (WireValue.decode_spec decoded).1
         simp only [Value.hasType, Bool.and_eq_true, decide_eq_true_eq] at typed
         exact resultType.symm.trans (by simpa using typed.1)
-  · intro rom rule calls premises
+  · intro rom romValid rule calls premises callProvenance
     cases rule with
     | node chip row lookup valid =>
         obtain ⟨function, found, lowered⟩ := compile_find_chip compiled lookup
@@ -43,11 +61,14 @@ theorem compile_semanticModel {program : Program F} {entries : List String} {con
           (layOut_correct laidOut rom (layout.chip.receive row) (layout.chip.premises row)).mpr
             ⟨{row with chip := layout.chip.name}, rfl, valid, rfl, rfl⟩
         obtain ⟨args, result, arguments, decoded, body⟩ :=
-          Compiler.function_sound declarations stages.2.1 lowered logicalValid (sourceCalls := calls) (by
-            intro premise member values value argumentDecode resultDecode
-            apply premises premise (by simpa only [requires] using member) values value argumentDecode resultDecode)
+          Compiler.function_sound declarations stages.2.1 lowered romValid logicalValid (sourceCalls := calls) (by
+            intro premise member values value argumentDecode resultDecode trusted
+            apply premises premise (by simpa only [requires] using member) values value argumentDecode resultDecode trusted)
+            callProvenance
         rw [conclusion] at arguments decoded
-        refine ⟨args, result, arguments, decoded, _, _, ?_, body⟩
+        refine ⟨args, result, arguments, decoded, fun trusted => ?_⟩
+        obtain ⟨evaluated, resultTrusted⟩ := body trusted
+        refine ⟨⟨_, _, ?_, evaluated⟩, resultTrusted⟩
         have types : function.params.map Prod.snd = args.map Value.type := by
           rw [arguments.types]
           simpa only [Circuit.Chip.receive, List.map_map, Function.comp_def, WireValue.type_map]
@@ -58,8 +79,9 @@ theorem compile_semanticModel {program : Program F} {entries : List String} {con
         exact found
     | table message member =>
         obtain ⟨args, constant, arguments, decoded, absent, looked⟩ := compile_map_spec compiled member
-        refine ⟨args, constant.toValue, arguments, decoded, _, _, prepareCall_map absent looked, ?_⟩
-        exact (ROMEvalExprWith.constant_iff constant).mpr rfl
+        refine ⟨args, constant.toValue, arguments, decoded, fun _ => ?_⟩
+        exact ⟨⟨_, _, prepareCall_map absent looked, (ROMEvalExprWith.constant_iff constant).mpr rfl⟩,
+          .of_pointerFree constant.toValue (Constant.toValue_pointerFree constant)⟩
   · intro rom calls sourceCalls typed callComplete name args result step
     obtain ⟨locals, body, prepared, evaluated⟩ := step
     rcases prepareCall_spec prepared with function | table

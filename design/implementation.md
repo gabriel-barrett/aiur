@@ -9,8 +9,10 @@
   deduplication pass carries a checked structural certificate and preserves
   entrypoint acceptance. `PolynomialFacts.lean`, `BranchFacts.lean`,
   `ScopedSemantics.lean`, and `LayoutWitness.lean` prove simplification, branch
-  algebra, physical emission, and conditional witness packing. Earlier pass
-  invariants and full reference/optimized equivalence remain open; see
+  algebra, physical emission, and witness packing. `CheckedLayout.lean` proves
+  the complete local layout correspondence. `Memory/WireProvenance.lean` and
+  `Circuit/ProvenanceModel.lean` justify omitting load validation at optimized
+  entrypoints. Both source/checker correctness directions are proved; see
   [the exact proof status](optimized-equivalence.md).
 
 - `Aiur/Inlining/`: mandatory call expansion after specialization/control lowering,
