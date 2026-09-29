@@ -2,6 +2,7 @@ import Aiur.Optimized.Program
 import Aiur.Optimized.LayoutWitness
 import Aiur.Optimized.BranchFacts
 import Aiur.Optimized.PrimitiveCorrectness
+import Aiur.Optimized.ReferenceState
 
 namespace Aiur.Optimized
 
