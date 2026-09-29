@@ -24,6 +24,43 @@ def ScopedChip.premises (chip : ScopedChip F) (assignment : Witness → F) : Lis
   chip.calls.toList.filterMap fun call =>
     if (chip.activation call.scope).denote assignment = 1 then some (call.message assignment) else none
 
+/-- Witness transport preserves every call occurrence and the same ROM. -/
+def ScopedChip.Refines (source target : ScopedChip F) : Prop :=
+  ∀ rom assignment, source.ValidAssignment rom assignment →
+    ∃ translated, target.ValidAssignment rom translated ∧
+      target.conclusion translated = source.conclusion assignment ∧
+      target.premises translated = source.premises assignment
+
+def ScopedChip.Equivalent (source target : ScopedChip F) : Prop :=
+  source.Refines target ∧ target.Refines source
+
+def ScopedChip.Rule (chip : ScopedChip F) (rom : WireROM F)
+    (conclusion : Circuit.Message F) (premises : List (Circuit.Message F)) : Prop :=
+  ∃ assignment, chip.ValidAssignment rom assignment ∧
+    chip.conclusion assignment = conclusion ∧ chip.premises assignment = premises
+
+theorem ScopedChip.Equivalent.rule_iff {source target : ScopedChip F} (same : source.Equivalent target)
+    (rom : WireROM F) (conclusion : Circuit.Message F) (premises : List (Circuit.Message F)) :
+    source.Rule rom conclusion premises ↔ target.Rule rom conclusion premises := by
+  constructor
+  · rintro ⟨a, valid, root, calls⟩
+    obtain ⟨b, valid, root', calls'⟩ := same.1 rom a valid
+    exact ⟨b, valid, root'.trans root, calls'.trans calls⟩
+  · rintro ⟨a, valid, root, calls⟩
+    obtain ⟨b, valid, root', calls'⟩ := same.2 rom a valid
+    exact ⟨b, valid, root'.trans root, calls'.trans calls⟩
+
+theorem ScopedChip.Refines.trans {first second third : ScopedChip F}
+    (left : first.Refines second) (right : second.Refines third) : first.Refines third := by
+  intro rom assignment valid
+  obtain ⟨middle, valid, conclusion, premises⟩ := left rom assignment valid
+  obtain ⟨last, valid, conclusion', premises'⟩ := right rom middle valid
+  exact ⟨last, valid, conclusion'.trans conclusion, premises'.trans premises⟩
+
+theorem ScopedChip.Equivalent.trans {first second third : ScopedChip F}
+    (left : first.Equivalent second) (right : second.Equivalent third) : first.Equivalent third :=
+  ⟨left.1.trans right.1, right.2.trans left.2⟩
+
 @[simp] theorem ColumnLayout.expression_denote (layout : ColumnLayout) (expr : Polynomial F)
     (assignment : Circuit.Var → F) :
     (layout.expression expr).denote assignment = expr.denote (assignment ∘ layout.column) := by

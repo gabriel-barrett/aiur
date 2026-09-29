@@ -14,6 +14,7 @@ structure State (F : Type) where
   equations : Array (Equation F) := #[]
   calls : Array (Call F) := #[]
   cells : Array (Cell F) := #[]
+  choices : Array Choice := #[]
   config : Config := {}
 
 abbrev Build (F : Type) := StateT (State F) (Except String)
@@ -64,6 +65,7 @@ def choice [Field F] (parent : ScopeId) (count : Nat) : Build F (List ScopeId) :
     selectors := selectors ++ [selector]
   let total := selectors.foldl Polynomial.add (.const 0)
   equation 0 (.sub total enclosing.activation)
+  modify fun state => { state with choices := state.choices.push ⟨parent, children⟩ }
   -- Define a parent by the first choice that covers it. Later choices retain
   -- their coverage equations, relating their sums to this same activation.
   if (← get).config.eliminateSelectors && count > 0 then
@@ -123,7 +125,7 @@ mutual
         let .tuple types := value.type | throw "non-tuple pattern"
         patternList decls patterns (← splitValues decls types value.words)
     | .construct name ctor patterns =>
-        if value.type != .enum name then throw "constructor pattern type mismatch"
+        if value.type ≠ .enum name then throw "constructor pattern type mismatch"
         let some definition := decls.findEnum? name | throw "unknown enum"
         let index := definition.constructors.findIdx (·.name == ctor)
         let some constructor := definition.constructors[index]? | throw "unknown constructor"
@@ -154,7 +156,7 @@ def failure [Field F] (scope : ScopeId) (conditions : List (Polynomial F)) : Bui
   equation scope (.sub (terms.foldl Polynomial.add (.const 0)) (.const 1))
 
 def equalValue (scope : ScopeId) (left right : Symbolic F) : Build F Unit := do
-  if left.type != right.type || left.words.length != right.words.length then
+  if left.type ≠ right.type ∨ left.words.length ≠ right.words.length then
     throw "value equality shape mismatch"
   for (a, b) in left.words.zip right.words do equation scope (.sub a b)
 
@@ -165,7 +167,7 @@ def asField : Symbolic F → Build F (Polynomial F)
 def destination (decls : Declarations) (scope : ScopeId) (type : Ty)
     (target : Option (WireValue Witness)) : Build F (WireValue Witness) := do
   if let some target := target then
-    if target.type != type then throw "destination type mismatch"
+    if target.type ≠ type then throw "destination type mismatch"
     return target
   freshValue decls (.auxiliary scope) type
 
@@ -189,7 +191,7 @@ mutual
         let index := definition.constructors.findIdx (·.name == ctor)
         let some constructor := definition.constructors[index]? | throw "unknown constructor"
         let values ← lowerArgs program function locals scope args
-        if values.map WireValue.type != constructor.fields then throw "constructor argument types"
+        if values.map WireValue.type ≠ constructor.fields then throw "constructor argument types"
         let layout ← getLayout program.enums (.enum name)
         let payload := values.flatMap WireValue.words
         if payload.length + 1 > layout.width then throw "constructor payload width"
@@ -249,7 +251,7 @@ mutual
     | .call name args => do
         let some callee := program.findSignature? name | throw s!"unknown function {name}"
         let args ← lowerArgs program function locals scope args
-        if args.map WireValue.type != callee.params.map Prod.snd then throw "call argument types"
+        if args.map WireValue.type ≠ callee.params.map Prod.snd then throw "call argument types"
         let result ← destination program.enums scope callee.result target
         for arg in args do validateValue program.enums scope arg
         validateValue program.enums scope (result.map Polynomial.var)
@@ -309,7 +311,7 @@ def function [Field F] [DecidableEq F] (program : Program F) (config : Config)
     return (inputs, output)
   let ((inputs, output), state) ← build.run { config, scopes := #[⟨.const 1, []⟩] }
   return ⟨fn.name, inputs, output, state.roles, state.aliases, state.scopes,
-    state.equations, state.calls, state.cells⟩
+    state.equations, state.calls, state.cells, state.choices⟩
 
 end Compiler
 end Aiur.Optimized

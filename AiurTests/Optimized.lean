@@ -143,6 +143,32 @@ def run : IO Unit := do
   let compiled ← get <| Optimized.compile program entries
   let unshared ← get <| Optimized.compile program entries { shareAuxiliaries := false }
   let uneliminated ← get <| Optimized.compile program entries { eliminateSelectors := false }
+  let original := fun name => do
+    let some function := program.findFunction? name | throw s!"missing test function {name}"
+    Optimized.Compiler.function program {} function
+  let product ← get (original "product")
+  let aliases ← get (Optimized.Alias.checkedResolve product)
+  let reduced ← get (Optimized.Degree.boundState {} aliases.chip)
+  ensure "valid degree certificate rejected" (Optimized.Degree.certify aliases.chip reduced).toOption.isSome
+  ensure "degree certificate accepted missing witness definitions"
+    (Optimized.Degree.certify aliases.chip { reduced with cache := [] }).toOption.isNone
+  ensure "degree certificate accepted missing defining equations"
+    (Optimized.Degree.certify aliases.chip
+      { reduced with chip.equations := reduced.chip.equations.extract 1 reduced.chip.equations.size }).toOption.isNone
+  let nested ← get (original "nested")
+  ensure "valid alias certificate rejected" (Optimized.Alias.checkedResolve nested).toOption.isSome
+  ensure "alias certificate accepted missing coverage equations"
+    (Optimized.Alias.checkedResolve { nested with equations := #[] }).toOption.isNone
+  let nestedLayout ← get (Optimized.layOut {} nested)
+  ensure "valid allocation certificate rejected"
+    (decide (Optimized.Allocation.Certificate nestedLayout.logical nestedLayout.layout))
+  ensure "allocation certificate allowed simultaneous values to share a column"
+    (!decide (Optimized.Allocation.Certificate nestedLayout.logical
+      { nestedLayout.layout with columnOf := nestedLayout.layout.columnOf.map (fun _ => some 0) }))
+  ensure "control certificate trusted forged parent metadata"
+    (!decide (Optimized.Control.Certificate
+      { nestedLayout.logical with choices := nestedLayout.logical.choices.map fun choice =>
+          { choice with parent := nestedLayout.logical.scopes.size } }))
   ensure "exclusive auxiliaries were not shared" (width compiled "divide" < width unshared "divide")
   ensure "parent selector was not eliminated" (width compiled "nested" < width uneliminated "nested")
   ensure "direct call did not reuse output" (width compiled "forward" == 2)
@@ -266,3 +292,9 @@ end AiurOptimizedTests
 #print axioms Aiur.Optimized.Polynomial.denote_simplify
 #print axioms Aiur.Optimized.failure_certificate_iff
 #print axioms Aiur.Optimized.selector_exactly_one
+#print axioms Aiur.Optimized.Degree.Certificate.equivalent
+#print axioms Aiur.Optimized.Alias.Certificate.equivalent
+#print axioms Aiur.Optimized.Allocation.Certificate.complete
+#print axioms Aiur.Optimized.layOut_correct
+#print axioms Aiur.Optimized.Compiler.pattern_correct
+#print axioms Aiur.Optimized.Compiler.pattern_failure_iff

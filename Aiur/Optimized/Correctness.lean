@@ -1,6 +1,7 @@
 import Aiur.Optimized.Program
 import Aiur.Optimized.LayoutWitness
 import Aiur.Optimized.BranchFacts
+import Aiur.Optimized.PrimitiveCorrectness
 
 namespace Aiur.Optimized
 
