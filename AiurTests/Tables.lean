@@ -102,6 +102,18 @@ example : typecheck (collision.toField (ZMod 7)) = .error (.duplicateInput "coll
 example : (compile (collision.toField (ZMod 7))).isOk = false := by decide +kernel
 example : (run (collision.toField (ZMod 7)) "collide" [0]).isOk = false := by decide +kernel
 
+/-- Partitioning must accept repeated first arguments, but still reject full
+row collisions, including nonadjacent rows that collide only in the field. -/
+def pairCollision : Program Nat := aiur% "
+table inputs: (Field, Field) { (0, 0), (1, 0), (0, 1), (7, 0), }
+table outputs: Field { 0, 1, 2, 3, }
+map pair_lookup(a: Field, b: Field) -> Field = inputs => outputs;
+"
+example : typecheck pairCollision = .ok () := by decide +kernel
+example : typecheck (pairCollision.toField Rat) = .ok () := by decide +kernel
+example : typecheck (pairCollision.toField (ZMod 7)) =
+    .error (.duplicateInput "pair_lookup" "inputs") := by decide +kernel
+
 def system : System Rat := (compile program).toOption.getD { chips := [] }
 theorem compiled : compile program = .ok system := by
   have succeeds : (compile program).isOk = true := by decide +kernel

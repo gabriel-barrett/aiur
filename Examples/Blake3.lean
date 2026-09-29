@@ -21,34 +21,26 @@ module U8 {
 
     table byte_inputs: (Field,) {}
     table byte_values: Field {}
-    table byte_parts4: (Field, Field) {}
-    table byte_parts7: (Field, Field) {}
-    table nibble_inputs: (Field, Field) {}
-    table nibble_xors: Field {}
+    table pair_inputs: (Field, Field) {}
+    table pair_xors: Field {}
+    table pair_sums: Field {}
+    table pair_differences: Field {}
+    table pair_products: (Field, Field) {}
+    table pair_xor_parts4: (Field, Field) {}
+    table pair_xor_parts7: (Field, Field) {}
+    table pair_units: () {}
     table sum_inputs: (Field,) {}
     table sum_parts: (Field, Field) {}
 
     map from_field(x: Field) -> Byte = byte_inputs => byte_values;
-    map split4(x: Byte) -> (Field, Field) = byte_inputs => byte_parts4;
-    map split7(x: Byte) -> (Field, Field) = byte_inputs => byte_parts7;
-    map xor4(a: Field, b: Field) -> Field = nibble_inputs => nibble_xors;
+    map range_pair(a: Field, b: Field) -> () = pair_inputs => pair_units;
+    map xor(a: Byte, b: Byte) -> Byte = pair_inputs => pair_xors;
+    map add(a: Byte, b: Byte) -> Byte = pair_inputs => pair_sums;
+    map sub(a: Byte, b: Byte) -> Byte = pair_inputs => pair_differences;
+    map mul(a: Byte, b: Byte) -> (Byte, Byte) = pair_inputs => pair_products;
+    map xor_split4(a: Byte, b: Byte) -> (Field, Field) = pair_inputs => pair_xor_parts4;
+    map xor_split7(a: Byte, b: Byte) -> (Field, Field) = pair_inputs => pair_xor_parts7;
     map split_sum(sum: Field) -> (Byte, Field) = sum_inputs => sum_parts;
-
-    inline fn xor(a: Byte, b: Byte) -> Byte {
-        let (al, ah) = split4(a);
-        let (bl, bh) = split4(b);
-        xor4(al, bl) + 16 * xor4(ah, bh)
-    }
-
-    inline fn xor_split4(a: Byte, b: Byte) -> (Field, Field) {
-        let (al, ah) = split4(a);
-        let (bl, bh) = split4(b);
-        (xor4(ah, bh), 16 * xor4(al, bl))
-    }
-
-    inline fn xor_split7(a: Byte, b: Byte) -> (Field, Field) {
-        split7(xor(a, b))
-    }
 }
 
 module Words {
@@ -433,20 +425,29 @@ module Benchmark {
 }
 "
 
-/-- All table data is generated in Lean, not written as Aiur rows. -/
+/-- Full byte-pair tables, sharing one input trace across the operations from
+ix's `Bytes2` gadget. Output traces have the same order: row `256*a + b`.
+The separate carry table keeps word addition deterministic and hint-free. -/
 def u8Tables : List (Generic.Table Nat) :=
   let byteInputs := (List.range 256).map fun n => Generic.Expr.tuple [.literal n]
-  let pairs := (List.range 16).flatMap fun a => (List.range 16).map fun b => (a, b)
+  let pairs := (List.range 256).flatMap fun a => (List.range 256).map fun b => (a, b)
   [
     ⟨"byte_inputs", .tuple [.field], byteInputs⟩,
     ⟨"byte_values", .field, (List.range 256).map (.literal ·)⟩,
-    ⟨"byte_parts4", .tuple [.field, .field],
-      (List.range 256).map fun n => .tuple [.literal (n % 16), .literal (n / 16)]⟩,
-    ⟨"byte_parts7", .tuple [.field, .field],
-      (List.range 256).map fun n => .tuple [.literal (n / 128), .literal ((n % 128) * 2)]⟩,
-    ⟨"nibble_inputs", .tuple [.field, .field],
+    ⟨"pair_inputs", .tuple [.field, .field],
       pairs.map fun (a, b) => .tuple [.literal a, .literal b]⟩,
-    ⟨"nibble_xors", .field, pairs.map fun (a, b) => .literal (Nat.xor a b)⟩,
+    ⟨"pair_xors", .field, pairs.map fun (a, b) => .literal (Nat.xor a b)⟩,
+    ⟨"pair_sums", .field, pairs.map fun (a, b) => .literal ((a + b) % 256)⟩,
+    ⟨"pair_differences", .field, pairs.map fun (a, b) => .literal ((a + 256 - b) % 256)⟩,
+    ⟨"pair_products", .tuple [.field, .field], pairs.map fun (a, b) =>
+      .tuple [.literal ((a * b) % 256), .literal ((a * b) / 256)]⟩,
+    ⟨"pair_xor_parts4", .tuple [.field, .field], pairs.map fun (a, b) =>
+      let x := Nat.xor a b
+      .tuple [.literal (x / 16), .literal ((x % 16) * 16)]⟩,
+    ⟨"pair_xor_parts7", .tuple [.field, .field], pairs.map fun (a, b) =>
+      let x := Nat.xor a b
+      .tuple [.literal (x / 128), .literal ((x % 128) * 2)]⟩,
+    ⟨"pair_units", .tuple [], pairs.map fun _ => .tuple []⟩,
     ⟨"sum_inputs", .tuple [.field], (List.range 768).map fun n => .tuple [.literal n]⟩,
     ⟨"sum_parts", .tuple [.field, .field],
       (List.range 768).map fun n => .tuple [.literal (n % 256), .literal (n / 256)]⟩
@@ -479,38 +480,50 @@ private def pair : Generic.Expr Nat → Except String (Nat × Nat)
   | .tuple [.literal a, .literal b] => .ok (a, b)
   | _ => .error "expected a generated pair"
 
-/-- Check the actual generated rows and reconstruct all 65,536 byte XORs using
-the small tables. This is host-side table validation, not Aiur execution. -/
+/-- Check the actual generated rows, including alignment of every output trace,
+for all 65,536 byte pairs. This is host-side validation, not Aiur execution. -/
 def checkU8Tables : Except String Unit := do
   let byteInputs ← tableRows "byte_inputs"
   let values ← (← tableRows "byte_values").mapM scalar
-  let parts4 ← (← tableRows "byte_parts4").mapM pair
-  let parts7 ← (← tableRows "byte_parts7").mapM pair
-  let nibbleInputs ← (← tableRows "nibble_inputs").mapM pair
-  let xors ← (← tableRows "nibble_xors").mapM scalar
+  let inputs ← (← tableRows "pair_inputs").mapM pair
+  let xors ← (← tableRows "pair_xors").mapM scalar
+  let adds ← (← tableRows "pair_sums").mapM scalar
+  let subs ← (← tableRows "pair_differences").mapM scalar
+  let muls ← (← tableRows "pair_products").mapM pair
+  let parts4 ← (← tableRows "pair_xor_parts4").mapM pair
+  let parts7 ← (← tableRows "pair_xor_parts7").mapM pair
+  let units ← tableRows "pair_units"
   let sumInputs ← tableRows "sum_inputs"
   let sums ← (← tableRows "sum_parts").mapM pair
-  ensure "incomplete byte tables" ([byteInputs.size, values.size, parts4.size, parts7.size,
-    nibbleInputs.size, xors.size].all (· == 256))
+  ensure "incomplete byte tables" (byteInputs.size == 256 && values.size == 256)
+  ensure "incomplete byte-pair tables" ([inputs.size, xors.size, adds.size, subs.size,
+    muls.size, parts4.size, parts7.size, units.size].all (· == 65536))
   ensure "incomplete carry table" (sumInputs.size == 768 && sums.size == 768)
   for n in List.range 256 do
     ensure "byte table alignment" (byteInputs[n]! == .tuple [.literal n] && values[n]! == n)
-    let (lo, hi) := parts4[n]!
-    ensure "nibble decomposition" (lo < 16 && hi < 16 && lo + 16 * hi == n)
-    let (hi, shifted) := parts7[n]!
-    ensure "seven-bit split" (hi < 2 && shifted < 256 && shifted % 2 == 0 &&
-      128 * hi + shifted / 2 == n)
-    ensure "nibble table alignment" (nibbleInputs[n]! == (n / 16, n % 16))
-    ensure "nibble XOR" (xors[n]! == Nat.xor (n / 16) (n % 16))
   for n in List.range 768 do
     let (byte, carry) := sums[n]!
     ensure "carry table alignment" (sumInputs[n]! == .tuple [.literal n])
     ensure "carry decomposition" (byte < 256 && carry < 3 && byte + 256 * carry == n)
   for a in List.range 256 do
     for b in List.range 256 do
-      let (al, ah) := parts4[a]!
-      let (bl, bh) := parts4[b]!
-      ensure "composed byte XOR" (xors[16 * al + bl]! + 16 * xors[16 * ah + bh]! == Nat.xor a b)
+      let index := 256 * a + b
+      ensure "byte-pair table alignment" (inputs[index]! == (a, b))
+      let x := xors[index]!
+      ensure "byte XOR" (x == Nat.xor a b)
+      ensure "wrapping byte addition" (adds[index]! < 256 &&
+        adds[index]! + 256 * ((a + b) / 256) == a + b)
+      ensure "wrapping byte subtraction" (subs[index]! < 256 &&
+        subs[index]! + b == a + if a < b then 256 else 0)
+      let (lo, hi) := muls[index]!
+      ensure "byte multiplication" (lo < 256 && hi < 256 && lo + 256 * hi == a * b)
+      let (hi, shifted) := parts4[index]!
+      ensure "XOR four-bit split" (hi < 16 && shifted < 256 && shifted % 16 == 0 &&
+        16 * hi + shifted / 16 == x)
+      let (hi, shifted) := parts7[index]!
+      ensure "XOR seven-bit split" (hi < 2 && shifted < 256 && shifted % 2 == 0 &&
+        128 * hi + shifted / 2 == x)
+      ensure "byte-pair range check" (units[index]! == .tuple [])
 
 structure Totals where
   chips : Nat

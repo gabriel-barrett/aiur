@@ -57,7 +57,7 @@ the original ix backend's statistics.
 
 `U8::Byte` is a transparent alias for `Field`, not a new primitive range type.
 The stream starts with byte constants and the word helpers preserve the byte
-representation. Explicit conversion and decomposition maps check byte ranges
+representation. Explicit conversion and byte-pair maps check byte ranges
 through their input tables. The word-addition helpers use sums of already valid
 bytes and the preceding carry.
 
@@ -70,36 +70,53 @@ made to a compiled artifact.
 | --- | ---: | ---: | --- |
 | `byte_inputs` | 256 | 1 | Argument packs `(x,)` for `0 ≤ x < 256`. |
 | `byte_values` | 256 | 1 | Identity output for checked conversion. |
-| `byte_parts4` | 256 | 2 | `(x % 16, x / 16)`. |
-| `byte_parts7` | 256 | 2 | `(x / 128, 2 * (x % 128))`. |
-| `nibble_inputs` | 256 | 2 | Every pair of four-bit values. |
-| `nibble_xors` | 256 | 1 | XOR of the aligned pair. |
+| `pair_inputs` | 65,536 | 2 | Every byte pair `(a, b)`, in row `256*a + b`. |
+| `pair_xors` | 65,536 | 1 | `a XOR b`. |
+| `pair_sums` | 65,536 | 1 | `(a + b) % 256`. |
+| `pair_differences` | 65,536 | 1 | `(a + 256 - b) % 256`. |
+| `pair_products` | 65,536 | 2 | Low and high bytes of `a*b`. |
+| `pair_xor_parts4` | 65,536 | 2 | `(x / 16, 16*(x % 16))`, where `x = a XOR b`. |
+| `pair_xor_parts7` | 65,536 | 2 | `(x / 128, 2*(x % 128))`, where `x = a XOR b`. |
+| `pair_units` | 65,536 | 0 | `()` for a paired byte-range check. |
 | `sum_inputs` | 768 | 1 | Argument packs `(s,)` for `0 ≤ s < 768`. |
 | `sum_parts` | 768 | 2 | `(s % 256, s / 256)`. |
 
-Five maps reference these eight tables. In particular, conversion and both
-byte-decomposition maps share `byte_inputs`. There are **3,072 stored rows and
-4,608 field cells**, counting each shared table once. These precommitted data
+Nine maps reference these twelve tables. Seven maps share `pair_inputs`;
+the input trace is stored once. There are **526,336 stored rows and
+723,712 field cells**, counting each shared table once. These precommitted data
 are reported separately from dynamic chip columns.
 
-Byte XOR splits each operand into nibbles and combines two nibble XORs. A
-four-bit split of XOR uses the same four lookups; a seven-bit split adds one
-byte-decomposition lookup. Rotations by eight and sixteen bits only permute
-bytes. The other rotations combine disjoint bit parts by field addition.
+Byte XOR and both XOR/split operations each use one direct lookup, matching
+the corresponding relations in ix's `Bytes2` gadget. The split outputs include
+the shifted low part used by word rotations. Rotations by eight and sixteen
+bits only permute bytes. The other rotations combine disjoint bit parts by
+field addition. Addition returns only the low byte; multiplication returns
+`(low, high)`. Range checks return unit and need no result columns.
 
 The carry table covers the largest sum needed by three-operand word addition:
 `255 + 255 + 255 + 2 = 767`. Two-operand addition and the eight-byte counter
 increment use the same table. The final carry is discarded for wrapping word
 arithmetic.
 
-This factorization keeps the current list-based input-uniqueness checks small.
-It uses more lookup slots than a full 65,536-row byte-pair table. Generating
-either representation programmatically is possible; this example deliberately
-uses the same smaller-table implementation for both compilers.
+The original example used 256-row nibble tables. The full byte-pair tables trade
+more precommitted data for fewer intermediate columns and lookup slots. Both
+compilers receive the same full tables. Word addition still uses the original
+carry table; this change does not introduce ix's packed, advice-based addition.
 
-Before compilation, `checkU8Tables` validates table alignment, range and carry
-decompositions, and reconstructs all 65,536 byte XORs from the generated rows
-against Lean's natural-number XOR. This is host-side table validation, not
+Input uniqueness is checked by grouping rows on their first argument, then
+checking complete rows within each group. `tableRowsNodup_eq` proves this check
+equivalent to `List.Nodup` for every field with decidable equality; it needs no
+hashing or order and still rejects collisions introduced by field conversion.
+For byte pairs, it partitions the 65,536-row table into 256 groups of 256 rows,
+avoiding the former comparison of every pair of complete input rows.
+The deduplication certificate also uses a proved tail-recursive equality test
+for the resulting list of map claims, avoiding a stack overflow at this scale.
+The certificate proposition is unchanged.
+
+Before compilation, `checkU8Tables` exhaustively validates alignment and all
+output relations for the 65,536 byte pairs, including wrapping arithmetic,
+product and XOR decompositions, paired ranges, and the separate carry table.
+This is host-side table validation, not
 execution of the Aiur hash or a formal BLAKE3 correctness theorem.
 
 ## Measured statistics
@@ -110,13 +127,13 @@ configuration (degree three, sharing, selector elimination, and deduplication).
 | Metric | Reference | Optimized |
 | --- | ---: | ---: |
 | Chips | 14 | 14 |
-| Sum of chip columns | 3,661 | 2,509 |
+| Sum of chip columns | 2,861 | 1,869 |
 | Maximum constraint degree | 9 | 3 |
-| Call/map lookup slots | 854 | 854 |
+| Call/map lookup slots | 342 | 342 |
 | ROM lookup slots | 104 | 104 |
 | Maximum lookup expression degree | 2 | 1 |
 
-The sum of chip widths decreases by **1,152 columns, about 31.5%**. This sum
+The sum of chip widths decreases by **992 columns, about 34.7%**. This sum
 allocates one row's width to each chip; it is not a trace-size or proving-time
 estimate. Deduplication finds no equivalent internal chips in this example.
 
@@ -128,7 +145,7 @@ agree between compilers and include statically declared inactive slots.
 | `Benchmark::main` | 78 | 42 | 2 | 2 | 7 |
 | `Blake3::compress_layer` | 292 | 148 | 3 | 3 | 6 |
 | `Blake3::next_layer` | 394 | 228 | 3 | 3 | 11 |
-| `Blake3::compress` | 1,509 | 1,252 | 2 | 3 | 801 |
+| `Blake3::compress` | 709 | 612 | 2 | 3 | 289 |
 | `Blake3::compress_chunks` | 35 | 21 | 3 | 3 | 5 |
 | `Blake3::finish` | 314 | 166 | 9 | 3 | 20 |
 | `Words::u64_is_zero` | 28 | 19 | 8 | 3 | 0 |
@@ -139,6 +156,15 @@ agree between compilers and include statically declared inactive slots.
 | `Blake3::is_empty` | 14 | 10 | 2 | 3 | 1 |
 | `Words::u64_succ` | 32 | 32 | 1 | 1 | 8 |
 | `Benchmark::generate` | 21 | 11 | 3 | 3 | 4 |
+
+Compared with the original nibble-table library, the full byte-pair maps reduce
+the optimized compression chip from **1,252 to 612 columns**, and its lookup
+slots from **801 to 289**. The optimized total falls from **2,509 to 1,869**
+columns. The reference compression chip falls from 1,509 to 709 columns,
+including the savings in both match branches. Other chip widths are unchanged.
+The remaining compression-width gap with ix (533 stage1 columns in the
+[original comparison](ix-blake3-widths.md)) comes from its packed word-addition
+strategy, offset by its provide-multiplicity column: `612 - 80 + 1 = 533`.
 
 The optimized artifact carries Lean certificates that constraint degrees are
 at most three, lookup expressions are affine, and chip deduplication preserves

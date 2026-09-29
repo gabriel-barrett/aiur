@@ -1,4 +1,5 @@
 import Aiur.Declarations
+import Aiur.TableUniqueness
 
 namespace Aiur
 
@@ -231,7 +232,7 @@ def checkMap [DecidableEq α] (program : Program α) (map : MapDecl) : Except Ch
   requireType map.name map.result outputs.rowType
   if inputs.rows.length != outputs.rows.length then
     throw (.tableLength map.name inputs.rows.length outputs.rows.length)
-  if !decide inputs.rows.Nodup then throw (.duplicateInput map.name map.input)
+  if !tableRowsNodup inputs.rows then throw (.duplicateInput map.name map.input)
 
 def checkTables [DecidableEq α] (program : Program α) : Except CheckError Unit := do
   if let some name := findDuplicate (program.tables.map (·.name)) [] then

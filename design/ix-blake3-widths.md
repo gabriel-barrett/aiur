@@ -5,6 +5,10 @@ Investigation date: 2026-09-29. Aiur revision `ea3c9fe`; ix revision
 [`Statistics.lean`](../../ix/Ix/Aiur/Statistics.lean) separating stage1 and
 stage2 widths. The investigation changes no compiler implementation.
 
+The measurements below record the original nibble-table baseline. Full byte-pair
+tables were subsequently implemented; see the follow-up at the end and the
+[current example statistics](blake3-example.md).
+
 The large differences are explained by the byte libraries and by redundant
 columns in our current compiler. No stage1 counting error or missing constraint
 was found to explain the two largest gaps. This is a local accounting and
@@ -191,9 +195,9 @@ canonicality of arbitrary hint outputs cannot simply be omitted.
 3. **Slimmer table outputs.** Use inline wrappers and affine identities to avoid
    committing both coordinates of the byte decompositions and carry maps.
    This preserves the small-table approach and needs no hints.
-4. **A second byte-library configuration.** Generate a shared byte-pair input
-   table with XOR, XOR/split4, and XOR/split7 output maps. Compare chip width
-   and precommitted data costs against the current small-table configuration.
+4. **Full byte-pair tables (implemented).** Generate a shared byte-pair input
+   table with XOR, XOR/split4, and XOR/split7 output maps. The follow-up below
+   compares the result with the original small-table configuration.
 5. **Packed u32 addition using existing hints and range maps.** Include constant
    division folding in circuit compilation, and derive carries as affine
    expressions. Prove the library's integer interpretation for suitable fields.
@@ -213,3 +217,30 @@ degrees, so it should not be used to explain the stage1 width gap above.
 These changes belong after the native semantic layer. The new compiler
 equivalence infrastructure can transport a proved local optimization to both
 integer checkers without redoing the source semantics proofs.
+
+## Full-table follow-up
+
+The Blake3 example now generates all 65,536 byte pairs and aligned output
+tables for XOR, wrapping addition/subtraction, multiplication, both XOR/split
+operations, and paired byte-range checks. These seven maps share one input
+table. Word addition retains the original carry-table implementation.
+
+Measured results after this change:
+
+| Metric | Nibble tables | Full byte-pair tables |
+| --- | ---: | ---: |
+| Reference `compress` columns | 1,509 | 709 |
+| Optimized `compress` columns | 1,252 | 612 |
+| `compress` lookup slots | 801 | 289 |
+| Total optimized chip columns | 2,509 | 1,869 |
+| Shared precommitted field cells | 4,608 | 723,712 |
+
+The measured 640-column optimized reduction matches the original accounting.
+The remaining gap to ix is `612 - 80 + 1 = 533`. The constant/copy propagation
+and packed-addition proposals remain unimplemented.
+
+Two certified checking changes make the larger tables practical: grouping
+input rows by their first argument before checking whole-row duplicates
+(`tableRowsNodup_eq` proves equivalence to `List.Nodup`), and a tail-recursive
+comparison of the deduplication certificate's long map-claim lists. Neither
+change weakens the checked proposition or changes source semantics.
