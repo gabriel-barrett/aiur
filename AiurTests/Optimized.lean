@@ -298,3 +298,5 @@ end AiurOptimizedTests
 #print axioms Aiur.Optimized.layOut_correct
 #print axioms Aiur.Optimized.Compiler.pattern_correct
 #print axioms Aiur.Optimized.Compiler.pattern_failure_iff
+#print axioms Aiur.Optimized.Compiler.failure_sound
+#print axioms Aiur.Optimized.Compiler.freshValue_complete

@@ -174,6 +174,13 @@ and the source evaluation predicate are unchanged.
    operations still need their full soundness/completeness induction.
    `StateSemantics.lean` provides validity under an arbitrary call relation,
    backward validity under state extension, and primitive operation facts.
+   `PrimitiveCorrectness.lean` connects emitted failure equations and value
+   equalities to that state semantics. `ReferenceState.lean` translates a
+   scoped builder state to the reference builder state and proves their
+   validity predicates equivalent. Its allocation and equation bridges reuse
+   the existing constructive witness-extension proofs, including bulk typed
+   values. This translation of builder states does not identify the two
+   expression compilation algorithms; their recursive proof still remains.
 2. Compose that scoped compilation result with the proved layout and deduplication
    results, then with the existing native-source entrypoint theorems. Retain
    their root validity, ROM, allocation-capacity, and acyclicity hypotheses.
