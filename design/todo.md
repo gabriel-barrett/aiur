@@ -166,11 +166,13 @@ without admitted proof steps.
   selector elimination, degree reduction including cache reuse, shared-column
   allocation, and emission. The compiler checks finite certificates, and
   `layOut_correct` proves both directions for every successful result.
-- [ ] Prove the scoped expression compiler's source soundness/completeness and
-  compose the source-to-checker entrypoint theorems. Complex pattern conditions
-  and their failure certificates are connected to source pattern matching;
-  recursive expression compilation and enum validation remain. See
-  [proof status](optimized-equivalence.md).
+- [x] Prove the scoped expression compiler's source soundness/completeness,
+  including inactive code, nested enum validation, hints, and ROM operations.
+  Compose full reference/optimized equivalence for trees, cyclic memoized
+  graphs, and both integer checkers at fixed entrypoints. Connect the original
+  module/source predicate and executor to the optimized checker, retaining the
+  allocation-capacity and acyclic memoized soundness conditions. See
+  [theorem boundaries](optimized-equivalence.md).
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern

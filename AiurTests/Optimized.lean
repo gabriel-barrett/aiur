@@ -1,5 +1,5 @@
 import Aiur.Modules
-import Aiur.Optimized.Correctness
+import Aiur.Optimized.NativeCorrectness
 import AiurTests.Arrays
 import AiurTests.Structs
 import AiurTests.Modules
@@ -300,3 +300,12 @@ end AiurOptimizedTests
 #print axioms Aiur.Optimized.Compiler.pattern_failure_iff
 #print axioms Aiur.Optimized.Compiler.failure_sound
 #print axioms Aiur.Optimized.Compiler.freshValue_complete
+#print axioms Aiur.Optimized.Compiler.function_sound
+#print axioms Aiur.Optimized.Compiler.function_complete
+#print axioms Aiur.Optimized.reference_check_iff
+#print axioms Aiur.Optimized.reference_checkMemo_iff
+#print axioms Aiur.Optimized.reference_acyclic_iff
+#print axioms Aiur.Optimized.ModulesArtifact.check_complete
+#print axioms Aiur.Optimized.ModulesArtifact.checkMemo_complete
+#print axioms Aiur.Optimized.ModulesArtifact.check_sound
+#print axioms Aiur.Optimized.ModulesArtifact.checkMemo_acyclic_sound

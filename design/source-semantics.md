@@ -178,6 +178,16 @@ The final theorem axiom reports are checked in `AiurTests/SourceEvaluation.lean`
 only `propext`, `Classical.choice`, and `Quot.sound` occur, with no proof admissions
 or additional axioms.
 
+`Optimized/NativeCorrectness.lean` provides the same original-source endpoint for
+the alternative compiler, including layout optimization and chip deduplication.
+`Optimized.ModulesArtifact.check_complete` and `checkMemo_complete` construct
+accepted rows from native module evaluations; `check_sound` and
+`checkMemo_acyclic_sound` recover native module `EvalCall`. These results need no
+reference compilation and derive system layout validity from the optimized
+artifact. `run_complete` and `runMemo_complete` also compose successful execution.
+Their theorem axiom reports are in `AiurTests/Optimized.lean`; see
+[optimized equivalence](optimized-equivalence.md).
+
 ## Mandatory inlining
 
 `inline fn` leaves the source call semantics unchanged. Expansion runs after

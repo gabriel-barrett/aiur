@@ -60,7 +60,8 @@ theorem compile_stages [Field F] [DecidableEq F] {program : Program F} {system :
     | error error => simp [h, Except.mapError] at checked
     | ok unit => cases unit; rfl
   obtain ⟨⟨⟩, tags, rest⟩ := except_bind_ok.mp rest
-  obtain ⟨chips, mapped, finished⟩ := except_bind_ok.mp rest
+  obtain ⟨chips, mapped, last⟩ := except_bind_ok.mp rest
+  obtain ⟨⟨⟩, _, finished⟩ := except_bind_ok.mp last
   have same := except_pure_ok.mp finished
   subst system
   refine ⟨checked, ?_, mapped, rfl, rfl, rfl⟩
@@ -75,6 +76,20 @@ theorem compile_stages [Field F] [DecidableEq F] {program : Program F} {system :
   split at accepted
   · assumption
   · cases accepted
+
+/-- Successful compilation certifies the complete output namespace and
+layouts, including functions unused by a particular execution. -/
+theorem compile_checkChips [Field F] [DecidableEq F] {program : Program F} {system : System F}
+    (compiled : compile program = .ok system) : checkChips [] system.chips = .ok () := by
+  unfold compile at compiled
+  obtain ⟨_, _, rest₁⟩ := except_bind_ok.mp compiled
+  obtain ⟨_, _, rest₂⟩ := except_bind_ok.mp rest₁
+  obtain ⟨chips, _, rest₃⟩ := except_bind_ok.mp rest₂
+  obtain ⟨_, formed, finished⟩ := except_bind_ok.mp rest₃
+  obtain rfl := except_pure_ok.mp finished
+  cases checked : checkChips [] chips with
+  | error error => simp [checked, Except.mapError] at formed
+  | ok value => cases value; rfl
 
 
 private theorem forall₂_of_mapM_ok {f : α → Except ε β} {xs : List α} {ys : List β}

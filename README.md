@@ -274,19 +274,24 @@ optimized.circuit.system.printStats
 let alternative ← prepared.compileOptimized { maxDegree := 4, deduplicate := false }
 ```
 
-Every successful optimized artifact carries Lean proofs of these degree bounds
-and of deduplication equivalence for trees, memoized graphs, and both integer
-checkers at the fixed entrypoints. `layOut_correct` proves the complete local-rule
-equivalence for selector elimination, degree reduction, shared-column allocation,
-and physical-row emission. The compiler checks executable certificates for these
-passes. **Full equivalence with the reference compiler remains pending**: the
-scoped expression compiler still needs its source soundness/completeness proof.
-See the precise [proof status](design/optimized-equivalence.md).
-The existing reference proofs remain checked. Run
+**Full optimized/reference equivalence is proved without admitted steps.**
+`reference_check_iff` and `reference_checkMemo_iff` establish the same accepted
+entry claims for both integer checkers, including recursive chip deduplication.
+`layOut_correct` proves the stronger local-rule equivalence for selector
+elimination, degree reduction, shared-column allocation, and physical-row
+emission. Successful artifacts also carry proofs of the degree bounds.
+
+`Optimized.ModulesArtifact.check_complete` and `check_sound` connect the original
+source predicate directly to the optimized checker. Completeness requires enough
+field addresses for allocations; memoized soundness requires an acyclic support
+graph. The whole-compiler comparison concerns existence of accepted rows, rather
+than identical rows or row counts. See the
+[theorems and assumptions](design/optimized-equivalence.md).
+Run
 `lake env lean Examples/Optimized.lean` for a comparison that reduces six chips
 to four, each recursive helper from eight columns to six, and a branch chip's
 degree from six to three. See the [optimized compiler design](design/constraint-compiler.md)
-for its stages, layout metadata, and remaining proof obligations.
+for its stages, layout metadata, and proof architecture.
 
 For a larger comparison, `lake exe blake3_stats` compiles the
 [Blake3 example](Examples/Blake3.lean), including programmatically generated U8

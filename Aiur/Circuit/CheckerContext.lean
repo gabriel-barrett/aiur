@@ -1,4 +1,5 @@
 import Aiur.Circuit.CheckerCompleteness
+import Aiur.Circuit.CompileFacts
 
 namespace Aiur.Circuit
 
@@ -25,6 +26,11 @@ theorem checkChips_iff {seen : List String} {chips : List (Chip F)} :
         · simp [checkChips, fresh, formed, bind, Except.bind, pure, Except.pure]
 
 variable [Field F] [DecidableEq F]
+
+theorem compile_wellFormed {program : Program F} {system : System F}
+    (compiled : compile program = .ok system) : system.WellFormed := by
+  have checked := checkChips_iff.mp (compile_checkChips compiled)
+  exact ⟨checked.1, checked.2.1⟩
 
 theorem System.checkContext_iff {system : System F} {rom : WireROM F} {root : Message F} :
     system.checkContext rom root = .ok () ↔

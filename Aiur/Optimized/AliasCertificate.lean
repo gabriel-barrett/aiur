@@ -152,7 +152,7 @@ end Certificate
 def checkedResolve (chip : ScopedChip F) : Except String (Degree.Checked chip) := do
   let values ← resolveAliasValues chip
   if checked : Certificate chip values then
-    return ⟨chip.substitute (Degree.replacement values), checked.equivalent⟩
+    return ⟨chip.substitute (Degree.replacement values), checked.equivalent, rfl, rfl, rfl⟩
   else throw s!"invalid selector-elimination certificate in {chip.name}"
 
 end Alias

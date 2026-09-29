@@ -12,6 +12,14 @@ equivalence with the lowered circuit core. `Generic/NativeCircuit.lean` composes
 it with both integer checkers, including acyclic memoized soundness; see the
 [semantic boundary](source-semantics.md#proof-boundary).
 
+The alternative optimized compiler also has complete local soundness and
+completeness proofs. `Optimized/Equivalence.lean` proves reference/optimized
+equivalence for both integer checkers at selected roots, including cyclic
+memoized graphs and chip deduplication. `Optimized/NativeCorrectness.lean`
+connects the original source/module predicate and executor directly to the
+optimized checkers, with the same allocation-capacity and acyclicity conditions.
+See [optimized equivalence](optimized-equivalence.md) for the exact statements.
+
 The remainder of this document describes the completed correctness results for
 the monomorphic `Aiur.Program` core. `Generic/Circuit.lean` retains the core-level
 composition under explicit `core_*` names. `Generic/NativeCircuit.lean` extends

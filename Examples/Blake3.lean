@@ -582,7 +582,7 @@ def report : IO Unit := do
   IO.println s!"Merged internal chips: {repr merged}"
   IO.println "\nEntrypoint: Benchmark::main generates 1,025 bytes, then hashes them."
   IO.println "This report compiles the program; it does not execute Blake3 or construct witnesses."
-  IO.println "Layout equivalence, degree bounds, and chip deduplication are certified; full compiler equivalence remains pending."
+  IO.println "Full compiler equivalence for both integer checkers, degree bounds, and chip deduplication are proved."
 
 end Blake3Example
 
