@@ -51,6 +51,10 @@ def Chip.stats (chip : Chip F) : ChipStats := {
       ((chip.memory.map MemoryLookup.maxDegree).foldl max 0))
 }
 
+/-- Guards remain affine even when mutually exclusive payloads are combined. -/
+def Chip.maxLookupGuardDegree (chip : Chip F) : Nat :=
+  ArithExpr.maxDegree (chip.sends.map Send.enable ++ chip.memory.map MemoryLookup.enable)
+
 /-- One record per chip, preserving circuit order. Static maps have no chip. -/
 def System.stats (system : System F) : List ChipStats := system.chips.map Chip.stats
 

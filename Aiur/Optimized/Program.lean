@@ -17,7 +17,7 @@ structure Artifact (F : Type) [Field F] [DecidableEq F] where
   unmerged : Circuit.System F
   deduplication : Dedup.Certificate unmerged system representatives entries
   degreeBound : ∀ chip ∈ system.chips,
-    chip.stats.maxConstraintDegree ≤ config.maxDegree ∧ chip.stats.maxLookupDegree ≤ 1
+    chip.stats.maxConstraintDegree ≤ config.maxDegree ∧ chip.stats.maxLookupDegree ≤ 2 ∧ chip.maxLookupGuardDegree ≤ 1
 
 def compile [Field F] [DecidableEq F] (program : Program F) (entries : List String)
     (config : Config := {}) : Except String (Artifact F) := do
@@ -36,7 +36,7 @@ def compile [Field F] [DecidableEq F] (program : Program F) (entries : List Stri
   let result ← deduplicate
   let _ ← (Circuit.checkChips [] result.system.chips).mapError reprStr
   if h : result.system.chips.all (fun chip => decide
-      (chip.stats.maxConstraintDegree ≤ config.maxDegree ∧ chip.stats.maxLookupDegree ≤ 1)) = true then
+      (chip.stats.maxConstraintDegree ≤ config.maxDegree ∧ chip.stats.maxLookupDegree ≤ 2 ∧ chip.maxLookupGuardDegree ≤ 1)) = true then
     return {
       config, entries, layouts, system := result.system, representatives := result.representatives
       unmerged := initial

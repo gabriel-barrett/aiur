@@ -188,7 +188,113 @@ private def checkCase (program : Program K) (compiled : Optimized.Artifact K)
 private def width [Field F] [DecidableEq F] (compiled : Optimized.Artifact F) (name : String) : Nat :=
   ((compiled.system.findChip? name).map (·.numVars)).getD 0
 
+def lookupSource : Program Nat := aiur% "
+fn square(x: Field) -> Field { x * x }
+fn observe(x: Field) -> () { () }
+fn unit_ordered(t: Field, x: Field) -> () {
+  match t {
+    0 => { let () = observe(x); observe(x + 1) },
+    _ => { let () = observe(x + 2); observe(x) },
+  }
+}
+fn triple(t: Field, x: Field) -> Field {
+  match t { 0 => square(x), 1 => square(x + 1), _ => square(x + 2) }
+}
+fn ordered(t: Field, x: Field) -> Field {
+  match t {
+    0 => { let a = square(x); let b = square(x + 1); a + b },
+    _ => { let a = square(x + 2); let b = square(x); a + b },
+  }
+}
+fn inactive(t: Field, u: Field, x: Field) -> Field {
+  match t { 0 => 0, _ => match u { 0 => square(x), _ => square(x + 1) } }
+}
+fn independent(t: Field, u: Field, x: Field) -> Field {
+  let a = match t { 0 => square(x), _ => 0 };
+  let b = match u { 0 => square(x + 1), _ => 0 };
+  a + b
+}
+fn mux(t: Field, x: Field, y: Field) -> (Field, Field) {
+  match t { 0 => (x, y), 1 => (y, x), _ => (x + y, x - y) }
+}
+fn memory(t: Field, x: Field) -> Field {
+  let p = match t { 0 => &x, 1 => &(x + 1), _ => &(x + 2) };
+  *p
+}
+fn branchless(x: Field) -> Field { let a = square(x); let b = square(x + 1); a + b }
+"
+
+private def checkLookupMerging : IO Unit := do
+  let program := lookupSource.toField K
+  let entries := program.functions.map (·.name)
+  let compiled ← get <| Optimized.compile program entries
+  let affine ← get <| Optimized.compile program entries { mergeLookups := false }
+  let chip := fun (artifact : Optimized.Artifact K) name => do
+    let some chip := artifact.system.findChip? name | throw s!"missing {name}"
+    pure chip
+  let triple ← get <| chip compiled "triple"
+  ensure "three exclusive calls did not merge" (triple.sends.length == 1 && triple.stats.maxLookupDegree == 2)
+  let ordered ← get <| chip compiled "ordered"
+  -- Only one result column aligns across these branches; the other calls stay separate.
+  ensure "compatible ordered calls did not merge" (ordered.sends.length < 4)
+  let unitOrdered ← get <| chip compiled "unit_ordered"
+  ensure "exclusive calls across an inactive gap did not merge" (unitOrdered.sends.length == 2)
+  let independent ← get <| chip compiled "independent"
+  ensure "independent activations lost a call" (independent.sends.length == 2)
+  let memory ← get <| chip compiled "memory"
+  ensure "exclusive stores did not merge" (memory.memory.length == 2)
+  ensure "quadratic returns retained merge columns" (width compiled "mux" + 2 == width affine "mux")
+  for layout in compiled.layouts do
+    ensure "lookup guard became quadratic" (layout.chip.maxLookupGuardDegree ≤ 1)
+    ensure "quadratic pass exceeded degree cap" (layout.chip.stats.maxConstraintDegree ≤ 3)
+    if layout.logical.choices.isEmpty then
+      ensure "branchless lookup became quadratic" (layout.chip.stats.maxLookupDegree ≤ 1)
+  for item in affine.system.chips do
+    ensure "disabled merge pass emitted quadratic payload" (item.stats.maxLookupDegree ≤ 1)
+  let branchless ← get <| chip compiled "branchless"
+  ensure "branchless repeated calls merged" (branchless.sends.length == 2)
+  for t in ([0, 1, 2] : List K) do
+    for x in ([0, 1, 2] : List K) do
+      let value := if t == 0 then x else if t == 1 then x + 1 else x + 2
+      for result in ([0, 1, 2] : List K) do
+        checkCase program compiled "triple" [.field t, .field x] (.field result) (result == value * value)
+        checkCase program compiled "memory" [.field t, .field x] (.field result) (result == value)
+          ⟨[(0, .field value)]⟩
+      let claim : Circuit.Message K := ⟨"triple", [.field t, .field x], .field (value * value)⟩
+      let some rows := rowsFor program compiled.system ⟨[]⟩ 4 claim |
+        throw (IO.userError "merged lookup rows missing")
+      let _ ← get <| compiled.check ⟨[]⟩ claim rows
+      let _ ← get <| compiled.checkMemo ⟨[]⟩ claim (rows.map fun row => ⟨row, 1⟩)
+      let args : List (WireValue K) := [.field t, .field x]
+      let pair := if t == 0 then (x, x + 1) else (x + 2, x)
+      let claim : Circuit.Message K := ⟨"ordered", args, .field (pair.1 * pair.1 + pair.2 * pair.2)⟩
+      let some row := rowFor compiled.system ⟨[]⟩ claim (allowed program compiled.system) |
+        throw (IO.userError "ordered merged row missing")
+      let expected := [pair.1, pair.2].map fun input =>
+        Circuit.Message.mk "square" [.field input] (.field (input * input))
+      ensure "lookup merging reordered active calls" (ordered.premises row == expected)
+      let unitClaim : Circuit.Message K := ⟨"unit_ordered", args, .tuple []⟩
+      let some unitRow := rowFor compiled.system ⟨[]⟩ unitClaim (allowed program compiled.system) |
+        throw (IO.userError "unit ordered merged row missing")
+      let expected := [pair.1, pair.2].map fun input =>
+        Circuit.Message.mk "observe" [.field input] (.tuple [])
+      ensure "merging across a gap reordered calls" (unitOrdered.premises unitRow == expected)
+      for u in ([0, 1, 2] : List K) do
+        let arguments : List (WireValue K) := [.field t, .field u, .field x]
+        let square := if u == 0 then x * x else (x + 1) * (x + 1)
+        checkCase program compiled "inactive" arguments (.field (if t == 0 then 0 else square)) true
+        let both := (if t == 0 then x * x else 0) + (if u == 0 then (x + 1) * (x + 1) else 0)
+        checkCase program compiled "independent" arguments (.field both) true
+  -- Missing selector equations cannot authorize quadratic sharing or a return cover.
+  let some layout := compiled.layouts.find? (·.chip.name == "triple") |
+    throw (IO.userError "missing triple layout")
+  let forged := { layout.logical with equations := #[] }
+  let retained := Optimized.LookupMerging.run {} forged layout.layout
+  ensure "merging trusted unproved control metadata"
+    (retained.chip == Optimized.emitChip forged layout.layout)
+
 def run : IO Unit := do
+  checkLookupMerging
   let program := localSource.toField K
   let entries := (program.functions.map (·.name)).filter (· != "load_unused")
   let compiled ← get <| Optimized.compile program entries
@@ -476,3 +582,9 @@ end AiurOptimizedTests
 #print axioms Aiur.Optimized.ModulesArtifact.checkMemo_complete
 #print axioms Aiur.Optimized.ModulesArtifact.check_sound
 #print axioms Aiur.Optimized.ModulesArtifact.checkMemo_acyclic_sound
+
+#print axioms Aiur.Optimized.LookupMerging.CallSlot.join_claims
+#print axioms Aiur.Optimized.LookupMerging.mergeCalls_claims
+#print axioms Aiur.Optimized.LookupMerging.Payload.join_memory
+#print axioms Aiur.Optimized.LookupMerging.mergedChip_valid
+#print axioms Aiur.Optimized.LookupMerging.replaceOutputs

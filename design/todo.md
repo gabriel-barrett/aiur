@@ -154,6 +154,10 @@ without admitted proof steps.
   materialization and destination reuse. Successful artifacts carry a Lean
   proof of the emitted constraint and lookup degree bounds. See the
   [design and implementation order](constraint-compiler.md).
+- [x] Add [quadratic lookup merging](quadratic-lookups.md) in the optimized path:
+  affine guards, compatible exclusive calls/ROM slots, selector-weighted branch
+  returns, and proved equivalence in the existing source/checker chain. Keep
+  branchless payloads affine and preserve active call order and multiplicity.
 - [x] Add [circuit deduplication](circuit-deduplication.md) to the optimized path:
   retain fixed entrypoint chips, compare complete typed local implementations,
   redirect internal channels, and preserve call occurrences. Extend structural

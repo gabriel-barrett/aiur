@@ -48,8 +48,9 @@ or ROM provenance are used here. Contradictory equations remain contradictory.
 All call and ROM occurrences remain present, including inactive and repeated
 slots.
 
-Nonlinear definitions remain materialized, preserving the optimized compiler's
-affine lookup policy. The final degree certificate includes provided output
+This pass only substitutes affine definitions. A separate
+[quadratic pass](quadratic-lookups.md) now handles exclusive lookup merging
+and covered branch outputs before this pass. Branchless lookups stay affine. The final degree certificate includes provided output
 expressions as well as required lookup expressions. Providing a conclusion does
 not increase the statistic for required lookup slots.
 

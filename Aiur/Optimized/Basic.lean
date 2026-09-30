@@ -15,6 +15,7 @@ structure Config where
   eliminateSelectors : Bool := true
   propagateScopes : Bool := true
   propagateValues : Bool := true
+  mergeLookups : Bool := true
   deduplicate : Bool := true
   deriving Repr, BEq
 

@@ -9,7 +9,8 @@ The measurements below record the original nibble-table baseline. Full byte-pair
 tables were subsequently implemented; see the follow-up at the end and the
 [current example statistics](blake3-example.md).
 The [current comparison of every chip](#current-comparison-of-every-chip)
-includes scoped propagation, known-constructor simplification, and affine solving.
+includes scoped propagation, known-constructor simplification, affine solving,
+and proved quadratic lookup merging.
 
 The large differences are explained by the byte libraries and by redundant
 columns in our current compiler. No stage1 counting error or missing constraint
@@ -342,9 +343,10 @@ the next candidates; the following comparison includes their implementation.
 
 ## Current comparison of every chip
 
-Both implementations were remeasured on 2026-09-30: Aiur at `98b2427`, after
-scoped propagation, extended affine solving, and tagless single-constructor
-layouts; ix at `a1c6badf`, with the existing stage1/stage2 statistics change.
+Aiur was remeasured on 2026-09-30 after quadratic lookup merging and covered
+branch returns, following scoped propagation, affine solving, and tagless
+single-constructor layouts. The ix baseline remains the same-day measurement
+at `a1c6badf`, with the existing stage1/stage2 statistics change.
 Our `blake3_stats` executable
 and ix's `Source.Toplevel.compile` reproduce the following widths. The ix
 source is the merge of `IxVM.core`, `IxVM.byteStream`, and `IxVM.blake3`;
@@ -353,10 +355,11 @@ uses for stage1. No hash execution is involved.
 
 The tagless-layout change leaves every Blake3 chip width unchanged: `ByteNode`,
 `LayerNode`, and `MaybeDigest` each have two constructors. Across all fourteen
-chips our reference and optimized compilers still total 2,861 and 1,419 columns,
-respectively (50.4% fewer after optimization). Their maximum constraint degrees
-are nine and three, and each has 446 required lookup occurrences (342 calls/maps
-and 104 ROM accesses).
+chips our reference and optimized compilers total 2,861 and 1,382 columns,
+respectively (51.7% fewer after optimization). Their maximum constraint degrees
+are nine and three. The reference has 446 lookup slots (342 calls/maps and 104
+ROM); optimized merging reduces this to 431 (340 calls/maps and 91 ROM).
+These are static slots; active call occurrences retain their multiplicity.
 
 Difference is our optimized width minus ix's stage1 width; negative means
 fewer columns here. This accounts for all fourteen of our chips.
@@ -365,46 +368,47 @@ fewer columns here. This accounts for all fourteen of our chips.
 | --- | --- | ---: | ---: | ---: |
 | `Benchmark::main` | `blake3_test` (different entry plumbing) | 38 | 42 | — |
 | `Blake3::compress_layer` | `blake3_compress_layer` | 140 | 141 | −1 |
-| `Blake3::next_layer` | `blake3_next_layer` | 216 | 175 | +41 |
+| `Blake3::next_layer` | `blake3_next_layer` | 182 | 175 | +7 |
 | `Blake3::compress` | `blake3_compress` | 483 | 533 | −50 |
 | `Blake3::compress_chunks` | `blake3_compress_chunks` | 16 | 17 | −1 |
 | `Blake3::finish` | `blake3_finish` | 162 | 168 | −6 |
-| `Words::u64_is_zero` | `u64_is_zero` | 18 | 19 | −1 |
-| `Blake3::eq_zero` | `eq_zero` primitive inside callers | 4 | — | — |
+| `Words::u64_is_zero` | `u64_is_zero` | 17 | 19 | −2 |
+| `Blake3::eq_zero` | `eq_zero` primitive inside callers | 3 | — | — |
 | `Blake3::bytes_to_block` | `bytes_to_block` | 129 | 195 | −66 |
 | `Blake3::pad_block` | `pad_block` | 6 | 8 | −2 |
 | `Blake3::compress_block` | `blake3_compress_block` | 177 | 177 | 0 |
-| `Blake3::is_empty` | `list_is_empty.U8` | 7 | 7 | 0 |
+| `Blake3::is_empty` | `list_is_empty.U8` | 6 | 7 | −1 |
 | `Words::u64_succ` | `relaxed_u64_succ` | 16 | 19 | −3 |
 | `Benchmark::generate` | Unconstrained stream input, no corresponding chip | 7 | — | — |
 
-The eleven corresponding helpers total **1,370 versus 1,459 columns**, an
-89-column reduction (about 6.1%). Eight are smaller here, two tie, and one is
+The eleven corresponding helpers total **1,334 versus 1,459 columns**, a
+125-column reduction (about 8.6%). Nine are smaller here, one ties, and one is
 larger. This is a sum of static widths, not a trace-size or proving-cost
 estimate; it excludes our entrypoint, generator, and separate zero-test chip.
-Our total including those three is 1,419.
+Our total including those three is 1,382.
 
-The remaining deficit is `next_layer`, at +41. `compress_block` and `is_empty`
-now tie ix. The largest savings are `bytes_to_block` (−66) and `compress` (−50).
+The remaining deficit is `next_layer`, at +7. `compress_block` ties ix;
+`is_empty` now uses one fewer column here. The largest savings are `bytes_to_block` (−66) and `compress` (−50).
 
 A layout inspection accounts for the `next_layer` gap exactly:
 
 | Column role | Our `next_layer` | ix `blake3_next_layer` |
 | --- | ---: | ---: |
 | Inputs | 34 | 34 |
-| Dedicated outputs | 34 | 0 |
+| Dedicated outputs | 0 | 0 |
 | Selectors | 8 | 4 |
 | Other auxiliaries | 140 | 137 |
-| Total | 216 | 175 |
+| Total | 182 | 175 |
 
-Affine elimination removes eight of this chip's selector columns. The excess is
-now `34 + 4 + 3 = 41`; ix's auxiliary count includes its multiplicity column.
-This identifies where to investigate, rather than proving all 41 removable:
-ix can combine branch results into selector-weighted provided expressions,
-whereas our final lookup words must remain affine. Guarded result equalities
-can now simplify uses inside their scopes, but do not license a global
-substitution for a merged output. The present scoped pass preserves those
-interface witnesses; the physical pass still requires an unconditional equation.
+Affine elimination removes eight of this chip's selector columns. The
+[quadratic pass](quadratic-lookups.md) then removes all 34 dedicated output
+columns by proving their selector-weighted definitions from branch coverage.
+The remaining difference is `4 + 3 = 7`; ix's auxiliary count includes its
+multiplicity column. The optimized path now permits quadratic payloads with
+affine guards, as ix does. Its conservative call-merging policy still requires
+matching physical result columns and preserves exact active premise order.
+This comparison measures stage1 widths; the effect of quadratic fingerprints
+on concrete stage2 accumulators remains a separate backend consideration.
 
 The entrypoint comparison is approximate: our main builds a constrained stream
 of 1,025 bytes, whereas `blake3_test` obtains its stream through I/O and an
