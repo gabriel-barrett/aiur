@@ -569,8 +569,8 @@ def report : IO Unit := do
     let representative := ((optimized.artifact.representatives.find? (·.1 == chip.name)).map Prod.snd).getD chip.name
     let some other := optimized.system.findChip? representative |
       throw (IO.userError s!"missing optimized chip for {chip.name}")
-    get <| ensure s!"lookup occurrences changed in {chip.name}"
-      (chip.sends.length == other.sends.length && chip.memory.length == other.memory.length)
+    get <| ensure s!"lookup merging added slots in {chip.name}"
+      (other.sends.length ≤ chip.sends.length && other.memory.length ≤ chip.memory.length)
   IO.println "\nReference chips:"
   reference.system.printStats
   IO.println "\nOptimized chips:"

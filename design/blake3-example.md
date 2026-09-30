@@ -128,40 +128,41 @@ execution of the Aiur hash or a formal BLAKE3 correctness theorem.
 
 These are the results from `lake exe blake3_stats` with the default optimized
 configuration (degree three, sharing, selector elimination, scoped/affine propagation,
-and deduplication).
+quadratic lookup merging, and deduplication).
 
 | Metric | Reference | Optimized |
 | --- | ---: | ---: |
 | Chips | 14 | 14 |
-| Sum of chip columns | 2,861 | 1,419 |
+| Sum of chip columns | 2,861 | 1,382 |
 | Maximum constraint degree | 9 | 3 |
-| Call/map lookup slots | 342 | 342 |
-| ROM lookup slots | 104 | 104 |
-| Maximum lookup expression degree | 8 | 1 |
+| Call/map lookup slots | 342 | 340 |
+| ROM lookup slots | 104 | 91 |
+| Maximum lookup expression degree | 8 | 2 |
 
-The sum of chip widths decreases by **1,442 columns, about 50.4%**. This sum
+The sum of chip widths decreases by **1,479 columns, about 51.7%**. This sum
 allocates one row's width to each chip; it is not a trace-size or proving-time
 estimate. Deduplication finds no equivalent internal chips in this example.
 
 Lookup counts in the table below include both call/map and ROM slots. They
-agree between compilers and include statically declared inactive slots.
+include static slots; compatible exclusive slots are merged in the optimized
+version while preserving every active call occurrence.
 
-| Chip | Reference columns | Optimized columns | Reference degree | Optimized degree | Lookups |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `Benchmark::main` | 78 | 38 | 2 | 0 | 7 |
-| `Blake3::compress_layer` | 292 | 140 | 3 | 3 | 6 |
-| `Blake3::next_layer` | 394 | 216 | 3 | 3 | 11 |
-| `Blake3::compress` | 709 | 483 | 2 | 3 | 289 |
-| `Blake3::compress_chunks` | 35 | 16 | 3 | 3 | 5 |
-| `Blake3::finish` | 314 | 162 | 9 | 3 | 20 |
-| `Words::u64_is_zero` | 28 | 18 | 8 | 3 | 0 |
-| `Blake3::eq_zero` | 7 | 4 | 2 | 3 | 0 |
-| `Blake3::bytes_to_block` | 641 | 129 | 2 | 0 | 64 |
-| `Blake3::pad_block` | 14 | 6 | 3 | 3 | 2 |
-| `Blake3::compress_block` | 282 | 177 | 3 | 3 | 29 |
-| `Blake3::is_empty` | 14 | 7 | 2 | 3 | 1 |
-| `Words::u64_succ` | 32 | 16 | 1 | 0 | 8 |
-| `Benchmark::generate` | 21 | 7 | 3 | 3 | 4 |
+| Chip | Reference columns | Optimized columns | Reference degree | Optimized degree | Reference lookups | Optimized lookups |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Benchmark::main` | 78 | 38 | 2 | 0 | 7 | 7 |
+| `Blake3::compress_layer` | 292 | 140 | 3 | 3 | 6 | 5 |
+| `Blake3::next_layer` | 394 | 182 | 3 | 3 | 11 | 9 |
+| `Blake3::compress` | 709 | 483 | 2 | 3 | 289 | 289 |
+| `Blake3::compress_chunks` | 35 | 16 | 3 | 3 | 5 | 5 |
+| `Blake3::finish` | 314 | 162 | 9 | 3 | 20 | 14 |
+| `Words::u64_is_zero` | 28 | 17 | 8 | 3 | 0 | 0 |
+| `Blake3::eq_zero` | 7 | 3 | 2 | 3 | 0 | 0 |
+| `Blake3::bytes_to_block` | 641 | 129 | 2 | 0 | 64 | 64 |
+| `Blake3::pad_block` | 14 | 6 | 3 | 3 | 2 | 2 |
+| `Blake3::compress_block` | 282 | 177 | 3 | 3 | 29 | 24 |
+| `Blake3::is_empty` | 14 | 6 | 2 | 3 | 1 | 1 |
+| `Words::u64_succ` | 32 | 16 | 1 | 0 | 8 | 8 |
+| `Benchmark::generate` | 21 | 7 | 3 | 3 | 4 | 3 |
 
 Compared with the original nibble-table library, the full byte-pair maps reduced
 the optimized compression chip from **1,252 to 612 columns**, and its lookup
@@ -206,13 +207,21 @@ also demonstrate savings before degree reduction from branch-local equalities.
 Reference widths remain 2,861 total: each removed carry output is replaced by
 an inverse witness for division by 256. Chained carry expressions raise the
 reference maximum lookup degree from two to eight; the optimized compiler
-keeps every lookup affine. The optimized compression width is now below ix's
+keeps individual branch payloads affine before the final quadratic merging pass. The optimized compression width is now below ix's
 recorded 533, but the addition algorithms still differ: four byte-sum lookups
 per word here versus two paired range lookups there. Width alone does not
 measure stage2 work or proving cost.
 
+[Quadratic lookup merging and covered branch outputs](quadratic-lookups.md)
+remove another **37 columns** and **15 lookup slots**, reaching **1,382 columns**
+and **431 slots**. `next_layer` loses its 34 dedicated output columns, reaching
+182 columns; `u64_is_zero`, `eq_zero`, and `is_empty` each lose one. Two call/map
+slots and thirteen ROM slots merge across exclusive branches. Precommitted data
+is unchanged. The compression chip stays at 483 columns with affine payloads.
+
 The optimized artifact carries Lean certificates that constraint degrees are
-at most three, lookup expressions are affine, and chip deduplication preserves
+at most three, lookup expressions have degree at most two, guards remain
+affine, and chip deduplication preserves
 entrypoint acceptance. Optimized/reference equivalence is proved for finite
 entrypoint derivations and acyclic memoized graphs; both checkers retain source
 completeness, as described in the

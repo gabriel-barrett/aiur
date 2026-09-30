@@ -268,7 +268,10 @@ copies and constants, and merges
 structurally equivalent internal chips, including mutually recursive groups.
 Public entrypoints remain fixed. It emits
 the existing `Circuit.System` and defaults to a maximum constraint degree of
-three, with affine lookup expressions.
+three, with quadratic lookup payloads and affine guards. Branchless circuits
+retain affine payloads. The proved [lookup-merging pass](design/quadratic-lookups.md)
+combines compatible exclusive calls and ROM slots, and removes output columns
+using selector-weighted branch returns. Set `mergeLookups := false` to disable it.
 
 Provided results can be expressions directly, so returning a constant, an
 existing loaded value, or an affine expression needs no dedicated output copy.
@@ -289,7 +292,8 @@ checker, including recursive chip deduplication. Memoized equivalence requires
 acyclic support; reference-to-optimized completeness also covers cyclic proofs.
 `layOut_correct` proves the stronger local-rule equivalence for selector
 elimination, degree reduction, shared-column allocation, and physical-row
-emission, followed by copy/constant propagation and column compaction.
+emission, quadratic lookup merging, covered branch outputs, copy/constant
+propagation, and column compaction.
 Successful artifacts also carry proofs of the degree bounds.
 
 `Optimized.ModulesArtifact.check_complete` and `check_sound` connect the original
@@ -300,7 +304,7 @@ than identical rows or row counts. See the
 [theorems and assumptions](design/optimized-equivalence.md).
 Run
 `lake env lean Examples/Optimized.lean` for a comparison that reduces six chips
-to four, each recursive helper from eight columns to six, and a branch chip's
+to four, each recursive helper from eight columns to four, and a branch chip's
 degree from six to three. See the [optimized compiler design](design/constraint-compiler.md)
 for its stages, layout metadata, and proof architecture.
 
@@ -308,10 +312,9 @@ For a larger comparison, `lake exe blake3_stats` compiles the
 [Blake3 example](Examples/Blake3.lean), including programmatically generated U8
 tables and an entrypoint that builds a byte stream. It prints each chip's
 statistics for both compilers and the shared table sizes, without executing
-the hash. The current totals are 2,861 versus 1,449 chip columns, maximum
-constraint degree nine versus three, and 446 lookup slots in either version.
-The [constant-division and carry-table change](design/constant-division.md)
-reduces the optimized compression chip from 612 to 484 columns.
+the hash. The current totals are 2,861 versus 1,382 chip columns, maximum
+constraint degree nine versus three, and 446 versus 431 lookup slots.
+`next_layer` now uses 182 columns (formerly 216); the compression chip uses 483.
 See the [adaptation and measured report](design/blake3-example.md).
 
 Enum encodings contain a constructor tag and payload padded with zeros to the

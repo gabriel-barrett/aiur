@@ -286,7 +286,13 @@ No general field decision procedure or noncomputable checker is assumed.
 certificate proofs are erased during execution. The source evaluation predicate
 is unchanged.
 
-After emission, [`Propagation.lean`](../Aiur/Optimized/Propagation.lean) checks
+After emission, the [quadratic lookup pass](quadratic-lookups.md) proves
+merging of mutually exclusive requirements and selector-weighted branch
+returns. It preserves the exact ordered list of active call occurrences and
+ROM validity. Its `Chip.Equivalent` proof is composed into `layOut_correct`;
+the source and integer-checker theorems need no new assumptions.
+
+Next, [`Propagation.lean`](../Aiur/Optimized/Propagation.lean) checks
 unconditional affine definitions and substitutes them throughout the physical
 chip, including its expression-valued provided result. Copy/constant propagation
 and dense column compaction preserve exactly the same local rule; guarded
@@ -319,8 +325,9 @@ by another 143 through copy/constant propagation and compaction;
 constant division and slimmer carry tables save a further 137, and the extended
 affine/scoped passes save another 30.
 `Library.Carry.mapEntries_iff` proves the exact old/new carry relation, including
-its domain, when the base is nonzero. All call/map and ROM lookup counts are
-preserved. The propagation regression
+its domain, when the base is nonzero. Those earlier passes preserve all
+call/map and ROM slots. The subsequent quadratic pass reduces static slot
+counts while preserving every active call occurrence. The propagation regression
 suite covers zero-column constant results, affine outputs, guarded definitions,
 ROM membership, repeated calls, nonlinear degree limits, and cyclic copies.
 Production witness generation and connection to a concrete cryptographic backend

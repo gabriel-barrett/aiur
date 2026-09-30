@@ -62,6 +62,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   certified copy/constant propagation, and dense column compaction.
 - [Scoped propagation](scoped-propagation.md): branch-local equalities, affine
   solving, and removal of redundant known-constructor validation selectors.
+- [Quadratic lookups](quadratic-lookups.md): proved merging of exclusive calls
+  and ROM slots, affine guards, and selector-weighted branch returns.
 - [Constant division](constant-division.md): proved early inverse folding on
   the circuit path and byte-only carry tables with affine carry reconstruction.
 - [Circuit deduplication](circuit-deduplication.md): implemented sharing of internal

@@ -1,6 +1,7 @@
 import Aiur.Optimized.AllocationCertificate
 import Aiur.Optimized.Propagation
 import Aiur.Optimized.ScopedPropagation
+import Aiur.Optimized.LookupMerging
 
 namespace Aiur.Optimized
 
@@ -40,10 +41,19 @@ def checkedLayOut (config : Config) (chip : ScopedChip F) : Except String (Check
   let physical := emitChip logical layout
   if allocation : Allocation.Certificate logical layout then
     if formed : physical.wellFormed = true then
-      let values ← if config.propagateValues then Propagation.run physical
-        else pure (Propagation.Checked.identity physical)
+      let lookups := LookupMerging.run config logical layout
+      let propagatedValues ← if config.propagateValues then Propagation.run lookups.chip
+        else pure (Propagation.Checked.identity lookups.chip)
+      let values : Propagation.Checked physical := {
+        chip := propagatedValues.chip
+        equivalent := lookups.equivalent.trans propagatedValues.equivalent
+        name_eq := propagatedValues.name_eq.trans lookups.name_eq
+        inputTypes := propagatedValues.inputTypes.trans lookups.inputTypes
+        outputType := propagatedValues.outputType.trans lookups.outputType }
+      let lookupCap := if config.mergeLookups && !logical.choices.isEmpty then 2 else 1
       if finalFormed : values.chip.wellFormed = true then
-        if values.chip.stats.maxConstraintDegree > config.maxDegree || values.chip.stats.maxLookupDegree > 1 then
+        if values.chip.stats.maxConstraintDegree > config.maxDegree || values.chip.stats.maxLookupDegree > lookupCap ||
+            values.chip.maxLookupGuardDegree > 1 then
           throw s!"degree reduction failed in {chip.name}"
         return {
           logical, layout, chip := values.chip
@@ -65,7 +75,7 @@ def layOut (config : Config) (chip : ScopedChip F) : Except String (LaidOutChip 
   (checkedLayOut config chip).map CheckedLayout.toLaidOutChip
 
 /-- The actual layout pipeline preserves the entire local rule: selector
-elimination, scoped propagation, degree reduction, sharing, emission, value propagation,
+elimination, scoped propagation, degree reduction, sharing, emission, quadratic lookup merging, branch outputs, value propagation,
 and compaction. -/
 theorem layOut_correct {config : Config} {source : ScopedChip F} {result : LaidOutChip F}
     (compiled : layOut config source = .ok result) : source.Realizes result.chip := by

@@ -3,7 +3,8 @@
 Status: implemented and proved in [`Aiur/Optimized`](../Aiur/Optimized.lean).
 The executable compiler is connected to source semantics through scoped
 compilation, selector elimination, scoped propagation, degree reduction, column allocation,
-physical emission, value propagation, column compaction, and recursive chip deduplication.
+physical emission, quadratic lookup merging, branch-output substitution,
+value propagation, column compaction, and recursive chip deduplication.
 [`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean) proves reference/optimized
 equivalence at selected entrypoints for finite trees, acyclic memoized graphs,
 and unit-checker acceptance. Weighted acceptance has reference-to-optimized
@@ -47,7 +48,7 @@ The implementation uses the separate namespace `Aiur.Optimized`:
 | --- | --- |
 | Prepared program | Concrete reachable instances and the fixed entrypoint set; existing preparation stages can be reused. |
 | `ScopedChip` | Typed interfaces, logical witnesses, activation scopes, exclusive alternatives, arithmetic expressions, and individual call/ROM occurrences. |
-| `LaidOutChip` | Allocation and sharing metadata before propagation, plus the final compacted chip with affine provided expressions. |
+| `LaidOutChip` | Allocation and sharing metadata before propagation, plus the final compacted chip with expression-valued provides. |
 | `Dedup.Result` | Representative chip names, rewritten call targets, and a record of the original implementations represented by each chip. |
 | Existing circuit datatype | Erase layout bookkeeping and emit a normal `Circuit.System`; statistics and both checkers operate on it directly. |
 
@@ -72,7 +73,8 @@ auxiliary. The layout policy can be refined without changing the output format.
 The existing `Generic.Compiled` artifact records reference compilation. The
 alternative `Optimized.Artifact` records its own compiler output, layouts, and
 deduplication certificate. Its `degreeBound` field proves, for every emitted chip, that
-`maxConstraintDegree ≤ config.maxDegree` and `maxLookupDegree ≤ 1`.
+`maxConstraintDegree ≤ config.maxDegree`, `maxLookupDegree ≤ 2`, and
+`maxLookupGuardDegree ≤ 1`. Branchless layouts retain degree-one lookups.
 This certificate comes from a checked decidable proposition about the final
 system, after deduplication. Semantic correspondence is proved separately from
 actual successful optimized compilation, using the theorems linked above.
@@ -87,10 +89,11 @@ certificate. `Generic.Specialized.compileOptimized` and the lower-level
 enforce the original entrypoint whitelist and resolve external module names.
 
 `Optimized.Config` defaults to degree three and enables auxiliary sharing,
-selector elimination, scoped and physical value propagation, and deduplication. Set `maxDegree` to
+selector elimination, scoped and physical value propagation, quadratic lookup
+merging, and deduplication. Set `maxDegree` to
 any larger bound; bounds below three are rejected. These passes can be disabled separately
 using `shareAuxiliaries`, `eliminateSelectors`, `propagateScopes`, `propagateValues`,
-or `deduplicate`.
+`mergeLookups`, or `deduplicate`.
 Division by known nonzero constants is always folded during scoped compilation.
 
 Run `lake env lean Examples/Optimized.lean` for a comparison:
@@ -98,7 +101,7 @@ Run `lake env lean Examples/Optimized.lean` for a comparison:
 | Measurement | Reference | Optimized |
 | --- | ---: | ---: |
 | Chip count | 6 | 4 |
-| Columns in each retained recursive helper | 8 | 5 |
+| Columns in each retained recursive helper | 8 | 4 |
 | Branch chip columns | 11 | 10 |
 | Branch chip maximum constraint degree | 6 | 3 |
 
@@ -108,8 +111,9 @@ also shows a column reduction while enforcing the degree cap on branch equations
 
 The larger [Blake3 example](blake3-example.md) uses generated U8 tables and the
 same byte-stream hash program for both compilers. It reduces the sum of chip
-widths from 2,861 to 1,419 columns and maximum degree from nine to three, while
-retaining all 446 call/map/ROM lookup slots. Run `lake exe blake3_stats` for the
+widths from 2,861 to 1,382 columns and maximum degree from nine to three.
+Proved quadratic merging reduces 446 static call/map/ROM slots to 431 while
+preserving active occurrences. Run `lake exe blake3_stats` for the
 per-chip comparison and precommitted table sizes. These are static costs;
 the example does not execute the hash or construct witnesses.
 
@@ -178,7 +182,8 @@ Share repeated *pure arithmetic expressions* over the same logical operands.
 Independent hints, calls, allocations, and lookup occurrences cannot simply be
 merged: hint choices may differ, and premise multiplicity matters for the unit
 accumulator. The graph must retain these separate operations even when their
-syntax is identical.
+syntax is identical. Mutually exclusive slots may share a quadratic lookup when
+its equivalence is proved, as in the [lookup-merging pass](quadratic-lookups.md).
 
 ## Degree-aware materialization
 
@@ -222,11 +227,13 @@ that already fit the configured budget, and use scoped definitions where that
 allows storage sharing.
 
 Use separate limits for local equations and lookup expressions. The defaults
-are `config.maxDegree = 3` for constraints and a fixed degree bound of one for
-lookups, materializing nonlinear payload expressions as needed. Activations
-are kept affine. This keeps lookup words
-affine without claiming a bound on the eventual cryptographic backend. A
-backend may account for activation and fingerprint expressions differently.
+are `config.maxDegree = 3` for constraints and degree two for lookup payloads,
+with affine guards. Degree reduction first materializes nonlinear payloads to
+degree one. After allocation, the proved [merging pass](quadratic-lookups.md)
+combines compatible exclusive slots and reconstructs branch returns using
+quadratic selector-weighted sums. Branchless circuits keep affine lookups.
+These bounds do not include a future cryptographic backend's accumulator
+equations; that backend must account for fingerprint degree separately.
 
 The current reducer traverses expressions bottom-up and names a larger operand
 when a product exceeds the scope's remaining degree budget. Affine lookup
