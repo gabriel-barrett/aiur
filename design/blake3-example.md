@@ -27,7 +27,7 @@ are static chip costs, not costs multiplied by execution counts.
 
 The same checked, specialized program and inline declarations feed both
 compilers. The example checks that their prepared core programs and static
-tables/maps agree and that each chip retains its call and ROM lookup counts
+tables/maps agree and that each chip's call and ROM lookup counts do not grow
 after following any deduplication representative. `Rat` supplies field
 arithmetic for compilation; no cryptographic backend or concrete finite field
 is selected by this example.
@@ -56,10 +56,36 @@ the original ix backend's statistics.
 ## Generated U8 tables
 
 `U8::Byte` is a transparent alias for `Field`, not a new primitive range type.
-The stream starts with byte constants and the word helpers preserve the byte
-representation. Explicit conversion and byte-pair maps check byte ranges
-through their input tables. The word-addition helpers use sums of already valid
-bytes and the preceding carry.
+The raw operation maps accept fields directly and establish their output ranges
+through table membership. For example:
+
+```rust
+map raw_xor(a: Field, b: Field) -> Byte = pair_inputs => pair_xors;
+inline fn to_field(byte: Byte) -> Field { byte }
+inline fn xor(a: Byte, b: Byte) -> Byte {
+    raw_xor(to_field(a), to_field(b))
+}
+```
+
+Wrapping addition, subtraction, multiplication, and both XOR/split operations
+have the same raw-map/typed-wrapper split. The wrappers add no chips. A caller
+with fields can use the raw maps without first calling `from_field`; their
+input types are weaker, but the operations remain partial. Byte-pair maps
+accept only the pairs present in `pair_inputs`, and `raw_sum_byte` accepts
+only sums from 0 through 767. A missing input fails the lookup.
+
+The stream starts with byte constants. Word helpers accept `RawU32 = [Field; 4]`
+and use the raw operations directly. The compression state can therefore
+contain the field-valued `block_len` and `flags` without preliminary conversions
+to bytes. A sum lookup checks the sum's domain, not each operand's byte range;
+the ordinary byte interpretation of word addition still assumes byte operands
+and a suitable field. No unconditional equivalence with the old, more
+restrictive helper input contracts is claimed.
+
+`Byte` currently provides a library convention, not an enforced refinement.
+Future opaque types should prevent clients from constructing bytes directly
+and exclude opaque components from entry-input and hint-result types. This is
+separate from the raw interface change; see [input boundaries](input-types.md).
 
 The source quotation declares empty tables as placeholders. `u8Tables`
 generates all rows as an ordinary Lean value, and `source` installs them before
@@ -96,7 +122,7 @@ field addition. Addition returns only the low byte; multiplication returns
 The carry table covers the largest sum needed by three-operand word addition:
 `255 + 255 + 255 + 2 = 767`. Two-operand addition and the eight-byte counter
 increment use the same table. The final carry is discarded for wrapping word
-arithmetic. `U8::sum_byte` returns just the byte; the inline `split_sum` wrapper
+arithmetic. `U8::raw_sum_byte` returns just the byte; the inline `split_sum` wrapper
 returns `(byte, (sum - byte) / 256)`. Constant division is folded before degree
 reduction in the optimized compiler, so the carry needs no witness column.
 `Library.Carry.mapEntries_iff` proves exact equivalence with the original
@@ -133,13 +159,13 @@ quadratic lookup merging, and deduplication).
 | Metric | Reference | Optimized |
 | --- | ---: | ---: |
 | Chips | 14 | 14 |
-| Sum of chip columns | 2,861 | 1,382 |
+| Sum of chip columns | 2,849 | 1,376 |
 | Maximum constraint degree | 9 | 3 |
-| Call/map lookup slots | 342 | 340 |
+| Call/map lookup slots | 330 | 329 |
 | ROM lookup slots | 104 | 91 |
 | Maximum lookup expression degree | 8 | 2 |
 
-The sum of chip widths decreases by **1,479 columns, about 51.7%**. This sum
+The sum of chip widths decreases by **1,473 columns, about 51.7%**. This sum
 allocates one row's width to each chip; it is not a trace-size or proving-time
 estimate. Deduplication finds no equivalent internal chips in this example.
 
@@ -151,15 +177,15 @@ version while preserving every active call occurrence.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `Benchmark::main` | 78 | 38 | 2 | 0 | 7 | 7 |
 | `Blake3::compress_layer` | 292 | 140 | 3 | 3 | 6 | 5 |
-| `Blake3::next_layer` | 394 | 182 | 3 | 3 | 11 | 9 |
+| `Blake3::next_layer` | 390 | 180 | 3 | 3 | 7 | 6 |
 | `Blake3::compress` | 709 | 483 | 2 | 3 | 289 | 289 |
 | `Blake3::compress_chunks` | 35 | 16 | 3 | 3 | 5 | 5 |
-| `Blake3::finish` | 314 | 162 | 9 | 3 | 20 | 14 |
+| `Blake3::finish` | 310 | 160 | 9 | 3 | 16 | 10 |
 | `Words::u64_is_zero` | 28 | 17 | 8 | 3 | 0 | 0 |
 | `Blake3::eq_zero` | 7 | 3 | 2 | 3 | 0 | 0 |
 | `Blake3::bytes_to_block` | 641 | 129 | 2 | 0 | 64 | 64 |
 | `Blake3::pad_block` | 14 | 6 | 3 | 3 | 2 | 2 |
-| `Blake3::compress_block` | 282 | 177 | 3 | 3 | 29 | 24 |
+| `Blake3::compress_block` | 278 | 175 | 3 | 3 | 25 | 20 |
 | `Blake3::is_empty` | 14 | 6 | 2 | 3 | 1 | 1 |
 | `Words::u64_succ` | 32 | 16 | 1 | 0 | 8 | 8 |
 | `Benchmark::generate` | 21 | 7 | 3 | 3 | 4 | 3 |
@@ -204,8 +230,8 @@ disabling only scoped propagation gives the same widths: affine elimination
 after layout accounts for the additional savings. Dedicated branch regressions
 also demonstrate savings before degree reduction from branch-local equalities.
 
-Reference widths remain 2,861 total: each removed carry output is replaced by
-an inverse witness for division by 256. Chained carry expressions raise the
+At that stage, reference widths remained 2,861 total: each removed carry output
+was replaced by an inverse witness for division by 256. Chained carry expressions raise the
 reference maximum lookup degree from two to eight; the optimized compiler
 keeps individual branch payloads affine before the final quadratic merging pass. The optimized compression width is now below ix's
 recorded 533, but the addition algorithms still differ: four byte-sum lookups
@@ -218,6 +244,14 @@ and **431 slots**. `next_layer` loses its 34 dedicated output columns, reaching
 182 columns; `u64_is_zero`, `eq_zero`, and `is_empty` each lose one. Two call/map
 slots and thirteen ROM slots merge across exclusive branches. Precommitted data
 is unchanged. The compression chip stays at 483 columns with affine payloads.
+
+The raw-byte interface then removes preliminary `from_field` calls for the
+compression state's `block_len` and `flags`. This saves two optimized columns
+each in `next_layer`, `finish`, and `compress_block`, reaching **1,376 columns**
+and **420 lookup slots**. Their widths are now 180, 160, and 175 respectively.
+Reference totals fall to 2,849 columns and 434 lookup slots. The tables and
+compression-round algorithm are unchanged; this is a library interface change
+checked by the existing compilers, with no new circuit pass or proof axiom.
 
 The optimized artifact carries Lean certificates that constraint degrees are
 at most three, lookup expressions have degree at most two, guards remain
