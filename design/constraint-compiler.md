@@ -2,7 +2,7 @@
 
 Status: implemented and proved in [`Aiur/Optimized`](../Aiur/Optimized.lean).
 The executable compiler is connected to source semantics through scoped
-compilation, selector elimination, degree reduction, column allocation,
+compilation, selector elimination, scoped propagation, degree reduction, column allocation,
 physical emission, value propagation, column compaction, and recursive chip deduplication.
 [`Equivalence.lean`](../Aiur/Optimized/Equivalence.lean) proves reference/optimized
 equivalence at selected entrypoints for finite trees, acyclic memoized graphs,
@@ -87,9 +87,10 @@ certificate. `Generic.Specialized.compileOptimized` and the lower-level
 enforce the original entrypoint whitelist and resolve external module names.
 
 `Optimized.Config` defaults to degree three and enables auxiliary sharing,
-selector elimination, value propagation, and deduplication. Set `maxDegree` to
+selector elimination, scoped and physical value propagation, and deduplication. Set `maxDegree` to
 any larger bound; bounds below three are rejected. These passes can be disabled separately
-using `shareAuxiliaries`, `eliminateSelectors`, `propagateValues`, or `deduplicate`.
+using `shareAuxiliaries`, `eliminateSelectors`, `propagateScopes`, `propagateValues`,
+or `deduplicate`.
 Division by known nonzero constants is always folded during scoped compilation.
 
 Run `lake env lean Examples/Optimized.lean` for a comparison:
@@ -97,18 +98,17 @@ Run `lake env lean Examples/Optimized.lean` for a comparison:
 | Measurement | Reference | Optimized |
 | --- | ---: | ---: |
 | Chip count | 6 | 4 |
-| Columns in each retained recursive helper | 8 | 6 |
-| Branch chip columns | 11 | 11 |
+| Columns in each retained recursive helper | 8 | 5 |
+| Branch chip columns | 11 | 10 |
 | Branch chip maximum constraint degree | 6 | 3 |
 
 Two copies of a mutually recursive pair share their implementations. Both
 entrypoints and both call occurrences in the main chip remain. The example
-also shows that enforcing the degree cap can consume the columns saved by
-branch sharing.
+also shows a column reduction while enforcing the degree cap on branch equations.
 
 The larger [Blake3 example](blake3-example.md) uses generated U8 tables and the
 same byte-stream hash program for both compilers. It reduces the sum of chip
-widths from 2,861 to 1,449 columns and maximum degree from nine to three, while
+widths from 2,861 to 1,419 columns and maximum degree from nine to three, while
 retaining all 446 call/map/ROM lookup slots. Run `lake exe blake3_stats` for the
 per-chip comparison and precommitted table sizes. These are static costs;
 the example does not execute the hash or construct witnesses.

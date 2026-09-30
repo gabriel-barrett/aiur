@@ -23,12 +23,13 @@ remove copies. Both paths still emit the same `Circuit.Chip` datatype.
 ## Implemented pass
 
 [`Propagation.lean`](../Aiur/Optimized/Propagation.lean) finds unconditional
-equations of the following forms, including reversed equalities:
+affine equations, including direct and reversed equalities:
 
 ```text
 y - x = 0             replace y with x
 tag - 3 = 0           replace tag with the constant expression 3
 result - (a + b) = 0  replace result with the affine expression a + b
+2 * result - a = 0    replace result with a / 2 when 2 is nonzero in the field
 ```
 
 The candidate column must not be an input or outgoing call-result column. Its
@@ -39,7 +40,8 @@ and discards zero equations. Repeating this exposes chains of definitions and
 further constant simplifications. It then removes unused columns and renumbers
 all remaining column references densely.
 
-The pass checks the actual defining equation for every substitution. A guarded
+The pass checks the actual defining equation for every substitution, using the
+proved affine solver when necessary. A guarded
 equation such as `selector * (y - x) = 0` does not authorize a global replacement.
 No assumptions about evaluation order, an honest witness, valid source values,
 or ROM provenance are used here. Contradictory equations remain contradictory.
@@ -58,6 +60,11 @@ is the final compacted chip.
 [Constant division](constant-division.md) is folded earlier, during scoped
 expression compilation. Propagation can then substitute the resulting affine
 quotients without first allocating inverse witnesses or product temporaries.
+
+[Scoped propagation](scoped-propagation.md) is a separate earlier stage. It
+uses guarded equalities inside their scope and descendants, retaining the
+equations that justify them. Affine solving after layout also removes selectors
+whose known tag equation forces them to zero, and simplifies coverage equations.
 
 ## Correctness
 
@@ -80,7 +87,7 @@ acyclicity condition on whole-compiler memoized semantic soundness.
 
 ## Further opportunities
 
-The pass deliberately recognizes direct unconditional definitions. It does not
-solve arbitrary linear systems, prove facts from several guarded equations, or
+The pass solves single unconditional affine equations. It does not
+solve arbitrary linear systems, combine unrelated guarded equations, or
 remove every redundant enum-validation gadget. More aggressive reasoning can
 be added behind the same local-rule equivalence interface.

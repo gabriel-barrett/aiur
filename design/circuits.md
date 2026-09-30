@@ -35,7 +35,7 @@ and an empty maximum is zero. See [the example](../Examples/CircuitStats.lean).
 The [experimental alternative compiler](constraint-compiler.md) uses these
 statistics to compare columns under a configurable degree cap. Call
 `prepared.compileOptimized` for scoped auxiliary sharing, affine selector
-elimination, degree reduction, copy/constant propagation, and recursive chip
+elimination, scoped propagation, degree reduction, affine propagation, and recursive chip
 deduplication. It emits the same circuit datatype and carries proofs of degree
 bounds and source-entrypoint soundness/completeness. See
 [optimized equivalence](optimized-equivalence.md) for the full theorem boundaries.

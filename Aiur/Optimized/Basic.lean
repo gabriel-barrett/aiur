@@ -13,6 +13,7 @@ structure Config where
   maxDegree : Nat := 3
   shareAuxiliaries : Bool := true
   eliminateSelectors : Bool := true
+  propagateScopes : Bool := true
   propagateValues : Bool := true
   deduplicate : Bool := true
   deriving Repr, BEq

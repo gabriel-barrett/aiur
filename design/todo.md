@@ -187,9 +187,13 @@ without admitted proof steps.
   to byte-only outputs and reconstruct carries with affine expressions; prove
   the exact map relation and retain the compiler correctness proofs. See
   [constant division](constant-division.md). Saves another 137 Blake3 columns.
+- [x] Propagate branch equalities within checked activation scopes and simplify
+  known enum validation selectors with certified affine solving. Preserve exact
+  local rules and the source/checker theorems. See
+  [scoped propagation](scoped-propagation.md). Saves another 30 Blake3 columns.
 - [ ] Pursue the remaining [ix/Blake3 optimization opportunities](ix-blake3-widths.md):
-  scoped propagation and further validation simplification; compare packed
-  additions with the current byte library and consider other slimmer outputs.
+  compare packed additions with the current byte library and consider other
+  slimmer outputs.
   Preserve the existing semantic boundary and certify any new circuit pass.
 - [x] Generate full U8 byte-pair tables with shared inputs and direct XOR/split
   maps, and use them in the Blake3 comparison. Prove a faster input-uniqueness

@@ -295,6 +295,13 @@ equations do not license global substitutions. `Chip.Equivalent.localRule` in
 assignment proof to finite rows, and `layOut_correct` includes this stage.
 See [value propagation](value-propagation.md) for the algorithm and restrictions.
 
+Before degree reduction, `ScopedPropagation.equivalent` rewrites expressions
+using branch and ancestor equalities justified by retained anchor equations.
+Its active-ancestor proof checks actual control equations. Physical propagation
+also accepts certified solutions of affine equations, eliminating known enum
+selectors and redundant coverage columns. Both stages are included in
+`layOut_correct`; see [scoped propagation](scoped-propagation.md).
+
 ## Validation and remaining scope
 
 `AiurTests/Optimized.lean` audits the final local, checker-equivalence, and
@@ -309,7 +316,8 @@ forged scope parents, dropped call occurrences, weakened equations, changed
 static maps, duplicate chip names, or merged pinned entries.
 The Blake3 comparison saves 140 columns by omitting load validation, followed
 by another 143 through copy/constant propagation and compaction;
-constant division and slimmer carry tables save a further 137.
+constant division and slimmer carry tables save a further 137, and the extended
+affine/scoped passes save another 30.
 `Library.Carry.mapEntries_iff` proves the exact old/new carry relation, including
 its domain, when the base is nonzero. All call/map and ROM lookup counts are
 preserved. The propagation regression
