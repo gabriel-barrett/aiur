@@ -342,13 +342,21 @@ the next candidates; the following comparison includes their implementation.
 
 ## Current comparison of every chip
 
-Aiur was remeasured on 2026-09-30 after scoped propagation and extended affine
-solving. The ix baseline remains `a1c6badf`, measured on 2026-09-29 with the
-existing stage1/stage2 statistics change. Our `blake3_stats` executable
+Both implementations were remeasured on 2026-09-30: Aiur at `98b2427`, after
+scoped propagation, extended affine solving, and tagless single-constructor
+layouts; ix at `a1c6badf`, with the existing stage1/stage2 statistics change.
+Our `blake3_stats` executable
 and ix's `Source.Toplevel.compile` reproduce the following widths. The ix
 source is the merge of `IxVM.core`, `IxVM.byteStream`, and `IxVM.blake3`;
 the reported width is `circuit.layout.width`, which the Rust constraint builder
 uses for stage1. No hash execution is involved.
+
+The tagless-layout change leaves every Blake3 chip width unchanged: `ByteNode`,
+`LayerNode`, and `MaybeDigest` each have two constructors. Across all fourteen
+chips our reference and optimized compilers still total 2,861 and 1,419 columns,
+respectively (50.4% fewer after optimization). Their maximum constraint degrees
+are nine and three, and each has 446 required lookup occurrences (342 calls/maps
+and 104 ROM accesses).
 
 Difference is our optimized width minus ix's stage1 width; negative means
 fewer columns here. This accounts for all fourteen of our chips.
