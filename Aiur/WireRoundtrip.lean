@@ -82,8 +82,13 @@ mutual
             have width := encodeConstructor_length chosen
             have length : (payload ++ List.replicate (payloadWidth constructors - payload.length) (0 : F)).length =
                 payloadWidth constructors := by simp only [List.length_append, List.length_replicate]; omega
+            have implicit : constructors.length = 1 → (index : F) = ((0 : Nat) : F) := by
+              intro singleton
+              have bound := encodeConstructor_index chosen
+              have same : index = 0 := by omega
+              rw [same]
             simp only [TagSafe] at safe
-            simp only [decode, length, ↓reduceIte]
+            simp only [decode, enumParts_enumWords _ implicit, bind, Option.bind, length, ↓reduceIte]
             rw [decodeConstructor_encode safe.1 safe.2 chosen]
             rfl
   termination_by sizeOf layout

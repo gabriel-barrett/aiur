@@ -93,14 +93,16 @@ mutual
                         obtain ⟨a, ext, valuesBound, argsDecode⟩ := lowerArgs_complete checked tags typed callComplete
                           argsRun layout valid localsBound enableBound active decoded argsEval
                         refine ⟨a, ext, ?_, ?_⟩
-                        · intro polynomial member
-                          simp only [List.mem_cons, List.mem_append] at member
-                          rcases member with rfl | member | member
+                        · unfold Bounded
+                          refine Layout.enumWords_all _ _ _ ?_ ?_
                           · rfl
-                          · obtain ⟨wire, member, leaf⟩ := List.mem_flatMap.mp member
-                            exact valuesBound wire member polynomial leaf
-                          · have zero : polynomial = .const 0 := List.eq_of_mem_replicate member
-                            subst polynomial; rfl
+                          · intro polynomial member
+                            simp only [List.mem_append] at member
+                            rcases member with member | member
+                            · obtain ⟨wire, member, leaf⟩ := List.mem_flatMap.mp member
+                              exact valuesBound wire member polynomial leaf
+                            · have zero : polynomial = .const 0 := List.eq_of_mem_replicate member
+                              subst polynomial; rfl
                         · have ctorName : constructor.name = ctor := by
                             simpa using List.findIdx_of_getElem?_eq_some atIndex
                           have constructed := WireValue.decode_construct checked tags found atIndex argsDecode

@@ -69,8 +69,10 @@ theorem WireValue.decode_construct [Field F] [DecidableEq F] {decls : Declaratio
     {wires : List (WireValue F)} {values : List (Value F)} (decoded : DecodesValues decls wires values)
     (types : wires.map WireValue.type = ctor.fields)
     {layout : Layout} (expanded : decls.layout (.enum name) = .ok layout) :
-    (WireValue.mk (.enum name) ((index : F) :: (wires.flatMap WireValue.words ++
-      List.replicate (layout.width - 1 - (wires.flatMap WireValue.words).length) 0))).decode decls =
+    (WireValue.mk (.enum name) (Layout.enumWords definition.constructors.length (index : F)
+      (wires.flatMap WireValue.words ++
+      List.replicate (layout.width - Layout.tagWidth definition.constructors.length -
+        (wires.flatMap WireValue.words).length) 0))).decode decls =
       some (.construct name ctor.name values) := by
   have description := Declarations.layout_describes expanded
   cases description with
@@ -89,7 +91,7 @@ theorem WireValue.decode_construct [Field F] [DecidableEq F] {decls : Declaratio
         (by simpa only [Layout.encode] using encoded) (start := 0)
       apply WireValue.decode_of_layout checked expanded
       apply Layout.decode_encode (Declarations.layout_tagSafe tags expanded)
-      simp [Layout.encode, chosenEncoded, Layout.width, Layout.payloadWidth]
+      simp [Layout.encode, chosenEncoded, Layout.width, Layout.payloadWidth, related.length]
 
 theorem WireValue.ptr_decoded_eq [NatCast F] [Zero F] [DecidableEq F] {decls : Declarations}
     {target : Ty} {address : F} {value : Value F}

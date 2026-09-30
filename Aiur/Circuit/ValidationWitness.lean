@@ -68,22 +68,23 @@ mutual
         exact validateList_complete (by simpa only [validate] using compiled) layout valid enableBound bounded
           (by simpa only [Layout.Admissible] using admissible)
     | enum name constructors =>
-        cases words with
-        | nil => simp [validate] at compiled
-        | cons tag payload =>
-            simp only [validate] at compiled
+        simp only [validate] at compiled
+        cases parts : Layout.enumParts constructors.length (.const 0) words with
+        | none => simp [parts] at compiled
+        | some pair =>
+            rcases pair with ⟨tag, payload⟩
+            simp only [parts] at compiled
             split at compiled
             · simp [StateT.bind, bind, Except.bind] at compiled
             · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp compiled
               obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
               obtain ⟨tests, middle, ctorRun, sumRun⟩ := bind_ok.mp rest
-              have tagBound := bounded tag (by simp)
-              have payloadBound := fun p h => bounded p (List.mem_cons_of_mem tag h)
+              obtain ⟨tagBound, payloadBound⟩ := Layout.enumParts_all parts (by rfl) bounded
               have choices : enable.denote initial = 0 ∨ Layout.AdmissibleConstructors constructors
                   (tag.denote initial) (payload.map (ArithExpr.denote initial)) 0 := by
                 rcases admissible with zero | formed
                 · exact Or.inl zero
-                · simp only [List.map_cons, Layout.Admissible] at formed
+                · simp only [Layout.Admissible, Nat.cast_zero, Circuit.Compiler.enumParts_denote parts initial] at formed
                   exact Or.inr formed.2.2
               obtain ⟨a, ext, testsBound, testsEq⟩ := validateConstructors_complete ctorRun layout valid
                 enableBound tagBound payloadBound choices
@@ -94,7 +95,7 @@ mutual
                 rcases admissible with h | h
                 · exact Or.inl ((ext.polynomial enableBound).trans h)
                 · right
-                  simp only [List.map_cons, Layout.Admissible] at h
+                  simp only [Layout.Admissible, Nat.cast_zero, Circuit.Compiler.enumParts_denote parts initial] at h
                   simpa [Scalar.Circuit.ArithExpr.denote, Scalar.Circuit.ArithExpr.denote_foldl_add,
                     testsEq, h.2.1]
               have last := guarded_complete sumRun ext.layout ext.valid (ext.bound enableBound)

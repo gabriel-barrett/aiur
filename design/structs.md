@@ -92,12 +92,11 @@ Record patterns use the existing constructor/read/test plans, with wildcards for
 omitted fields. Control-flow preparation handles early returns and named breaks
 inside initializers before this translation.
 
-The initial circuit layout is the existing single-constructor enum layout:
-**a fixed zero tag followed by flattened fields in declaration order**. For
-`Point`, the words are `[0, x, y]`. Nested tuples, arrays, structs, and enums flatten
+The circuit layout uses the [tagless single-constructor enum layout](tagless-enums.md):
+**flattened fields in declaration order**. For `Point`, the words are `[x, y]`;
+an empty struct uses no words. Nested tuples, arrays, structs, and enums flatten
 through their layouts; pointers occupy one word. Existing validity constraints
-check the tag and recursively validate nested values, including hints and public
-claims. Removing the redundant struct tag is a future layout optimization.
+recursively validate nested values, including hints and public claims.
 Construction and projection introduce no call or ROM messages of their own;
 operations inside their operands retain their usual guarded messages.
 

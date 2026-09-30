@@ -74,15 +74,17 @@ unconditional Boolean/coverage equations introduced by nested choices. -/
                       subst middle
                       obtain ⟨a, extension, bounded⟩ := lowerArgs_inactive argsRun layout scopeLayout valid scopeValid localsBound inactive
                       refine ⟨a, extension, start.afterArgs argsRun extension, ?_⟩
-                      intro polynomial member
-                      simp only [List.mem_cons, List.mem_append] at member
-                      rcases member with rfl | member | member
+                      unfold Circuit.Compiler.Bounded
+                      refine Layout.enumWords_all _ _ _ ?_ ?_
                       · rfl
-                      · obtain ⟨wire, member, leaf⟩ := List.mem_flatMap.mp member
-                        exact bounded wire member polynomial leaf
-                      · have same : polynomial = .const 0 := List.eq_of_mem_replicate member
-                        subst polynomial
-                        rfl
+                      · intro polynomial member
+                        simp only [List.mem_append] at member
+                        rcases member with member | member
+                        · obtain ⟨wire, member, leaf⟩ := List.mem_flatMap.mp member
+                          exact bounded wire member polynomial leaf
+                        · have same : polynomial = .const 0 := List.eq_of_mem_replicate member
+                          subst polynomial
+                          rfl
       | project operand index =>
           obtain ⟨wire, s₁, operandRun, projectBind⟩ := bind_ok.mp stepRun
           cases typeEq : wire.type with

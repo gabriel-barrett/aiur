@@ -51,10 +51,12 @@ mutual
                 exact ⟨.refl _, scopeLayout⟩
     | tuple layouts => exact validateList_scoped (by simpa only [validate] using compiled) scopeLayout scopeValid
     | enum name constructors =>
-        cases words with
-        | nil => simp [validate] at compiled
-        | cons tag payload =>
-            simp only [validate] at compiled
+        simp only [validate] at compiled
+        cases parts : Layout.enumParts constructors.length (.const 0) words with
+        | none => simp [parts] at compiled
+        | some pair =>
+            rcases pair with ⟨tag, payload⟩
+            simp only [parts] at compiled
             split at compiled
             · simp [StateT.bind, bind, Except.bind] at compiled
             · obtain ⟨⟨⟩, unchangedState, unchanged, choiceBind⟩ := bind_ok.mp compiled

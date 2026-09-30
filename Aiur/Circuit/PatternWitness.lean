@@ -67,10 +67,12 @@ mutual
               | some constructor =>
                   simp only [atIndex] at rest
                   rcases wire with ⟨type, words⟩
-                  cases words with
-                  | nil => simp at rest
-                  | cons tag payload =>
-                      dsimp only at rest
+                  cases parts : Layout.enumParts definition.constructors.length (.const 0) words with
+                  | none => simp [parts] at rest
+                  | some pair =>
+                      rcases pair with ⟨tag, payload⟩
+                      simp only [parts] at rest
+                      obtain ⟨headBound, tailBound⟩ := Layout.enumParts_all parts (by rfl) bounded
                       obtain ⟨layout, s₁, layoutRun, rest⟩ := bind_ok.mp rest
                       obtain ⟨_, rfl⟩ := getLayout_eq layoutRun
                       obtain ⟨values, s₂, splitRun, rest⟩ := bind_ok.mp rest
@@ -80,9 +82,9 @@ mutual
                       obtain ⟨⟨payloadTest, payloadBindings⟩, s₄, payloadRun, finished⟩ := bind_ok.mp rest
                       obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp finished
                       obtain ⟨a, tagExt, tagBound⟩ := equalIndicator_complete tagRun stateLayout valid
-                        (by simpa [Scalar.Circuit.ArithExpr.inBounds] using bounded tag (by simp))
+                        (by simpa [Scalar.Circuit.ArithExpr.inBounds] using headBound)
                       have valuesBound := splitValues_bounded splitRun (bound := before.nextVar)
-                        (fun p h => bounded p (List.mem_cons_of_mem tag (List.mem_of_mem_take h)))
+                        (fun p h => tailBound p (List.mem_of_mem_take h))
                       obtain ⟨b, payloadExt, payloadBound, localsBound⟩ := lowerPatterns_complete payloadRun
                         tagExt.layout tagExt.valid (fun w h => (valuesBound w h).mono tagExt.increase)
                       exact ⟨b, tagExt.trans payloadExt, by

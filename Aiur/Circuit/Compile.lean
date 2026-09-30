@@ -22,6 +22,14 @@ abbrev Build (F : Type) := StateT (BuildState F) (Except CompileError)
 abbrev Symbolic (F : Type) := WireValue (ArithExpr F)
 abbrev Locals (F : Type) := List (String × Symbolic F)
 
+theorem enumParts_denote [Field F] {count : Nat} {words payload : List (ArithExpr F)}
+    {tag : ArithExpr F}
+    (parts : Layout.enumParts count (.const 0) words = some (tag, payload)) (assignment : Var → F) :
+    Layout.enumParts count (0 : F) (words.map (ArithExpr.denote assignment)) =
+      some (tag.denote assignment, payload.map (ArithExpr.denote assignment)) := by
+  simpa only [Scalar.Circuit.ArithExpr.denote, Nat.cast_zero] using
+    Layout.enumParts_map_of (ArithExpr.denote assignment) parts
+
 def fresh : Build F Var := do
   let state ← get
   set { state with nextVar := state.nextVar + 1 }
@@ -84,7 +92,9 @@ mutual
   def validate [Field F] : Layout → ArithExpr F → List (ArithExpr F) → Build F Unit
     | .field, _, [_] | .ptr _, _, [_] => pure ()
     | .tuple layouts, enable, words => validateList layouts enable words
-    | .enum _ constructors, enable, tag :: payload => do
+    | .enum _ constructors, enable, words => do
+        let some (tag, payload) := Layout.enumParts constructors.length (.const 0) words
+          | throw .invalidShape
         if payload.length != Layout.payloadWidth constructors then throw .invalidShape
         let tests ← validateConstructors constructors enable tag payload 0
         guarded enable (.sub (tests.foldl ArithExpr.add (.const 0)) (.const 1))
@@ -149,7 +159,8 @@ mutual
         let some definition := decls.findEnum? name | throw .invalidShape
         let index := definition.constructors.findIdx (·.name == ctor)
         let some constructor := definition.constructors[index]? | throw .invalidShape
-        let tag :: payload := value.words | throw .invalidShape
+        let some (tag, payload) := Layout.enumParts definition.constructors.length (.const 0) value.words
+          | throw .invalidShape
         let layout ← getLayout decls (.tuple constructor.fields)
         let values ← splitValues decls constructor.fields (payload.take layout.width)
         let tagTest ← equalIndicator (.sub tag (.const (index : F)))
@@ -210,9 +221,10 @@ mutual
         if values.map WireValue.type ≠ constructor.fields then throw .invalidShape
         let layout ← getLayout program.enums (.enum name)
         let payload := values.flatMap WireValue.words
-        if payload.length + 1 > layout.width then throw .invalidShape
-        return ⟨.enum name, .const (index : F) ::
-          (payload ++ List.replicate (layout.width - 1 - payload.length) (.const 0))⟩
+        let tagWidth := Layout.tagWidth definition.constructors.length
+        if payload.length + tagWidth > layout.width then throw .invalidShape
+        return ⟨.enum name, Layout.enumWords definition.constructors.length (.const (index : F))
+          (payload ++ List.replicate (layout.width - tagWidth - payload.length) (.const 0))⟩
     | .project value index =>
         let value ← lowerExpr program function locals enable value
         let .tuple types := value.type | throw .invalidShape

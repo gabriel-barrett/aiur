@@ -60,14 +60,16 @@ mutual
                     obtain ⟨rfl, rfl⟩ := pure_ok.mp finished
                     obtain ⟨a, ext, valuesBound⟩ := lowerArgs_inactive argsRun layout valid localsBound enableBound inactive
                     refine ⟨a, ext, ?_⟩
-                    intro polynomial member
-                    simp only [List.mem_cons, List.mem_append] at member
-                    rcases member with rfl | member | member
+                    unfold Bounded
+                    refine Layout.enumWords_all _ _ _ ?_ ?_
                     · rfl
-                    · obtain ⟨wire, member, leaf⟩ := List.mem_flatMap.mp member
-                      exact valuesBound wire member polynomial leaf
-                    · have zero : polynomial = .const 0 := List.eq_of_mem_replicate member
-                      subst polynomial; rfl
+                    · intro polynomial member
+                      simp only [List.mem_append] at member
+                      rcases member with member | member
+                      · obtain ⟨wire, member, leaf⟩ := List.mem_flatMap.mp member
+                        exact valuesBound wire member polynomial leaf
+                      · have zero : polynomial = .const 0 := List.eq_of_mem_replicate member
+                        subst polynomial; rfl
     | project value index =>
         simp only [lowerExpr] at compiled
         obtain ⟨input, middle, valueRun, rest⟩ := bind_ok.mp compiled

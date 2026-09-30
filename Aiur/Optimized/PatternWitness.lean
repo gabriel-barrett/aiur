@@ -68,10 +68,12 @@ mutual
               | some constructor =>
                   simp only [atIndex] at rest
                   rcases wire with ⟨type, words⟩
-                  cases words with
-                  | nil => simp at rest
-                  | cons tag payload =>
-                      dsimp only at rest
+                  cases parts : Layout.enumParts definition.constructors.length (.const 0) words with
+                  | none => simp [parts] at rest
+                  | some pair =>
+                      rcases pair with ⟨tag, payload⟩
+                      simp only [parts] at rest
+                      obtain ⟨headBound, tailBound⟩ := Layout.enumParts_all parts (by rfl) bounded
                       obtain ⟨layout, afterLayout, layoutRun, afterLayoutBind⟩ := bind_ok.mp rest
                       obtain ⟨_, stateEq⟩ := getLayout_eq layoutRun
                       subst afterLayout
@@ -83,11 +85,11 @@ mutual
                       obtain ⟨⟨rfl, rfl⟩, rfl⟩ := pure_ok.mp finished
                       obtain ⟨unchanged, payloadBound, bindingsBound⟩ := patternList_bounded payloadRun
                         (splitValues_bounded splitRun
-                          (fun p member => bounded p (List.mem_cons_of_mem tag (List.mem_of_mem_take member))))
+                          (fun p member => tailBound p (List.mem_of_mem_take member)))
                       refine ⟨unchanged, ?_, bindingsBound⟩
                       intro p member
                       rcases List.mem_cons.mp member with rfl | member
-                      · simpa [Scalar.Circuit.ArithExpr.inBounds] using bounded tag (by simp)
+                      · simpa [Scalar.Circuit.ArithExpr.inBounds] using headBound
                       · exact payloadBound p member
   termination_by sizeOf pat
 

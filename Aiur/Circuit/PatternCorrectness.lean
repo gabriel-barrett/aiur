@@ -98,10 +98,11 @@ mutual
                   rcases wire with ⟨type, words⟩
                   dsimp only at typeEq
                   subst type
-                  cases words with
-                  | nil => simp at rest
-                  | cons tag payload =>
-                      dsimp only at rest
+                  cases parts : Layout.enumParts definition.constructors.length (.const 0) words with
+                  | none => simp [parts] at rest
+                  | some pair =>
+                      rcases pair with ⟨tag, payload⟩
+                      simp only [parts] at rest
                       obtain ⟨layout, s₁, layoutRun, rest⟩ := bind_ok.mp rest
                       obtain ⟨expansion, rfl⟩ := getLayout_eq layoutRun
                       obtain ⟨values, s₂, splitRun, rest⟩ := bind_ok.mp rest
@@ -123,7 +124,7 @@ mutual
                         split <;> simpa using payloadBoolean
                       · intro value decoded
                         obtain ⟨actual, args, rfl, tagMatch, payloadDecoded⟩ :=
-                          enum_payload_decoded checked tags found atIndex expansion splitRun decoded
+                          enum_payload_decoded checked tags found atIndex expansion parts splitRun decoded
                         rw [ctorName] at tagMatch payloadDecoded
                         by_cases same : actual = ctor
                         · have selected := tagMatch.mpr same

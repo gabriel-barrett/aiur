@@ -54,23 +54,21 @@ mutual
         subst value
         simpa only [encode] using encodeList_decode (by simpa only [NamesUnique] using unique) run
     | enum name constructors =>
-        cases words with
-        | nil => simp [decode] at decoded
-        | cons tag payload =>
-            simp only [decode] at decoded
-            split at decoded
-            · rename_i length
-              obtain ⟨⟨ctor, args⟩, run, finished⟩ := Option.bind_eq_some_iff.mp decoded
-              simp only [Option.pure_def, Option.some.injEq] at finished
-              subst value
-              simp only [NamesUnique] at unique
-              obtain ⟨_, index, words, encoded, tagEq, paddingEq⟩ :=
-                encodeConstructor_decode unique.1 unique.2 run
-              simp only [encode, ne_eq, not_true_eq_false, ↓reduceIte, encoded, Option.bind_some]
-              dsimp only [bind, Option.bind]
-              rw [← length, ← paddingEq, ← tagEq]
-              rfl
-            · cases decoded
+        simp only [decode] at decoded
+        obtain ⟨⟨tag, payload⟩, parts, decoded⟩ := Option.bind_eq_some_iff.mp decoded
+        split at decoded
+        · rename_i length
+          obtain ⟨⟨ctor, args⟩, run, finished⟩ := Option.bind_eq_some_iff.mp decoded
+          simp only [Option.pure_def, Option.some.injEq] at finished
+          subst value
+          simp only [NamesUnique] at unique
+          obtain ⟨_, index, encodedWords, encoded, tagEq, paddingEq⟩ :=
+            encodeConstructor_decode unique.1 unique.2 run
+          simp only [encode, ne_eq, not_true_eq_false, ↓reduceIte, encoded, Option.bind_some]
+          dsimp only [bind, Option.bind]
+          rw [← length, ← paddingEq, ← tagEq, enumParts_words parts]
+          rfl
+        · cases decoded
   termination_by sizeOf layout
 
   theorem encodeList_decode [NatCast F] [Zero F] [DecidableEq F] {layouts : List Layout}

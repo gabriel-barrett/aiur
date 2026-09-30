@@ -226,13 +226,15 @@ width(Field)       = 1
 width(&A)          = 1
 width((A₁, …, Aₙ)) = Σᵢ width(Aᵢ)
 payloadWidth(E,c)  = Σᵢ width(argumentType(E,c,i))
-width(E)           = 1 + max_c payloadWidth(E,c)
+tagWidth(E)        = 0 if E has one constructor, otherwise 1
+width(E)           = tagWidth(E) + max_c payloadWidth(E,c)
 ```
 
-The canonical encoding of `E::c(args)` is its tag, followed by the concatenated
-argument encodings, followed by enough zeros to fill the maximum payload width.
-Nested enums have their own tags and padding. Unit has width zero. Even a
-single-constructor enum retains a tag in this initial design.
+The canonical encoding of `E::c(args)` contains a tag only when there is more
+than one constructor, followed by concatenated argument encodings and enough
+zeros to fill the maximum payload width. Nested enums use the same rule.
+A single-constructor enum with no payload has width zero, as does `()`.
+See [tagless enums](tagless-enums.md) for the implementation and proof boundary.
 
 For `List`, taking tags `Nil = 0` and `Cons = 1`:
 

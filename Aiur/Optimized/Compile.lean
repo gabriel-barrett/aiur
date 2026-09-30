@@ -102,7 +102,9 @@ mutual
   def validate [Field F] (scope : ScopeId) : Layout → List (Polynomial F) → Build F Unit
     | .field, [_] | .ptr _, [_] => pure ()
     | .tuple layouts, words => validateList scope layouts words
-    | .enum _ constructors, tag :: payload => do
+    | .enum _ constructors, words => do
+        let some (tag, payload) := Layout.enumParts constructors.length (.const 0) words
+          | throw "invalid enum shape"
         if payload.length != Layout.payloadWidth constructors then throw "invalid enum width"
         let branches ← choice scope constructors.length
         validateConstructors constructors branches tag payload 0
@@ -152,7 +154,8 @@ mutual
         let some definition := decls.findEnum? name | throw "unknown enum"
         let index := definition.constructors.findIdx (·.name == ctor)
         let some constructor := definition.constructors[index]? | throw "unknown constructor"
-        let tag :: payload := value.words | throw "missing constructor tag"
+        let some (tag, payload) := Layout.enumParts definition.constructors.length (.const 0) value.words
+          | throw "invalid constructor shape"
         let layout ← getLayout decls (.tuple constructor.fields)
         let values ← splitValues decls constructor.fields (payload.take layout.width)
         let (conditions, bindings) ← patternList decls patterns values
@@ -218,9 +221,10 @@ mutual
           if values.map WireValue.type ≠ constructor.fields then throw "constructor argument types"
           let layout ← getLayout program.enums (.enum name)
           let payload := values.flatMap WireValue.words
-          if payload.length + 1 > layout.width then throw "constructor payload width"
-          pure ⟨.enum name, .const (index : F) ::
-            (payload ++ List.replicate (layout.width - 1 - payload.length) (.const 0))⟩
+          let tagWidth := Layout.tagWidth definition.constructors.length
+          if payload.length + tagWidth > layout.width then throw "constructor payload width"
+          pure ⟨.enum name, Layout.enumWords definition.constructors.length (.const (index : F))
+            (payload ++ List.replicate (layout.width - tagWidth - payload.length) (.const 0))⟩
       | .project operand index => do
           let value ← lower program function locals scope operand
           let .tuple types := value.type | throw "non-tuple projection"

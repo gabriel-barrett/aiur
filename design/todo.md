@@ -191,6 +191,9 @@ without admitted proof steps.
   known enum validation selectors with certified affine solving. Preserve exact
   local rules and the source/checker theorems. See
   [scoped propagation](scoped-propagation.md). Saves another 30 Blake3 columns.
+- [x] Omit single-constructor enum tags from the layout and encoding, including
+  structs and zero-width unit enums. Update codecs, both compilers, and their
+  correctness proofs. See [tagless enums](tagless-enums.md).
 - [ ] Pursue the remaining [ix/Blake3 optimization opportunities](ix-blake3-widths.md):
   compare packed additions with the current byte library and consider other
   slimmer outputs.
