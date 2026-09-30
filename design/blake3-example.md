@@ -127,19 +127,19 @@ execution of the Aiur hash or a formal BLAKE3 correctness theorem.
 ## Measured statistics
 
 These are the results from `lake exe blake3_stats` with the default optimized
-configuration (degree three, sharing, selector elimination, value propagation,
+configuration (degree three, sharing, selector elimination, scoped/affine propagation,
 and deduplication).
 
 | Metric | Reference | Optimized |
 | --- | ---: | ---: |
 | Chips | 14 | 14 |
-| Sum of chip columns | 2,861 | 1,449 |
+| Sum of chip columns | 2,861 | 1,419 |
 | Maximum constraint degree | 9 | 3 |
 | Call/map lookup slots | 342 | 342 |
 | ROM lookup slots | 104 | 104 |
 | Maximum lookup expression degree | 8 | 1 |
 
-The sum of chip widths decreases by **1,412 columns, about 49.4%**. This sum
+The sum of chip widths decreases by **1,442 columns, about 50.4%**. This sum
 allocates one row's width to each chip; it is not a trace-size or proving-time
 estimate. Deduplication finds no equivalent internal chips in this example.
 
@@ -148,20 +148,20 @@ agree between compilers and include statically declared inactive slots.
 
 | Chip | Reference columns | Optimized columns | Reference degree | Optimized degree | Lookups |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Benchmark::main` | 78 | 40 | 2 | 2 | 7 |
-| `Blake3::compress_layer` | 292 | 143 | 3 | 3 | 6 |
-| `Blake3::next_layer` | 394 | 224 | 3 | 3 | 11 |
-| `Blake3::compress` | 709 | 484 | 2 | 3 | 289 |
-| `Blake3::compress_chunks` | 35 | 17 | 3 | 3 | 5 |
-| `Blake3::finish` | 314 | 166 | 9 | 3 | 20 |
-| `Words::u64_is_zero` | 28 | 19 | 8 | 3 | 0 |
-| `Blake3::eq_zero` | 7 | 5 | 2 | 3 | 0 |
+| `Benchmark::main` | 78 | 38 | 2 | 0 | 7 |
+| `Blake3::compress_layer` | 292 | 140 | 3 | 3 | 6 |
+| `Blake3::next_layer` | 394 | 216 | 3 | 3 | 11 |
+| `Blake3::compress` | 709 | 483 | 2 | 3 | 289 |
+| `Blake3::compress_chunks` | 35 | 16 | 3 | 3 | 5 |
+| `Blake3::finish` | 314 | 162 | 9 | 3 | 20 |
+| `Words::u64_is_zero` | 28 | 18 | 8 | 3 | 0 |
+| `Blake3::eq_zero` | 7 | 4 | 2 | 3 | 0 |
 | `Blake3::bytes_to_block` | 641 | 129 | 2 | 0 | 64 |
-| `Blake3::pad_block` | 14 | 7 | 3 | 3 | 2 |
-| `Blake3::compress_block` | 282 | 182 | 3 | 3 | 29 |
-| `Blake3::is_empty` | 14 | 8 | 2 | 3 | 1 |
+| `Blake3::pad_block` | 14 | 6 | 3 | 3 | 2 |
+| `Blake3::compress_block` | 282 | 177 | 3 | 3 | 29 |
+| `Blake3::is_empty` | 14 | 7 | 2 | 3 | 1 |
 | `Words::u64_succ` | 32 | 16 | 1 | 0 | 8 |
-| `Benchmark::generate` | 21 | 9 | 3 | 3 | 4 |
+| `Benchmark::generate` | 21 | 7 | 3 | 3 | 4 |
 
 Compared with the original nibble-table library, the full byte-pair maps reduced
 the optimized compression chip from **1,252 to 612 columns**, and its lookup
@@ -188,12 +188,20 @@ falling from 32 to 24 columns, also with no local equations. The remaining seven
 columns are saved in `main`, `compress_layer`, `compress_chunks`, `pad_block`,
 and `generate`. All lookup counts and table sizes are unchanged.
 
-The latest [constant-division and carry-table change](constant-division.md)
+The [constant-division and carry-table change](constant-division.md)
 saves another **137 columns**, bringing the optimized total to **1,449**.
 `compress` loses 128 carry outputs, reaching **484 columns**; `u64_succ`
 loses eight, reaching **16**; and `generate` loses one, reaching **9**.
 All 446 lookup slots remain. The slimmer precommitted output trace also saves
 768 field cells. Its 768 inputs, and therefore its accepted domain, are unchanged.
+
+[Scoped propagation and extended affine solving](scoped-propagation.md) save
+another **30 columns**, reaching **1,419**. `next_layer` loses eight selectors,
+`compress_block` loses five, and `finish` loses four. `main` now has no local
+equations. All 446 lookup slots and all table contents remain. In this example,
+disabling only scoped propagation gives the same widths: affine elimination
+after layout accounts for the additional savings. Dedicated branch regressions
+also demonstrate savings before degree reduction from branch-local equalities.
 
 Reference widths remain 2,861 total: each removed carry output is replaced by
 an inverse witness for division by 256. Chained carry expressions raise the

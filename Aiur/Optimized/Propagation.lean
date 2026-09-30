@@ -1,5 +1,6 @@
 import Aiur.Optimized.PhysicalSemantics
 import Aiur.Optimized.PolynomialIdentity
+import Aiur.Optimized.AffineEquation
 
 namespace Aiur.Optimized.Propagation
 
@@ -97,7 +98,8 @@ def Candidate.Certificate (chip : Circuit.Chip F) (candidate : Candidate F) : Pr
   candidate.id ∉ fixed chip ∧ candidate.id ∉ candidate.value.vars ∧ candidate.value.degree ≤ 1 ∧
     ∃ equation ∈ chip.constraints,
       Polynomial.Identical equation (.sub (.var candidate.id) candidate.value) ∨
-      Polynomial.Identical equation (.sub candidate.value (.var candidate.id))
+      Polynomial.Identical equation (.sub candidate.value (.var candidate.id)) ∨
+      Polynomial.solution? equation candidate.id = some candidate.value
 
 instance (chip : Circuit.Chip F) (candidate : Candidate F) : Decidable (candidate.Certificate chip) := by
   unfold Candidate.Certificate
@@ -115,19 +117,22 @@ theorem Candidate.equivalent {chip : Circuit.Chip F} {candidate : Candidate F}
     simp [Candidate.replace, different]
   constructor
   · intro rom a valid
-    obtain ⟨polynomial, member, same | same⟩ := checked.2.2.2 <;>
-      have equation : Circuit.ArithExpr.denote a polynomial = 0 := valid.1 polynomial member
-    all_goals
-      rw [same.denote] at equation
-      have equal : a candidate.id = candidate.value.denote a := by
-        first | exact sub_eq_zero.mp equation | exact (sub_eq_zero.mp equation).symm
-      have unchanged : (fun i => (candidate.replace i).denote a) = a := by
-        funext i
-        by_cases h : i = candidate.id <;> simp [Candidate.replace, h, equal, Scalar.Circuit.ArithExpr.denote]
-      refine ⟨a, ?_, ?_, ?_⟩
-      · rw [rewrite_valid, unchanged]; exact valid
-      · rw [(rewrite_claims chip (fun i => i) candidate.replace fixed a).1, unchanged]
-      · rw [(rewrite_claims chip (fun i => i) candidate.replace fixed a).2, unchanged]
+    obtain ⟨polynomial, member, justified⟩ := checked.2.2.2
+    have equation : Circuit.ArithExpr.denote a polynomial = 0 := valid.1 polynomial member
+    have equal : a candidate.id = candidate.value.denote a := by
+      rcases justified with same | same | solved
+      · rw [same.denote] at equation
+        exact sub_eq_zero.mp equation
+      · rw [same.denote] at equation
+        exact (sub_eq_zero.mp equation).symm
+      · exact Polynomial.solution?_sound solved a equation
+    have unchanged : (fun i => (candidate.replace i).denote a) = a := by
+      funext i
+      by_cases h : i = candidate.id <;> simp [Candidate.replace, h, equal, Scalar.Circuit.ArithExpr.denote]
+    refine ⟨a, ?_, ?_, ?_⟩
+    · rw [rewrite_valid, unchanged]; exact valid
+    · rw [(rewrite_claims chip (fun i => i) candidate.replace fixed a).1, unchanged]
+    · rw [(rewrite_claims chip (fun i => i) candidate.replace fixed a).2, unchanged]
   · intro rom a valid
     exact ⟨_, (rewrite_valid chip (fun i => i) candidate.replace rom a).mp valid,
       (rewrite_claims chip (fun i => i) candidate.replace fixed a).1.symm,
@@ -145,6 +150,9 @@ def candidate? (chip : Circuit.Chip F) : Option (Candidate F) := Id.run do
       | .var id => allowed id (.const 0)
       | _ => none
     if found.isSome then return found
+    for id in (Polynomial.vars equation).eraseDups do
+      if let some value := Polynomial.solution? equation id then
+        if let some candidate := allowed id value then return some candidate
   return none
 
 structure Checked (source : Circuit.Chip F) where

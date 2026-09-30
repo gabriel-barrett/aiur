@@ -9,7 +9,7 @@ The measurements below record the original nibble-table baseline. Full byte-pair
 tables were subsequently implemented; see the follow-up at the end and the
 [current example statistics](blake3-example.md).
 The [current comparison of every chip](#current-comparison-of-every-chip)
-includes all optimizations through constant division and slimmer carry tables.
+includes scoped propagation, known-constructor simplification, and affine solving.
 
 The large differences are explained by the byte libraries and by redundant
 columns in our current compiler. No stage1 counting error or missing constraint
@@ -337,13 +337,14 @@ This gives fewer compression columns than ix's recorded implementation while
 retaining a different addition algorithm: our four byte-sum lookups per word
 versus ix's two paired range checks. ix's active-row/multiplicity conventions
 and backend costs still differ; this width comparison is not a proving-cost
-comparison. Scoped propagation and constructor-validation simplification
-remain candidates for the other chips.
+comparison. Scoped propagation and constructor-validation simplification were
+the next candidates; the following comparison includes their implementation.
 
 ## Current comparison of every chip
 
-Rechecked both repositories on 2026-09-29: Aiur `0212066`, ix `a1c6badf`
-with the existing stage1/stage2 statistics change. Our `blake3_stats` executable
+Aiur was remeasured on 2026-09-30 after scoped propagation and extended affine
+solving. The ix baseline remains `a1c6badf`, measured on 2026-09-29 with the
+existing stage1/stage2 statistics change. Our `blake3_stats` executable
 and ix's `Source.Toplevel.compile` reproduce the following widths. The ix
 source is the merge of `IxVM.core`, `IxVM.byteStream`, and `IxVM.blake3`;
 the reported width is `circuit.layout.width`, which the Rust constraint builder
@@ -354,30 +355,29 @@ fewer columns here. This accounts for all fourteen of our chips.
 
 | Our chip | ix counterpart | Our columns | ix stage1 | Difference |
 | --- | --- | ---: | ---: | ---: |
-| `Benchmark::main` | `blake3_test` (different entry plumbing) | 40 | 42 | — |
-| `Blake3::compress_layer` | `blake3_compress_layer` | 143 | 141 | +2 |
-| `Blake3::next_layer` | `blake3_next_layer` | 224 | 175 | +49 |
-| `Blake3::compress` | `blake3_compress` | 484 | 533 | −49 |
-| `Blake3::compress_chunks` | `blake3_compress_chunks` | 17 | 17 | 0 |
-| `Blake3::finish` | `blake3_finish` | 166 | 168 | −2 |
-| `Words::u64_is_zero` | `u64_is_zero` | 19 | 19 | 0 |
-| `Blake3::eq_zero` | `eq_zero` primitive inside callers | 5 | — | — |
+| `Benchmark::main` | `blake3_test` (different entry plumbing) | 38 | 42 | — |
+| `Blake3::compress_layer` | `blake3_compress_layer` | 140 | 141 | −1 |
+| `Blake3::next_layer` | `blake3_next_layer` | 216 | 175 | +41 |
+| `Blake3::compress` | `blake3_compress` | 483 | 533 | −50 |
+| `Blake3::compress_chunks` | `blake3_compress_chunks` | 16 | 17 | −1 |
+| `Blake3::finish` | `blake3_finish` | 162 | 168 | −6 |
+| `Words::u64_is_zero` | `u64_is_zero` | 18 | 19 | −1 |
+| `Blake3::eq_zero` | `eq_zero` primitive inside callers | 4 | — | — |
 | `Blake3::bytes_to_block` | `bytes_to_block` | 129 | 195 | −66 |
-| `Blake3::pad_block` | `pad_block` | 7 | 8 | −1 |
-| `Blake3::compress_block` | `blake3_compress_block` | 182 | 177 | +5 |
-| `Blake3::is_empty` | `list_is_empty.U8` | 8 | 7 | +1 |
+| `Blake3::pad_block` | `pad_block` | 6 | 8 | −2 |
+| `Blake3::compress_block` | `blake3_compress_block` | 177 | 177 | 0 |
+| `Blake3::is_empty` | `list_is_empty.U8` | 7 | 7 | 0 |
 | `Words::u64_succ` | `relaxed_u64_succ` | 16 | 19 | −3 |
-| `Benchmark::generate` | Unconstrained stream input, no corresponding chip | 9 | — | — |
+| `Benchmark::generate` | Unconstrained stream input, no corresponding chip | 7 | — | — |
 
-The eleven corresponding helpers total **1,395 versus 1,459 columns**, a
-64-column reduction (about 4.4%). Five are smaller here, two tie, and four are
+The eleven corresponding helpers total **1,370 versus 1,459 columns**, an
+89-column reduction (about 6.1%). Eight are smaller here, two tie, and one is
 larger. This is a sum of static widths, not a trace-size or proving-cost
 estimate; it excludes our entrypoint, generator, and separate zero-test chip.
-Our total including those three is 1,449.
+Our total including those three is 1,419.
 
-The largest remaining gap is `next_layer`, at +49. The other deficits are
-`compress_block` (+5), `compress_layer` (+2), and `is_empty` (+1).
-The largest savings are `bytes_to_block` (−66) and `compress` (−49).
+The remaining deficit is `next_layer`, at +41. `compress_block` and `is_empty`
+now tie ix. The largest savings are `bytes_to_block` (−66) and `compress` (−50).
 
 A layout inspection accounts for the `next_layer` gap exactly:
 
@@ -385,16 +385,18 @@ A layout inspection accounts for the `next_layer` gap exactly:
 | --- | ---: | ---: |
 | Inputs | 34 | 34 |
 | Dedicated outputs | 34 | 0 |
-| Selectors | 16 | 4 |
+| Selectors | 8 | 4 |
 | Other auxiliaries | 140 | 137 |
-| Total | 224 | 175 |
+| Total | 216 | 175 |
 
-Our propagation pass removes no columns from this chip. The excess is therefore
-`34 + 12 + 3 = 49`; ix's auxiliary count includes its multiplicity column.
-This identifies where to investigate, rather than proving all 49 removable:
+Affine elimination removes eight of this chip's selector columns. The excess is
+now `34 + 4 + 3 = 41`; ix's auxiliary count includes its multiplicity column.
+This identifies where to investigate, rather than proving all 41 removable:
 ix can combine branch results into selector-weighted provided expressions,
 whereas our final lookup words must remain affine. Guarded result equalities
-also do not license the unconditional substitutions our propagation pass uses.
+can now simplify uses inside their scopes, but do not license a global
+substitution for a merged output. The present scoped pass preserves those
+interface witnesses; the physical pass still requires an unconditional equation.
 
 The entrypoint comparison is approximate: our main builds a constrained stream
 of 1,025 bytes, whereas `blake3_test` obtains its stream through I/O and an

@@ -32,6 +32,18 @@ fn zero_constant_division(x: Field) -> Field { x / 3 }
 fn guarded_constant_division(x: Field) -> Field { match x { 0 => x / 2, _ => x / 3 } }
 fn discarded_division(x: Field) -> Field { let _ = x / 3; 1 }
 fn nested(x: Field, y: Field) -> Field { match x { 0 => match y { 0 => 0, _ => 1 }, _ => 2 } }
+fn scoped_product(x: Field, y: Field) -> Field {
+  match x { 0 => x * y * y * y, _ => x + y }
+}
+fn descendant_product(x: Field, y: Field) -> Field {
+  match x { 0 => match y { 0 => 0, _ => x * y * y * y }, _ => x + y }
+}
+fn scoped_call(x: Field, y: Field) -> Field {
+  match x { 0 => helper(x * y * y * y), _ => helper(x + y) }
+}
+fn scoped_store(x: Field, y: Field) -> Field {
+  match x { 0 => { let p = &(x * y * y * y); *p }, _ => x + y }
+}
 fn separate(x: Field, y: Field) -> Field {
   let a = match x { 0 => 0, _ => 1 };
   let b = match y { 0 => 0, _ => 1 };
@@ -54,6 +66,14 @@ fn enum_input(x: Outer) -> Field {
   match x { Outer::Empty => 0, Outer::Wrap(Inner::Zero) => 1, Outer::Wrap(Inner::Value(a)) => a }
 }
 fn enum_hint() -> Outer { hint::<Outer>(()) }
+fn constructed_enum(x: Field) -> Outer { Outer::Wrap(Inner::Value(x)) }
+fn enum_identity(x: Outer) -> Outer { x }
+fn guarded_constructor(x: Field) -> Outer {
+  match x { 0 => enum_identity(Outer::Wrap(Inner::Value(x))), _ => Outer::Empty }
+}
+fn constrained_hint() -> Outer {
+  let x = hint::<Outer>(()); let Outer::Wrap(Inner::Value(a)) = x; x
+}
 fn enum_discard(x: Field) -> Field {
   let p = &Outer::Wrap(Inner::Value(x));
   let _ = *p;
@@ -172,6 +192,7 @@ def run : IO Unit := do
   let program := localSource.toField K
   let entries := (program.functions.map (·.name)).filter (· != "load_unused")
   let compiled ← get <| Optimized.compile program entries
+  let unscoped ← get <| Optimized.compile program entries { propagateScopes := false }
   let unpropagated ← get <| Optimized.compile program entries { propagateValues := false }
   let unshared ← get <| Optimized.compile program entries { shareAuxiliaries := false }
   let uneliminated ← get <| Optimized.compile program entries
@@ -205,6 +226,24 @@ def run : IO Unit := do
   ensure "valid alias certificate rejected" (Optimized.Alias.checkedResolve nested).toOption.isSome
   ensure "alias certificate accepted missing coverage equations"
     (Optimized.Alias.checkedResolve { nested with equations := #[] }).toOption.isNone
+  let resolved ← get (Optimized.Alias.checkedResolve nested)
+  ensure "scoped propagation trusted missing control equations"
+    (Optimized.ScopedPropagation.run { resolved.chip with equations := #[] }).toOption.isNone
+  ensure "scoped propagation trusted forged paths"
+    (Optimized.ScopedPropagation.run { resolved.chip with
+      choices := resolved.chip.choices.map fun choice =>
+        { choice with parent := resolved.chip.scopes.size } }).toOption.isNone
+  for name in ["scoped_product", "descendant_product", "scoped_call", "scoped_store"] do
+    ensure s!"{name}: branch equalities saved no columns"
+      (width compiled name < width unscoped name)
+  for name in ["constructed_enum", "constrained_hint"] do
+    ensure s!"{name}: known nested constructor retained validation selectors"
+      (width compiled name == 1 && width compiled name < width unpropagated name)
+  ensure "coefficient that vanishes in F3 was inverted"
+    ((Optimized.Polynomial.solution? (.mul (.const (3 : K)) (.var 0)) 0).isNone)
+  ensure "nonzero affine coefficient was not solved"
+    (Optimized.Polynomial.solution? (.sub (.mul (.const (2 : K)) (.var 0)) (.const 1)) 0 ==
+      some (.const 2))
   let nestedLayout ← get (Optimized.layOut {} nested)
   ensure "valid allocation certificate rejected"
     (decide (Optimized.Allocation.Certificate nestedLayout.logical nestedLayout.layout))
@@ -258,6 +297,13 @@ def run : IO Unit := do
           (out == x / 2)
         checkCase program compiled "nested" [.field x, .field y] (.field out)
           (out == if x == 0 then (if y == 0 then 0 else 1) else 2)
+        for name in ["scoped_product", "descendant_product"] do
+          checkCase program compiled name [.field x, .field y] (.field out)
+            (out == if x == 0 then 0 else x + y)
+        checkCase program compiled "scoped_call" [.field x, .field y] (.field out)
+          (out == if x == 0 then 0 else (x + y) * (x + y))
+        checkCase program compiled "scoped_store" [.field x, .field y] (.field out)
+          (out == if x == 0 then 0 else x + y) (if x == 0 then ⟨[(0, .field 0)]⟩ else ⟨[]⟩)
         checkCase program compiled "separate" [.field x, .field y] (.field out)
           (out == (if x == 0 then 0 else 1) + (if y == 0 then 0 else 1))
         checkCase program compiled "pair" [.field x, .field y] (.tuple [.field out, .field (y + 1)])
@@ -295,9 +341,15 @@ def run : IO Unit := do
       ⟨[(0, ⟨.enum "Inner", [2, x]⟩), (1, ⟨.ptr (.enum "Inner"), [0]⟩)]⟩
     checkCase program compiled "enum_discard" [.field x] (.field x) true
       ⟨[(0, ⟨.enum "Outer", [1, 1, x]⟩), (1, ⟨.enum "Outer", [2, 0, 0]⟩)]⟩
-  for (words, expected) in [([0, 0, 0], true), ([1, 0, 0], true), ([1, 1, 2], true),
+  for (words, expected) in [([0, 0, 0], true), ([1, 0, 0], true), ([1, 1, 0], true), ([1, 1, 2], true),
       ([2, 0, 0], false), ([0, 1, 0], false), ([1, 0, 1], false)] do
     checkCase program compiled "enum_hint" [] ⟨.enum "Outer", words⟩ expected
+    checkCase program compiled "constrained_hint" [] ⟨.enum "Outer", words⟩ (words.take 2 == [1, 1])
+    for x in ([0, 1, 2] : List K) do
+      checkCase program compiled "constructed_enum" [.field x] ⟨.enum "Outer", words⟩
+        (words == [1, 1, x])
+      checkCase program compiled "guarded_constructor" [.field x] ⟨.enum "Outer", words⟩
+        (words == if x == 0 then [1, 1, 0] else [0, 0, 0])
   for (words, value) in [([0, 0, 0], 0), ([1, 0, 0], 1), ([1, 1, 2], 2)] do
     for out in ([0, 1, 2] : List K) do
       checkCase program compiled "enum_input" [⟨.enum "Outer", words⟩] (.field out) (out == value)
@@ -401,6 +453,9 @@ end AiurOptimizedTests
 #print axioms Aiur.Optimized.emitChip_complete
 #print axioms Aiur.Optimized.Polynomial.denote_simplify
 #print axioms Aiur.Optimized.Polynomial.constantInverse?_sound
+#print axioms Aiur.Optimized.Polynomial.solution?_sound
+#print axioms Aiur.Optimized.ScopedPropagation.equivalent
+#print axioms Aiur.Optimized.Propagation.Candidate.equivalent
 #print axioms Aiur.Optimized.failure_certificate_iff
 #print axioms Aiur.Optimized.selector_exactly_one
 #print axioms Aiur.Optimized.Degree.Certificate.equivalent

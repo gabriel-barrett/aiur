@@ -1,5 +1,6 @@
 import Aiur.Optimized.AllocationCertificate
 import Aiur.Optimized.Propagation
+import Aiur.Optimized.ScopedPropagation
 
 namespace Aiur.Optimized
 
@@ -30,7 +31,9 @@ structure CheckedLayout (source : ScopedChip F) extends LaidOutChip F where
 
 def checkedLayOut (config : Config) (chip : ScopedChip F) : Except String (CheckedLayout chip) := do
   let aliases ← Alias.checkedResolve chip
-  let degree ← Degree.checkedBound config aliases.chip
+  let propagated ← if config.propagateScopes then ScopedPropagation.run aliases.chip
+    else pure (ScopedPropagation.identity aliases.chip)
+  let degree ← Degree.checkedBound config propagated.chip
   let logical := degree.chip
   unless logical.wellScoped do throw s!"auxiliary escaped its activation scope in {chip.name}"
   let layout := allocateColumns config logical
@@ -45,14 +48,15 @@ def checkedLayOut (config : Config) (chip : ScopedChip F) : Except String (Check
         return {
           logical, layout, chip := values.chip
           equivalent := fun rom root premises =>
-            (realizes_emit (aliases.equivalent.trans degree.equivalent) allocation formed rom root premises).trans
+            (realizes_emit (aliases.equivalent.trans (propagated.equivalent.trans degree.equivalent))
+              allocation formed rom root premises).trans
               (values.equivalent.localRule formed finalFormed rom root premises)
-          name_eq := values.name_eq.trans (degree.name_eq.trans aliases.name_eq)
+          name_eq := values.name_eq.trans (degree.name_eq.trans (propagated.name_eq.trans aliases.name_eq))
           inputTypes := values.inputTypes.trans (by
-            simp [physical, emitChip, logical, degree.inputs_eq, aliases.inputs_eq,
+            simp [physical, emitChip, logical, degree.inputs_eq, propagated.inputs_eq, aliases.inputs_eq,
               List.map_map, Function.comp_def])
           outputType := values.outputType.trans (by
-            simp [physical, emitChip, logical, degree.output_eq, aliases.output_eq]) }
+            simp [physical, emitChip, logical, degree.output_eq, propagated.output_eq, aliases.output_eq]) }
       else throw s!"invalid propagated layout in {chip.name}"
     else throw s!"invalid optimized layout in {chip.name}"
   else throw s!"invalid column-allocation certificate in {chip.name}"
@@ -61,7 +65,8 @@ def layOut (config : Config) (chip : ScopedChip F) : Except String (LaidOutChip 
   (checkedLayOut config chip).map CheckedLayout.toLaidOutChip
 
 /-- The actual layout pipeline preserves the entire local rule: selector
-elimination, degree reduction, sharing, emission, value propagation, and compaction. -/
+elimination, scoped propagation, degree reduction, sharing, emission, value propagation,
+and compaction. -/
 theorem layOut_correct {config : Config} {source : ScopedChip F} {result : LaidOutChip F}
     (compiled : layOut config source = .ok result) : source.Realizes result.chip := by
   unfold layOut at compiled
