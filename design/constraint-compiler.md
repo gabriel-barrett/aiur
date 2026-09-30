@@ -111,8 +111,8 @@ also shows a column reduction while enforcing the degree cap on branch equations
 
 The larger [Blake3 example](blake3-example.md) uses generated U8 tables and the
 same byte-stream hash program for both compilers. It reduces the sum of chip
-widths from 2,861 to 1,382 columns and maximum degree from nine to three.
-Proved quadratic merging reduces 446 static call/map/ROM slots to 431 while
+widths from 2,849 to 1,376 columns and maximum degree from nine to three.
+Proved quadratic merging reduces 434 static call/map/ROM slots to 420 while
 preserving active occurrences. Run `lake exe blake3_stats` for the
 per-chip comparison and precommitted table sizes. These are static costs;
 the example does not execute the hash or construct witnesses.

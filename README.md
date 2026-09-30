@@ -312,9 +312,10 @@ For a larger comparison, `lake exe blake3_stats` compiles the
 [Blake3 example](Examples/Blake3.lean), including programmatically generated U8
 tables and an entrypoint that builds a byte stream. It prints each chip's
 statistics for both compilers and the shared table sizes, without executing
-the hash. The current totals are 2,861 versus 1,382 chip columns, maximum
-constraint degree nine versus three, and 446 versus 431 lookup slots.
-`next_layer` now uses 182 columns (formerly 216); the compression chip uses 483.
+the hash. The current totals are 2,849 versus 1,376 chip columns, maximum
+constraint degree nine versus three, and 434 versus 420 lookup slots.
+Raw U8 maps accept fields directly, with `inline fn` wrappers for byte callers.
+`next_layer` now uses 180 columns (formerly 216); the compression chip uses 483.
 See the [adaptation and measured report](design/blake3-example.md).
 
 Enum encodings contain a constructor tag and payload padded with zeros to the

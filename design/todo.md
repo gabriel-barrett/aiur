@@ -19,6 +19,14 @@ not an outstanding TODO.
   and circuit acceptance predicates, proofs, and regressions use this rule;
   internal functions may continue to receive and return pointers. Apply the
   same rule to nondeterministic hint result types; see [hints](hints.md).
+- [ ] Enforce a corresponding static boundary for **opaque types**: entry
+  parameter and hint-result types must contain no opaque components, including
+  inside aggregates. Preserve opacity across preparation so those boundaries
+  cannot create values by supplying their hidden representation. Module
+  signatures already hide representations from clients; this stronger
+  construction invariant is future work. Exposed functions and maps may return
+  opaque values, as required by the raw U8 operations. See
+  [input boundaries](input-types.md).
 
 ## Language extensions from the ix comparison
 
@@ -205,6 +213,11 @@ without admitted proof steps.
 - [x] Generate full U8 byte-pair tables with shared inputs and direct XOR/split
   maps, and use them in the Blake3 comparison. Prove a faster input-uniqueness
   check equivalent to `List.Nodup`, including after field conversion.
+- [x] Expose field-argument raw U8 maps with typed `inline fn` wrappers. Let
+  Blake3 call the raw operations directly, removing preliminary byte
+  conversions for `block_len` and `flags`. Table membership still checks each
+  operation's domain. `Byte` remains a transparent alias pending the opacity
+  boundary above. See [the example](blake3-example.md).
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern

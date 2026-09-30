@@ -33,29 +33,46 @@ module U8 {
     table sum_inputs: (Field,) {}
     table sum_bytes: Field {}
 
+    // Raw maps accept fields. Their tables determine the accepted input domain
+    // and establish byte results; a missing input makes the lookup fail.
     map from_field(x: Field) -> Byte = byte_inputs => byte_values;
     map range_pair(a: Field, b: Field) -> () = pair_inputs => pair_units;
-    map xor(a: Byte, b: Byte) -> Byte = pair_inputs => pair_xors;
-    map add(a: Byte, b: Byte) -> Byte = pair_inputs => pair_sums;
-    map sub(a: Byte, b: Byte) -> Byte = pair_inputs => pair_differences;
-    map mul(a: Byte, b: Byte) -> (Byte, Byte) = pair_inputs => pair_products;
-    map xor_split4(a: Byte, b: Byte) -> (Field, Field) = pair_inputs => pair_xor_parts4;
-    map xor_split7(a: Byte, b: Byte) -> (Field, Field) = pair_inputs => pair_xor_parts7;
-    map sum_byte(sum: Field) -> Byte = sum_inputs => sum_bytes;
+    map raw_xor(a: Field, b: Field) -> Byte = pair_inputs => pair_xors;
+    map raw_add(a: Field, b: Field) -> Byte = pair_inputs => pair_sums;
+    map raw_sub(a: Field, b: Field) -> Byte = pair_inputs => pair_differences;
+    map raw_mul(a: Field, b: Field) -> (Byte, Byte) = pair_inputs => pair_products;
+    map raw_xor_split4(a: Field, b: Field) -> (Byte, Byte) = pair_inputs => pair_xor_parts4;
+    map raw_xor_split7(a: Field, b: Field) -> (Byte, Byte) = pair_inputs => pair_xor_parts7;
+    map raw_sum_byte(sum: Field) -> Byte = sum_inputs => sum_bytes;
 
+    // The typed interface delegates to exactly the same lookup after inlining.
+    // Byte remains transparent for now; future opacity will hide its construction.
+    inline fn to_field(byte: Byte) -> Field { byte }
+    inline fn xor(a: Byte, b: Byte) -> Byte { raw_xor(to_field(a), to_field(b)) }
+    inline fn add(a: Byte, b: Byte) -> Byte { raw_add(to_field(a), to_field(b)) }
+    inline fn sub(a: Byte, b: Byte) -> Byte { raw_sub(to_field(a), to_field(b)) }
+    inline fn mul(a: Byte, b: Byte) -> (Byte, Byte) { raw_mul(to_field(a), to_field(b)) }
+    inline fn xor_split4(a: Byte, b: Byte) -> (Byte, Byte) {
+        raw_xor_split4(to_field(a), to_field(b))
+    }
+    inline fn xor_split7(a: Byte, b: Byte) -> (Byte, Byte) {
+        raw_xor_split7(to_field(a), to_field(b))
+    }
     inline fn split_sum(sum: Field) -> (Byte, Field) {
-        let byte = sum_byte(sum);
-        (byte, (sum - byte) / 256)
+        let byte = raw_sum_byte(sum);
+        (byte, (sum - to_field(byte)) / 256)
     }
 }
 
 module Words {
     type U32 = [U8::Byte; 4];
     type U64 = [U8::Byte; 8];
+    type RawU32 = [Field; 4];
 
-    // All sums are in 0..767 for byte operands and the propagated carry.
+    // Raw word operands need no preliminary checked conversion. The maps check
+    // each operation's own domain. For byte operands, sums are in 0..767.
     // The table gives the byte; the input and byte determine the carry.
-    inline fn add(a: U32, b: U32) -> U32 {
+    inline fn add(a: RawU32, b: RawU32) -> U32 {
         let (s0, c1) = U8::split_sum(a[0] + b[0]);
         let (s1, c2) = U8::split_sum(a[1] + b[1] + c1);
         let (s2, c3) = U8::split_sum(a[2] + b[2] + c2);
@@ -63,7 +80,7 @@ module Words {
         [s0, s1, s2, s3]
     }
 
-    inline fn add3(a: U32, b: U32, c: U32) -> U32 {
+    inline fn add3(a: RawU32, b: RawU32, c: RawU32) -> U32 {
         let (s0, c1) = U8::split_sum(a[0] + b[0] + c[0]);
         let (s1, c2) = U8::split_sum(a[1] + b[1] + c[1] + c1);
         let (s2, c3) = U8::split_sum(a[2] + b[2] + c[2] + c2);
@@ -71,27 +88,27 @@ module Words {
         [s0, s1, s2, s3]
     }
 
-    inline fn xor(a: U32, b: U32) -> U32 {
-        [U8::xor(a[0], b[0]), U8::xor(a[1], b[1]),
-         U8::xor(a[2], b[2]), U8::xor(a[3], b[3])]
+    inline fn xor(a: RawU32, b: RawU32) -> U32 {
+        [U8::raw_xor(a[0], b[0]), U8::raw_xor(a[1], b[1]),
+         U8::raw_xor(a[2], b[2]), U8::raw_xor(a[3], b[3])]
     }
 
     inline fn rotr16(w: U32) -> U32 { [w[2], w[3], w[0], w[1]] }
     inline fn rotr8(w: U32) -> U32 { [w[1], w[2], w[3], w[0]] }
 
-    inline fn xor_rotr12(a: U32, b: U32) -> U32 {
-        let (h0, l0) = U8::xor_split4(a[0], b[0]);
-        let (h1, l1) = U8::xor_split4(a[1], b[1]);
-        let (h2, l2) = U8::xor_split4(a[2], b[2]);
-        let (h3, l3) = U8::xor_split4(a[3], b[3]);
+    inline fn xor_rotr12(a: RawU32, b: RawU32) -> U32 {
+        let (h0, l0) = U8::raw_xor_split4(a[0], b[0]);
+        let (h1, l1) = U8::raw_xor_split4(a[1], b[1]);
+        let (h2, l2) = U8::raw_xor_split4(a[2], b[2]);
+        let (h3, l3) = U8::raw_xor_split4(a[3], b[3]);
         [h1 + l2, h2 + l3, h3 + l0, h0 + l1]
     }
 
-    inline fn xor_rotr7(a: U32, b: U32) -> U32 {
-        let (h0, l0) = U8::xor_split7(a[0], b[0]);
-        let (h1, l1) = U8::xor_split7(a[1], b[1]);
-        let (h2, l2) = U8::xor_split7(a[2], b[2]);
-        let (h3, l3) = U8::xor_split7(a[3], b[3]);
+    inline fn xor_rotr7(a: RawU32, b: RawU32) -> U32 {
+        let (h0, l0) = U8::raw_xor_split7(a[0], b[0]);
+        let (h1, l1) = U8::raw_xor_split7(a[1], b[1]);
+        let (h2, l2) = U8::raw_xor_split7(a[2], b[2]);
+        let (h3, l3) = U8::raw_xor_split7(a[3], b[3]);
         [h0 + l1, h1 + l2, h2 + l3, h3 + l0]
     }
 
@@ -114,9 +131,10 @@ module Words {
 
 module Blake3 {
     type Word = Words::U32;
+    type RawWord = Words::RawU32;
     type Digest = [Word; 8];
     type Block = [Word; 16];
-    type State = [Word; 32];
+    type State = [RawWord; 32];
     type ByteStream = &ByteNode;
     type Layer = &LayerNode;
 
@@ -347,7 +365,7 @@ module Blake3 {
         }
     }
 
-    inline fn g(a: Word, b: Word, c: Word, d: Word, x: Word, y: Word) -> [Word; 4] {
+    inline fn g(a: RawWord, b: RawWord, c: RawWord, d: RawWord, x: RawWord, y: RawWord) -> [Word; 4] {
         let a = Words::add3(a, b, x);
         let d = Words::rotr16(Words::xor(d, a));
         let c = Words::add(c, d);
@@ -383,7 +401,7 @@ module Blake3 {
         let state: State = [
             cv[0], cv[1], cv[2], cv[3], cv[4], cv[5], cv[6], cv[7],
             IV[0], IV[1], IV[2], IV[3], counter[0..4], counter[4..8],
-            [U8::from_field(block_len), 0, 0, 0], [U8::from_field(flags), 0, 0, 0],
+            [block_len, 0, 0, 0], [flags, 0, 0, 0],
             block[0], block[1], block[2], block[3],
             block[4], block[5], block[6], block[7],
             block[8], block[9], block[10], block[11],

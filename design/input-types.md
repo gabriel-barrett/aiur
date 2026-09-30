@@ -107,3 +107,25 @@ support for internal pointers. It rejects the forbidden types in public source,
 tree, and memoized predicates and instantiates completeness for pointer-free enum
 inputs. Evaluator correspondence and all compiler correctness proofs remain
 checked without admitted steps.
+
+## Future opaque-type boundary
+
+The same static approach is planned for opaque types at public entry inputs and
+hint results: reject a type containing any opaque component, including in an
+unused enum variant or a zero-length array. The purpose is to ensure those
+values originate through the defining module's exposed constructors, functions,
+or maps, rather than through an externally supplied representation.
+
+Signature abstraction already prevents clients from inspecting hidden
+representations. The stronger boundary must preserve opaque identity during
+preparation and check entry/hint types before resolving that identity to a
+concrete representation. A hidden representation being pointer-free would not
+make its opaque type an admissible input. This extension is not implemented yet.
+
+The restriction concerns external introduction, not ordinary results: a raw
+map such as `raw_xor(Field, Field) -> Byte` must still be able to construct a
+byte by checking its precommitted relation. Module-owned static tables can
+establish such results. Do not extend the opaque-input prohibition to all map
+outputs; the existing pointer prohibition on tables/maps remains unchanged.
+The example's `Byte = Field` is still a transparent alias, so its new raw maps
+and typed inline wrappers do not yet impose an opaque-type invariant.
