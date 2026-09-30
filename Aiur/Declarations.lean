@@ -35,10 +35,70 @@ def Layout.type : Layout → Ty
   | .enum name _ => .enum name
 termination_by layout => sizeOf layout
 
+/-- A unique constructor is determined by the nominal type alone. -/
+def Layout.tagWidth (count : Nat) : Nat := if count = 1 then 0 else 1
+
+/-- Assemble an enum without storing its implicit tag when there is one constructor. -/
+def Layout.enumWords (count : Nat) (tag : α) (payload : List α) : List α :=
+  if count = 1 then payload else tag :: payload
+
+/-- Recover the implicit tag for a single-constructor enum, even for an empty payload. -/
+def Layout.enumParts (count : Nat) (zero : α) (words : List α) : Option (α × List α) :=
+  if count = 1 then some (zero, words) else
+    match words with | [] => none | tag :: payload => some (tag, payload)
+
+@[simp] theorem Layout.enumWords_length (count : Nat) (tag : α) (payload : List α) :
+    (enumWords count tag payload).length = tagWidth count + payload.length := by
+  simp [enumWords, tagWidth]; split <;> simp [Nat.add_comm]
+
+@[simp] theorem Layout.enumWords_map (f : α → β) (count : Nat) (tag : α) (payload : List α) :
+    (enumWords count tag payload).map f = enumWords count (f tag) (payload.map f) := by
+  unfold enumWords; split <;> rfl
+
+theorem Layout.enumParts_map (f : α → β) (count : Nat) (zero : α) (words : List α) :
+    enumParts count (f zero) (words.map f) =
+      (enumParts count zero words).map (fun pair => (f pair.1, pair.2.map f)) := by
+  unfold enumParts; split <;> cases words <;> rfl
+
+theorem Layout.enumParts_words {count : Nat} {zero tag : α} {words payload : List α}
+    (parts : enumParts count zero words = some (tag, payload)) :
+    enumWords count tag payload = words := by
+  unfold enumParts at parts
+  split at parts
+  · cases parts; simp [enumWords, *]
+  · cases words <;> simp_all [enumWords]
+
+theorem Layout.enumParts_enumWords {count : Nat} {zero tag : α} (payload : List α)
+    (implicit : count = 1 → tag = zero) :
+    enumParts count zero (enumWords count tag payload) = some (tag, payload) := by
+  unfold enumParts enumWords
+  split <;> simp_all
+
+theorem Layout.enumParts_map_of (f : α → β) {count : Nat} {zero tag : α}
+    {words payload : List α} (parts : enumParts count zero words = some (tag, payload)) :
+    enumParts count (f zero) (words.map f) = some (f tag, payload.map f) := by
+  rw [enumParts_map, parts]; rfl
+
+theorem Layout.enumParts_all {count : Nat} {zero tag : α} {words payload : List α}
+    (parts : enumParts count zero words = some (tag, payload)) {p : α → Prop}
+    (implicit : p zero) (all : ∀ word ∈ words, p word) : p tag ∧ ∀ word ∈ payload, p word := by
+  unfold enumParts at parts
+  split at parts
+  · cases parts; exact ⟨implicit, all⟩
+  · cases words with
+    | nil => cases parts
+    | cons head tail => cases parts; simpa using all
+
+theorem Layout.enumWords_all (count : Nat) (tag : α) (payload : List α) {p : α → Prop}
+    (head : p tag) (tail : ∀ word ∈ payload, p word) :
+    ∀ word ∈ enumWords count tag payload, p word := by
+  unfold enumWords; split <;> simp_all
+
 def Layout.width : Layout → Nat
   | .field | .ptr _ => 1
   | .tuple items => (items.map Layout.width).sum
-  | .enum _ constructors => 1 + ((constructors.map fun c => c.2.width).foldr max 0)
+  | .enum _ constructors => Layout.tagWidth constructors.length +
+      ((constructors.map fun c => c.2.width).foldr max 0)
 termination_by layout => sizeOf layout
 decreasing_by
   all_goals simp_wf

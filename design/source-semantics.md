@@ -99,8 +99,10 @@ is separate from source checking and execution. It is followed by
 continuations with a proved correspondence for normal and abrupt evaluation.
 
 Circuit layouts remain flat field-word sequences (`WireValue.words`): tuples and
-arrays concatenate component layouts; enums use tags, payload words, and canonical
-padding; field values and pointers each occupy one word. Static array access
+arrays concatenate component layouts; enums use flattened payloads with canonical
+padding and a tag only when there is more than one constructor. Structs and
+single-constructor enums can therefore have zero width. Field values and pointers
+each occupy one word. Static array access
 selects or rearranges existing words through the existing layout machinery.
 
 ## Proof boundary

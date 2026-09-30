@@ -5,6 +5,7 @@ import AiurTests.Memo
 import AiurTests.TupleRuntime
 import AiurTests.Enums
 import AiurTests.EnumEncoding
+import AiurTests.Tagless
 import AiurTests.EnumProofs
 import AiurTests.Pointers
 import AiurTests.Tuples
@@ -189,6 +190,7 @@ def main : IO Unit := do
   AiurTupleRuntimeTests.run
   AiurEnumTests.run
   AiurEnumEncodingTests.run
+  AiurTaglessTests.run
   AiurTableTests.run
   AiurRefutableLetTests.run
   AiurInputTypeTests.run

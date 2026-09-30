@@ -65,10 +65,12 @@ mutual
           obtain ⟨values, decoded⟩ := decoded active
           exact ⟨.tuple values, by simp [Layout.decode, decoded]⟩⟩
     | enum name constructors =>
-        cases words with
-        | nil => simp [validate] at compiled
-        | cons tag payload =>
-            simp only [validate] at compiled
+        simp only [validate] at compiled
+        cases parts : Layout.enumParts constructors.length (.const 0) words with
+        | none => simp [parts] at compiled
+        | some pair =>
+            rcases pair with ⟨tag, payload⟩
+            simp only [parts] at compiled
             split at compiled
             · simp [StateT.bind, bind, Except.bind] at compiled
             · rename_i length
@@ -81,7 +83,7 @@ mutual
                 (by simpa only [Layout.TuplePayloads] using proper) ctorRun middleValid
               refine ⟨previous, fun active => ?_⟩
               rcases choices active with ⟨⟨ctor, args⟩, decoded⟩ | absent
-              · exact ⟨.construct name ctor args, by simp [Layout.decode, length, decoded]⟩
+              · exact ⟨.construct name ctor args, by simp [Layout.decode, Circuit.Compiler.enumParts_denote parts assignment, length, decoded]⟩
               · have zero : (tests.map (ArithExpr.denote assignment)).sum = 0 :=
                   List.sum_eq_zero (by simpa using absent)
                 have sum : (tests.map (ArithExpr.denote assignment)).sum = 1 := by

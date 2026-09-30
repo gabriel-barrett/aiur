@@ -167,17 +167,18 @@ mutual
         exact validateList_complete (by simpa only [validate] using compiled) layout scopeLayout valid
           scopeValid bounded (by simpa only [Layout.Admissible] using admissible)
     | enum name constructors =>
-        cases words with
-        | nil => simp [validate] at compiled
-        | cons tag payload =>
-            simp only [validate] at compiled
+        simp only [validate] at compiled
+        cases parts : Layout.enumParts constructors.length (.const 0) words with
+        | none => simp [parts] at compiled
+        | some pair =>
+            rcases pair with ⟨tag, payload⟩
+            simp only [parts] at compiled
             split at compiled
             · simp [StateT.bind, bind, Except.bind] at compiled
             · obtain ⟨⟨⟩, middle, unchanged, rest⟩ := bind_ok.mp compiled
               obtain ⟨_, rfl⟩ := pure_ok.mp unchanged
               obtain ⟨branches, middle, choiceRun, constructorsRun⟩ := bind_ok.mp rest
-              have tagBound := bounded tag (by simp)
-              have payloadBound := fun p member => bounded p (List.mem_cons_of_mem tag member)
+              obtain ⟨tagBound, payloadBound⟩ := Layout.enumParts_all parts (by rfl) bounded
               have acceptable : (before.activation scope).denote initial = 0 ∨
                   (before.activation scope).denote initial = 1 ∧
                     (tagTests constructors.length (tag.denote initial) 0).sum = 1 ∧
@@ -185,7 +186,7 @@ mutual
                       (payload.map (Circuit.ArithExpr.denote initial)) 0 := by
                 rcases admissible with inactive | ⟨active, good⟩
                 · exact Or.inl inactive
-                · simp only [List.map_cons, Layout.Admissible] at good
+                · simp only [Layout.Admissible, Nat.cast_zero, Circuit.Compiler.enumParts_denote parts initial] at good
                   exact Or.inr ⟨active, good.2⟩
               obtain ⟨a, choiceExt, selected⟩ := validation_choice_complete choiceRun layout scopeLayout valid
                 tagBound payloadBound acceptable

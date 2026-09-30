@@ -75,10 +75,12 @@ mutual
             obtain ⟨values, decoded⟩ := decoded active
             exact ⟨.tuple values, by simp [Layout.decode, decoded]⟩⟩⟩
     | enum name constructors =>
-        cases words with
-        | nil => simp [validate] at compiled
-        | cons tag payload =>
-            simp only [validate] at compiled
+        simp only [validate] at compiled
+        cases parts : Layout.enumParts constructors.length (.const 0) words with
+        | none => simp [parts] at compiled
+        | some pair =>
+            rcases pair with ⟨tag, payload⟩
+            simp only [parts] at compiled
             split at compiled
             · simp [StateT.bind, bind, Except.bind] at compiled
             · rename_i width
@@ -96,7 +98,7 @@ mutual
               refine ⟨middleValid.of_extends choiceExtension, fun active => ?_⟩
               obtain ⟨branch, member, enabled⟩ := choice_active choiceRun middleValid root active
               obtain ⟨_, _, _, _, ⟨ctor, args⟩, decoded⟩ := decoded branch member enabled
-              exact ⟨.construct name ctor args, by simp [Layout.decode, width, decoded]⟩
+              exact ⟨.construct name ctor args, by simp [Layout.decode, Circuit.Compiler.enumParts_denote parts assignment, width, decoded]⟩
   termination_by sizeOf layout
 
   theorem validateList_sound {layouts : List Layout}

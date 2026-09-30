@@ -34,9 +34,10 @@ mutual
             have bound := encodeConstructor_length chosen
             simp only [Option.pure_def, Option.some.injEq] at finished
             subst words
-            simp only [List.length_cons, List.length_append, List.length_replicate, Layout.width]
-            change payload.length + (payloadWidth constructors - payload.length) + 1 =
-              1 + payloadWidth constructors
+            simp only [enumWords_length, List.length_append, List.length_replicate, Layout.width]
+            change tagWidth constructors.length +
+              (payload.length + (payloadWidth constructors - payload.length)) =
+              tagWidth constructors.length + payloadWidth constructors
             omega
   termination_by sizeOf layout
 
@@ -109,15 +110,13 @@ mutual
         simp only [Value.type, Layout.type, Ty.tuple.injEq]
         exact decodeList_types run
     | enum name constructors =>
-        cases words with
-        | nil => simp [decode] at decoded
-        | cons tag payload =>
-            simp only [decode] at decoded
-            split at decoded
-            · obtain ⟨⟨ctor, args⟩, _, finished⟩ := Option.bind_eq_some_iff.mp decoded
-              cases finished
-              simp [Value.type, Layout.type]
-            · cases decoded
+        simp only [decode] at decoded
+        obtain ⟨⟨tag, payload⟩, _, decoded⟩ := Option.bind_eq_some_iff.mp decoded
+        split at decoded
+        · obtain ⟨⟨ctor, args⟩, _, finished⟩ := Option.bind_eq_some_iff.mp decoded
+          cases finished
+          simp [Value.type, Layout.type]
+        · cases decoded
   termination_by sizeOf layout
 
   theorem decodeList_types [NatCast F] [Zero F] [DecidableEq F] {layouts : List Layout}

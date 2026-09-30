@@ -13,7 +13,10 @@ mutual
   def Layout.Admissible [Field F] [DecidableEq F] : Layout → List F → Prop
     | .field, [_] | .ptr _, [_] => True
     | .tuple layouts, words => Layout.AdmissibleList layouts words
-    | .enum _ constructors, tag :: payload =>
+    | .enum _ constructors, words =>
+      match Layout.enumParts constructors.length ((0 : Nat) : F) words with
+      | none => False
+      | some (tag, payload) =>
         payload.length = Layout.payloadWidth constructors ∧
         (tagTests constructors.length tag 0).sum = 1 ∧
         Layout.AdmissibleConstructors constructors tag payload 0
@@ -81,17 +84,15 @@ mutual
         simp only [Layout.Admissible]
         exact Layout.decodeList_admissible (by simpa only [Layout.TagSafe] using safe) inner
     | enum name constructors =>
-        cases words with
-        | nil => simp [Layout.decode] at decoded
-        | cons tag payload =>
-            simp only [Layout.decode] at decoded
-            split at decoded
-            · rename_i width
-              obtain ⟨pair, inner, _⟩ := Option.bind_eq_some_iff.mp decoded
-              simp only [Layout.TagSafe] at safe
-              simp only [Layout.Admissible]
-              exact ⟨width, Layout.decodeConstructor_admissible safe.1 safe.2 inner⟩
-            · cases decoded
+        simp only [Layout.decode] at decoded
+        obtain ⟨⟨tag, payload⟩, parts, decoded⟩ := Option.bind_eq_some_iff.mp decoded
+        split at decoded
+        · rename_i width
+          obtain ⟨pair, inner, _⟩ := Option.bind_eq_some_iff.mp decoded
+          simp only [Layout.TagSafe] at safe
+          simp only [Layout.Admissible, parts]
+          exact ⟨width, Layout.decodeConstructor_admissible safe.1 safe.2 inner⟩
+        · cases decoded
   termination_by sizeOf layout
 
   theorem Layout.decodeList_admissible [Field F] [DecidableEq F] {layouts : List Layout}

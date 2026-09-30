@@ -10,11 +10,13 @@ theorem enum_payload_decoded [Field F] [DecidableEq F] {decls : Declarations}
     {index : Nat} {ctor : ConstructorDecl} (atIndex : definition.constructors[index]? = some ctor)
     {layout : Layout} (expanded : decls.layout (.tuple ctor.fields) = .ok layout)
     {tag : ArithExpr F} {payload : List (ArithExpr F)} {wires : List (Symbolic F)}
+    {words : List (ArithExpr F)}
+    (parts : Layout.enumParts definition.constructors.length (.const 0) words = some (tag, payload))
     {before after : BuildState F}
     (splitRun : splitValues decls ctor.fields (payload.take layout.width) before = .ok (wires, after))
     {assignment : Var → F} {value : Value F}
     (decoded : (WireValue.mk (.enum name)
-      ((tag :: payload).map (ArithExpr.denote assignment))).decode decls = some value) :
+      (words.map (ArithExpr.denote assignment))).decode decls = some value) :
     ∃ actual args, value = .construct name actual args ∧
       (tag.denote assignment = (index : F) ↔ actual = ctor.name) ∧
       (actual = ctor.name → DecodesValues decls
@@ -28,7 +30,9 @@ theorem enum_payload_decoded [Field F] [DecidableEq F] {decls : Declarations}
       obtain ⟨chosen, chosenAt, chosenDescription⟩ := related.at atIndex
       have sameLayout := chosenDescription.unique (Declarations.layout_describes expanded)
       subst chosen
-      simp only [List.map_cons, Layout.decode] at rawDecode
+      have parts := enumParts_denote parts assignment
+      rw [← related.length] at parts
+      simp only [Layout.decode, Nat.cast_zero, parts, bind, Option.bind] at rawDecode
       split at rawDecode
       · obtain ⟨⟨actual, args⟩, ctorDecode, finished⟩ := Option.bind_eq_some_iff.mp rawDecode
         simp only [Option.pure_def, Option.some.injEq] at finished

@@ -152,21 +152,21 @@ def checkRows : Except String Unit := do
   let s ← Generic.prepare (rowSource.toField Rat)
   let q ← Generic.specialize s ["swap", "first"]
   let c ← q.compile
-  let input : WireValue Rat := ⟨.enum "Point", [0, 3, 4]⟩
-  let output : WireValue Rat := ⟨.enum "Point", [0, 4, 3]⟩
-  let swapRow : Circuit.Row Rat := ⟨"swap", [0, 3, 4, 0, 4, 3, 1, 0, 1, 0, 1, 0, 1, 0]⟩
-  let firstRow : Circuit.Row Rat := ⟨"first", [0, 3, 4, 3, 1, 0, 1, 0]⟩
+  let input : WireValue Rat := ⟨.enum "Point", [3, 4]⟩
+  let output : WireValue Rat := ⟨.enum "Point", [4, 3]⟩
+  let swapRow : Circuit.Row Rat := ⟨"swap", [3, 4, 4, 3, 1, 0, 1, 0, 1, 0, 1, 0]⟩
+  let firstRow : Circuit.Row Rat := ⟨"first", [3, 4, 3, 1, 0, 1, 0]⟩
   c.check {} ⟨"swap", [input], output⟩ [swapRow]
   c.checkMemo {} ⟨"swap", [input], output⟩ [⟨swapRow, 1⟩]
   c.check {} ⟨"first", [input], 3⟩ [firstRow]
   c.checkMemo {} ⟨"first", [input], 3⟩ [⟨firstRow, 1⟩]
-  let wrong : WireValue Rat := ⟨.enum "Point", [0, 9, 3]⟩
-  let badRow : Circuit.Row Rat := ⟨"swap", swapRow.values.set 4 9⟩
+  let wrong : WireValue Rat := ⟨.enum "Point", [9, 3]⟩
+  let badRow : Circuit.Row Rat := ⟨"swap", swapRow.values.set 2 9⟩
   if (c.check {} ⟨"swap", [input], wrong⟩ [badRow]).isOk then throw "wrong struct output accepted"
-  let badTag : WireValue Rat := ⟨.enum "Point", [1, 3, 4]⟩
-  if (c.check {} ⟨"first", [badTag], 3⟩ [⟨"first", firstRow.values.set 0 1⟩]).isOk then
-    throw "invalid struct tag accepted"
-  let short : WireValue Rat := ⟨.enum "Point", [0, 3]⟩
+  let tagged : WireValue Rat := ⟨.enum "Point", [0, 3, 4]⟩
+  if (c.check {} ⟨"first", [tagged], 3⟩ [firstRow]).isOk then
+    throw "obsolete struct tag accepted"
+  let short : WireValue Rat := ⟨.enum "Point", [3]⟩
   if (c.checkMemo {} ⟨"first", [short], 3⟩ [⟨firstRow, 1⟩]).isOk then throw "short struct root accepted"
 
 #guard checkRows == .ok ()

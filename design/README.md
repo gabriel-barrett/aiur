@@ -41,6 +41,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   field access, initializer order, and proved late circuit lowering.
 - [Enums](enums.md): payloads, recursion through pointers, semantic values,
   canonical circuit layouts, root validity, and proved correspondence.
+- [Tagless enums](tagless-enums.md): payload-only single-constructor layouts,
+  zero-width unit values, and codec/compiler correctness.
 - [Tables and maps](tables.md): shared precommitted traces, typed constants,
   function-style calls, static membership rules, and proved correspondence.
 - [Hints and nondeterminism](hints.md): typed private values, dynamic keys,

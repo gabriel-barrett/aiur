@@ -29,7 +29,7 @@ def payloadWidth (constructors : List (String × Layout)) : Nat :=
   (constructors.map (fun c => c.2.width)).foldr max 0
 
 mutual
-  /-- Canonical encoding uses a tag and zeros beyond the selected payload. -/
+  /-- Only multiple-constructor enums store a tag. Unused payload words are zero. -/
   def encode [NatCast F] [Zero F] : Layout → Value F → Option (List F)
     | .field, .field value => some [value]
     | .ptr target, .ptr actual address => if target = actual then some [address] else none
@@ -37,7 +37,8 @@ mutual
     | .enum name constructors, .construct actual ctor args => do
         if name ≠ actual then none else do
           let (index, payload) ← encodeConstructor constructors ctor args 0
-          return (index : F) :: (payload ++ List.replicate (payloadWidth constructors - payload.length) 0)
+          return enumWords constructors.length (index : F)
+            (payload ++ List.replicate (payloadWidth constructors - payload.length) 0)
     | _, _ => none
   termination_by layout _ => sizeOf layout
 
@@ -63,7 +64,8 @@ mutual
     | .field, [value] => some (.field value)
     | .ptr target, [address] => some (.ptr target address)
     | .tuple layouts, words => return .tuple (← decodeList layouts words)
-    | .enum name constructors, tag :: payload =>
+    | .enum name constructors, words => do
+        let (tag, payload) ← enumParts constructors.length ((0 : Nat) : F) words
         if payload.length = payloadWidth constructors then do
           let (ctor, args) ← decodeConstructor constructors tag payload 0
           return .construct name ctor args
