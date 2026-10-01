@@ -18,20 +18,21 @@ set_option maxHeartbeats 80000000
 rows are installed below, before preparation and either circuit compiler. -/
 def declarations : Modules.Program Nat := aiur% "
 module U8 {
-    type Byte = Field;
+    opaque type Byte = Field;
+    const ZERO: Byte = 0;
 
     table byte_inputs: (Field,) {}
-    table byte_values: Field {}
+    table byte_values: Byte {}
     table pair_inputs: (Field, Field) {}
-    table pair_xors: Field {}
-    table pair_sums: Field {}
-    table pair_differences: Field {}
-    table pair_products: (Field, Field) {}
-    table pair_xor_parts4: (Field, Field) {}
-    table pair_xor_parts7: (Field, Field) {}
+    table pair_xors: Byte {}
+    table pair_sums: Byte {}
+    table pair_differences: Byte {}
+    table pair_products: (Byte, Byte) {}
+    table pair_xor_parts4: (Byte, Byte) {}
+    table pair_xor_parts7: (Byte, Byte) {}
     table pair_units: () {}
     table sum_inputs: (Field,) {}
-    table sum_bytes: Field {}
+    table sum_bytes: Byte {}
 
     // Raw maps accept fields. Their tables determine the accepted input domain
     // and establish byte results; a missing input makes the lookup fail.
@@ -46,7 +47,6 @@ module U8 {
     map raw_sum_byte(sum: Field) -> Byte = sum_inputs => sum_bytes;
 
     // The typed interface delegates to exactly the same lookup after inlining.
-    // This benchmark uses transparent bytes; Examples/Opacity shows an opaque API.
     inline fn to_field(byte: Byte) -> Field { byte }
     inline fn xor(a: Byte, b: Byte) -> Byte { raw_xor(to_field(a), to_field(b)) }
     inline fn add(a: Byte, b: Byte) -> Byte { raw_add(to_field(a), to_field(b)) }
@@ -65,9 +65,29 @@ module U8 {
 }
 
 module Words {
-    type U32 = [U8::Byte; 4];
-    type U64 = [U8::Byte; 8];
+    opaque type U32 = [Field; 4];
+    opaque type U64 = [Field; 8];
     type RawU32 = [Field; 4];
+
+    const ZERO: U32 = [0; 4];
+    const ZERO64: U64 = [0; 8];
+    const IV: [U32; 8] = [
+        [103, 230, 9, 106], [133, 174, 103, 187],
+        [114, 243, 110, 60], [58, 245, 79, 165],
+        [127, 82, 14, 81], [140, 104, 5, 155],
+        [171, 217, 131, 31], [25, 205, 224, 91]
+    ];
+
+    // Construction stays in this module. Accessors only expose existing words;
+    // raw operands are checked by the operation's lookup, not by a conversion.
+    inline fn to_fields(word: U32) -> RawU32 { word }
+    inline fn to_fields4(words: [U32; 4]) -> [RawU32; 4] { words }
+    inline fn low(counter: U64) -> RawU32 { counter[0..4] }
+    inline fn high(counter: U64) -> RawU32 { counter[4..8] }
+    inline fn from_bytes(bytes: [U8::Byte; 4]) -> U32 {
+        [U8::to_field(bytes[0]), U8::to_field(bytes[1]),
+         U8::to_field(bytes[2]), U8::to_field(bytes[3])]
+    }
 
     // Raw word operands need no preliminary checked conversion. The maps check
     // each operation's own domain. For byte operands, sums are in 0..767.
@@ -77,7 +97,7 @@ module Words {
         let (s1, c2) = U8::split_sum(a[1] + b[1] + c1);
         let (s2, c3) = U8::split_sum(a[2] + b[2] + c2);
         let (s3, _) = U8::split_sum(a[3] + b[3] + c3);
-        [s0, s1, s2, s3]
+        from_bytes([s0, s1, s2, s3])
     }
 
     inline fn add3(a: RawU32, b: RawU32, c: RawU32) -> U32 {
@@ -85,12 +105,12 @@ module Words {
         let (s1, c2) = U8::split_sum(a[1] + b[1] + c[1] + c1);
         let (s2, c3) = U8::split_sum(a[2] + b[2] + c[2] + c2);
         let (s3, _) = U8::split_sum(a[3] + b[3] + c[3] + c3);
-        [s0, s1, s2, s3]
+        from_bytes([s0, s1, s2, s3])
     }
 
     inline fn xor(a: RawU32, b: RawU32) -> U32 {
-        [U8::raw_xor(a[0], b[0]), U8::raw_xor(a[1], b[1]),
-         U8::raw_xor(a[2], b[2]), U8::raw_xor(a[3], b[3])]
+        from_bytes([U8::raw_xor(a[0], b[0]), U8::raw_xor(a[1], b[1]),
+                    U8::raw_xor(a[2], b[2]), U8::raw_xor(a[3], b[3])])
     }
 
     inline fn rotr16(w: U32) -> U32 { [w[2], w[3], w[0], w[1]] }
@@ -101,7 +121,8 @@ module Words {
         let (h1, l1) = U8::raw_xor_split4(a[1], b[1]);
         let (h2, l2) = U8::raw_xor_split4(a[2], b[2]);
         let (h3, l3) = U8::raw_xor_split4(a[3], b[3]);
-        [h1 + l2, h2 + l3, h3 + l0, h0 + l1]
+        [U8::to_field(h1) + U8::to_field(l2), U8::to_field(h2) + U8::to_field(l3),
+         U8::to_field(h3) + U8::to_field(l0), U8::to_field(h0) + U8::to_field(l1)]
     }
 
     inline fn xor_rotr7(a: RawU32, b: RawU32) -> U32 {
@@ -109,7 +130,8 @@ module Words {
         let (h1, l1) = U8::raw_xor_split7(a[1], b[1]);
         let (h2, l2) = U8::raw_xor_split7(a[2], b[2]);
         let (h3, l3) = U8::raw_xor_split7(a[3], b[3]);
-        [h0 + l1, h1 + l2, h2 + l3, h3 + l0]
+        [U8::to_field(h0) + U8::to_field(l1), U8::to_field(h1) + U8::to_field(l2),
+         U8::to_field(h2) + U8::to_field(l3), U8::to_field(h3) + U8::to_field(l0)]
     }
 
     fn u64_is_zero(x: U64) -> Field {
@@ -125,7 +147,8 @@ module Words {
         let (b5, c6) = U8::split_sum(x[5] + c5);
         let (b6, c7) = U8::split_sum(x[6] + c6);
         let (b7, _) = U8::split_sum(x[7] + c7);
-        [b0, b1, b2, b3, b4, b5, b6, b7]
+        [U8::to_field(b0), U8::to_field(b1), U8::to_field(b2), U8::to_field(b3),
+         U8::to_field(b4), U8::to_field(b5), U8::to_field(b6), U8::to_field(b7)]
     }
 }
 
@@ -142,12 +165,7 @@ module Blake3 {
     enum LayerNode { Push(Layer, Digest), Nil }
     enum MaybeDigest { None, Some(Digest) }
 
-    const IV = [
-        [103, 230, 9, 106], [133, 174, 103, 187],
-        [114, 243, 110, 60], [58, 245, 79, 165],
-        [127, 82, 14, 81], [140, 104, 5, 155],
-        [171, 217, 131, 31], [25, 205, 224, 91]
-    ];
+    const IV = Words::IV;
     const CHUNK_START = 1;
     const CHUNK_END = 2;
     const PARENT = 4;
@@ -161,7 +179,7 @@ module Blake3 {
 
     inline fn hash(input: ByteStream) -> Digest {
         compress_layer(compress_chunks(input, &ByteNode::Nil, 0, 0,
-            &[0; 8], &IV, &LayerNode::Nil))
+            &Words::ZERO64, &IV, &LayerNode::Nil))
     }
 
     fn next_layer(layer: Layer, digest: Digest, root: Field) -> (MaybeDigest, Layer) {
@@ -180,11 +198,11 @@ module Blake3 {
                         ];
                         match *new_layer {
                             LayerNode::Nil => {
-                                let result = compress_init(IV, blocks, [0; 8], 64, PARENT + ROOT * root);
+                                let result = compress_init(IV, blocks, Words::ZERO64, 64, PARENT + ROOT * root);
                                 (MaybeDigest::None, &LayerNode::Push(new_layer, result))
                             },
                             _ => {
-                                let result = compress_init(IV, blocks, [0; 8], 64, PARENT);
+                                let result = compress_init(IV, blocks, Words::ZERO64, 64, PARENT);
                                 (MaybeDigest::None, &LayerNode::Push(new_layer, result))
                             },
                         }
@@ -293,29 +311,29 @@ module Blake3 {
         let ByteNode::Cons(b1, rest) = *rest;
         let ByteNode::Cons(b0, _) = *rest;
         [
-            [b0, b1, b2, b3],
-            [b4, b5, b6, b7],
-            [b8, b9, b10, b11],
-            [b12, b13, b14, b15],
-            [b16, b17, b18, b19],
-            [b20, b21, b22, b23],
-            [b24, b25, b26, b27],
-            [b28, b29, b30, b31],
-            [b32, b33, b34, b35],
-            [b36, b37, b38, b39],
-            [b40, b41, b42, b43],
-            [b44, b45, b46, b47],
-            [b48, b49, b50, b51],
-            [b52, b53, b54, b55],
-            [b56, b57, b58, b59],
-            [b60, b61, b62, b63]
+            Words::from_bytes([b0, b1, b2, b3]),
+            Words::from_bytes([b4, b5, b6, b7]),
+            Words::from_bytes([b8, b9, b10, b11]),
+            Words::from_bytes([b12, b13, b14, b15]),
+            Words::from_bytes([b16, b17, b18, b19]),
+            Words::from_bytes([b20, b21, b22, b23]),
+            Words::from_bytes([b24, b25, b26, b27]),
+            Words::from_bytes([b28, b29, b30, b31]),
+            Words::from_bytes([b32, b33, b34, b35]),
+            Words::from_bytes([b36, b37, b38, b39]),
+            Words::from_bytes([b40, b41, b42, b43]),
+            Words::from_bytes([b44, b45, b46, b47]),
+            Words::from_bytes([b48, b49, b50, b51]),
+            Words::from_bytes([b52, b53, b54, b55]),
+            Words::from_bytes([b56, b57, b58, b59]),
+            Words::from_bytes([b60, b61, b62, b63])
         ]
     }
 
     fn pad_block(acc: ByteStream, n: Field) -> ByteStream {
         match n {
             0 => acc,
-            _ => pad_block(&ByteNode::Cons(0, acc), n - 1),
+            _ => pad_block(&ByteNode::Cons(U8::ZERO, acc), n - 1),
         }
     }
 
@@ -326,9 +344,9 @@ module Blake3 {
         match (block_index, chunk_index) {
             (0, 0) => {
                 match *chunk_count {
-                    [0, 0, 0, 0, 0, 0, 0, 0] =>
+                    ::Words::ZERO64 =>
                         &LayerNode::Push(layer,
-                            compress_init(*block_digest, [[0; 4]; 16], *chunk_count,
+                            compress_init(*block_digest, [Words::ZERO; 16], *chunk_count,
                                           0, ROOT + CHUNK_START + CHUNK_END)),
                     _ => layer,
                 }
@@ -365,16 +383,16 @@ module Blake3 {
         }
     }
 
-    inline fn g(a: RawWord, b: RawWord, c: RawWord, d: RawWord, x: RawWord, y: RawWord) -> [Word; 4] {
+    inline fn g(a: RawWord, b: RawWord, c: RawWord, d: RawWord, x: RawWord, y: RawWord) -> [RawWord; 4] {
         let a = Words::add3(a, b, x);
-        let d = Words::rotr16(Words::xor(d, a));
-        let c = Words::add(c, d);
-        let b = Words::xor_rotr12(b, c);
-        let a = Words::add3(a, b, y);
-        let d = Words::rotr8(Words::xor(d, a));
-        let c = Words::add(c, d);
-        let b = Words::xor_rotr7(b, c);
-        [a, b, c, d]
+        let d = Words::rotr16(Words::xor(d, Words::to_fields(a)));
+        let c = Words::add(c, Words::to_fields(d));
+        let b = Words::xor_rotr12(b, Words::to_fields(c));
+        let a = Words::add3(Words::to_fields(a), Words::to_fields(b), y);
+        let d = Words::rotr8(Words::xor(Words::to_fields(d), Words::to_fields(a)));
+        let c = Words::add(Words::to_fields(c), Words::to_fields(d));
+        let b = Words::xor_rotr7(Words::to_fields(b), Words::to_fields(c));
+        Words::to_fields4([a, b, c, d])
     }
 
     inline fn round(state: State) -> State {
@@ -399,13 +417,21 @@ module Blake3 {
     inline fn compress_init(cv: Digest, block: Block, counter: Words::U64,
                             block_len: Field, flags: Field) -> Digest {
         let state: State = [
-            cv[0], cv[1], cv[2], cv[3], cv[4], cv[5], cv[6], cv[7],
-            IV[0], IV[1], IV[2], IV[3], counter[0..4], counter[4..8],
+            Words::to_fields(cv[0]), Words::to_fields(cv[1]),
+            Words::to_fields(cv[2]), Words::to_fields(cv[3]),
+            Words::to_fields(cv[4]), Words::to_fields(cv[5]),
+            Words::to_fields(cv[6]), Words::to_fields(cv[7]),
+            Words::to_fields(IV[0]), Words::to_fields(IV[1]),
+            Words::to_fields(IV[2]), Words::to_fields(IV[3]), Words::low(counter), Words::high(counter),
             [block_len, 0, 0, 0], [flags, 0, 0, 0],
-            block[0], block[1], block[2], block[3],
-            block[4], block[5], block[6], block[7],
-            block[8], block[9], block[10], block[11],
-            block[12], block[13], block[14], block[15]
+            Words::to_fields(block[0]), Words::to_fields(block[1]),
+            Words::to_fields(block[2]), Words::to_fields(block[3]),
+            Words::to_fields(block[4]), Words::to_fields(block[5]),
+            Words::to_fields(block[6]), Words::to_fields(block[7]),
+            Words::to_fields(block[8]), Words::to_fields(block[9]),
+            Words::to_fields(block[10]), Words::to_fields(block[11]),
+            Words::to_fields(block[12]), Words::to_fields(block[13]),
+            Words::to_fields(block[14]), Words::to_fields(block[15])
         ];
         compress(0, state)
     }
@@ -438,43 +464,74 @@ module Benchmark {
         match length {
             0 => &Blake3::ByteNode::Nil,
             _ => {
-                let (next, _) = U8::split_sum(byte + 1);
+                let (next, _) = U8::split_sum(U8::to_field(byte) + 1);
                 let tail = generate(length - 1, next);
                 &Blake3::ByteNode::Cons(byte, tail)
             },
         }
     }
 
-    fn main() -> Blake3::Digest { Blake3::hash(generate(1025, 0)) }
+    fn main() -> Blake3::Digest { Blake3::hash(generate(1025, U8::ZERO)) }
 }
 "
+
+/- Exercise the actual library boundary, using the empty table declarations
+so these type checks do not build the large precommitted traces. -/
+run_cmd do
+  let env ← Lean.getEnv
+  for text in [
+      "module Client { fn forge() -> U8::Byte { 0 } }",
+      "module Client { fn forge() -> Words::U32 { [0; 4] } }",
+      "module Client { fn forge() -> Words::U64 { [0; 8] } }",
+      "module Client { fn inspect(x: Words::U32) -> Field { x[0] } }",
+      "module Client { fn witness() -> U8::Byte { hint::<U8::Byte>(()) } }",
+      "module Client { fn witness() -> Words::U32 { hint::<Words::U32>(()) } }",
+      "module Client { fn witness() -> Words::U64 { hint::<Words::U64>(()) } }"] do
+    let .ok client := Modules.Frontend.parse env text | throwError "invalid boundary test syntax"
+    if (Modules.checkTemplates (declarations.append client)).toOption.isSome then
+      throwError "accepted access to an opaque library representation: {text}"
+  let .ok client := Modules.Frontend.parse env "
+    module Client {
+      fn byte(x: U8::Byte) -> U8::Byte { x }
+      fn word(x: Words::U32) -> Words::U32 { x }
+      fn counter(x: Words::U64) -> Words::U64 { x }
+    }" | throwError "invalid boundary entry syntax"
+  let program := declarations.append client
+  if let .error error := Modules.checkTemplates program then throwError "{error}"
+  for entry in ["Client::byte", "Client::word", "Client::counter"] do
+    match Modules.prepare program [entry] with
+    | .ok _ => throwError "accepted opaque library input: {entry}"
+    | .error error =>
+      unless (error.splitOn "non-opaque").length > 1 do
+        throwError "unexpected entry rejection: {error}"
 
 /-- Full byte-pair tables, sharing one input trace across the operations from
 ix's `Bytes2` gadget. Output traces have the same order: row `256*a + b`.
 The separate sum table provides one byte; an affine expression recovers its carry. -/
 def u8Tables : List (Generic.Table Nat) :=
+  let byte := Generic.Ty.named "Byte" []
   let byteInputs := (List.range 256).map fun n => Generic.Expr.tuple [.literal n]
   let pairs := (List.range 256).flatMap fun a => (List.range 256).map fun b => (a, b)
   let sums := Library.Carry.rows 256 768
   [
     ⟨"byte_inputs", .tuple [.field], byteInputs⟩,
-    ⟨"byte_values", .field, (List.range 256).map (.literal ·)⟩,
+    ⟨"byte_values", byte, (List.range 256).map (.literal ·)⟩,
     ⟨"pair_inputs", .tuple [.field, .field],
       pairs.map fun (a, b) => .tuple [.literal a, .literal b]⟩,
-    ⟨"pair_xors", .field, pairs.map fun (a, b) => .literal (Nat.xor a b)⟩,
-    ⟨"pair_sums", .field, pairs.map fun (a, b) => .literal ((a + b) % 256)⟩,
-    ⟨"pair_differences", .field, pairs.map fun (a, b) => .literal ((a + 256 - b) % 256)⟩,
-    ⟨"pair_products", .tuple [.field, .field], pairs.map fun (a, b) =>
+    ⟨"pair_xors", byte, pairs.map fun (a, b) => .literal (Nat.xor a b)⟩,
+    ⟨"pair_sums", byte, pairs.map fun (a, b) => .literal ((a + b) % 256)⟩,
+    ⟨"pair_differences", byte, pairs.map fun (a, b) => .literal ((a + 256 - b) % 256)⟩,
+    ⟨"pair_products", .tuple [byte, byte], pairs.map fun (a, b) =>
       .tuple [.literal ((a * b) % 256), .literal ((a * b) / 256)]⟩,
-    ⟨"pair_xor_parts4", .tuple [.field, .field], pairs.map fun (a, b) =>
+    ⟨"pair_xor_parts4", .tuple [byte, byte], pairs.map fun (a, b) =>
       let x := Nat.xor a b
       .tuple [.literal (x / 16), .literal ((x % 16) * 16)]⟩,
-    ⟨"pair_xor_parts7", .tuple [.field, .field], pairs.map fun (a, b) =>
+    ⟨"pair_xor_parts7", .tuple [byte, byte], pairs.map fun (a, b) =>
       let x := Nat.xor a b
       .tuple [.literal (x / 128), .literal ((x % 128) * 2)]⟩,
     ⟨"pair_units", .tuple [], pairs.map fun _ => .tuple []⟩,
     ⟨"sum_inputs", .tuple [.field], sums.map fun (n, _) => .tuple [.literal n]⟩,
-    ⟨"sum_bytes", .field, sums.map fun (_, byte) => .literal byte⟩
+    ⟨"sum_bytes", byte, sums.map fun (_, byte) => .literal byte⟩
   ]
 
 def source : Modules.Program Nat :=

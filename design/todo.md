@@ -217,6 +217,10 @@ without admitted proof steps.
   Blake3 call the raw operations directly, removing preliminary byte
   conversions for `block_len` and `flags`. Table membership still checks each
   operation's domain. See [the example](blake3-example.md).
+- [x] Make the example's byte and word types opaque. Keep field-argument raw
+  operations, move typed constants into their defining modules, and use inline
+  accessors without adding columns or lookups. Reject byte/word entry inputs,
+  hints, and client construction from representations.
 - [ ] Connect the abstract model to a concrete proving backend, including
   precommitted table alignment and cryptographic lookup assumptions. ix has a
   [prove/verify FFI](../../ix/Ix/Aiur/Protocol.lean); our current proofs concern

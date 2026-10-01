@@ -55,11 +55,14 @@ the original ix backend's statistics.
 
 ## Generated U8 tables
 
-`U8::Byte` is a transparent alias for `Field`, not a new primitive range type.
-The raw operation maps accept fields directly and establish their output ranges
-through table membership. For example:
+`U8::Byte` is an opaque alias for `Field`. Its defining module owns construction;
+clients obtain bytes through the public constants or operations. The raw maps
+accept fields directly and establish their output ranges through table membership.
+Their output tables are explicitly byte-typed. For example:
 
 ```rust
+opaque type Byte = Field;
+const ZERO: Byte = 0;
 map raw_xor(a: Field, b: Field) -> Byte = pair_inputs => pair_xors;
 inline fn to_field(byte: Byte) -> Field { byte }
 inline fn xor(a: Byte, b: Byte) -> Byte {
@@ -74,7 +77,7 @@ input types are weaker, but the operations remain partial. Byte-pair maps
 accept only the pairs present in `pair_inputs`, and `raw_sum_byte` accepts
 only sums from 0 through 767. A missing input fails the lookup.
 
-The stream starts with byte constants. Word helpers accept `RawU32 = [Field; 4]`
+The stream starts with `U8::ZERO`. Word helpers accept `RawU32 = [Field; 4]`
 and use the raw operations directly. The compression state can therefore
 contain the field-valued `block_len` and `flags` without preliminary conversions
 to bytes. A sum lookup checks the sum's domain, not each operand's byte range;
@@ -82,13 +85,22 @@ the ordinary byte interpretation of word addition still assumes byte operands
 and a suitable field. No unconditional equivalence with the old, more
 restrictive helper input contracts is claimed.
 
-This benchmark's transparent `Byte` provides a library convention. The language
-also supports `opaque type Byte = Field;` to protect construction and exclude
-opaque components from entry-input and hint-result types. That interface requires
-explicit accessors where word helpers currently rely on transparent alias
-equality. [The opacity example](../Examples/Opacity.lean) demonstrates an opaque
-table result and its representation-preserving circuit layout; see
-[opacity](opacity.md) for the implemented rules.
+`Words::U32` and `Words::U64` are also opaque, with private field-array
+representations of lengths four and eight. `Words` owns their zero constants and
+the typed Blake3 IV. It constructs words from opaque bytes using `from_bytes`,
+or from the byte operations and the XOR split tables. Clients access raw fields
+through `to_fields`, `to_fields4`, `low`, and `high`; there is no unchecked public
+field-array-to-word conversion. The existing rotation helpers operate on words.
+
+Blake3 uses the exported `Words::ZERO64` constant in both value and pattern
+positions. These public constants retain their opaque types when exported.
+Byte and word types, including nested occurrences, are excluded from entry
+inputs and hint results. The example checks these restrictions against the actual
+library declarations. See [opacity](opacity.md) for the language rules.
+
+All accessors inline on the circuit path. Opacity and the explicit conversions
+add no columns or lookups: the reference and optimized totals remain 2,849 and
+1,376 columns respectively, with the same table contents and widths.
 
 The source quotation declares empty tables as placeholders. `u8Tables`
 generates all rows as an ordinary Lean value, and `source` installs them before

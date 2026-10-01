@@ -104,6 +104,12 @@ Typed exported consts retain their declared type before alias normalization, so
 `const ZERO: Byte = 0` exposes a byte. Its annotation is checked within the
 defining module; the interface does not silently turn it into a field.
 
+Consts retain their dual value/pattern role: exporting `ZERO` also permits
+matching `::Bytes::ZERO` against a byte. This publishes that specific binder-free
+pattern, not arbitrary construction or projection of the opaque representation.
+The usual const pattern semantics apply; this is not a new equality operation.
+A function returning an opaque value does not export a corresponding pattern.
+
 ## Implementation and proof boundary
 
 `Modules.Definitions.opaqueTypes` retains declaration markers in the original
@@ -131,3 +137,8 @@ input rejection, opaque table outputs, execution before/after compilation, and
 both optimized row checkers. Existing module and compiler regressions remain.
 See [the runnable example](../Examples/Opacity.lean) for a signature, opaque alias,
 static XOR map, generic client, and circuit statistics.
+
+The [Blake3 example](blake3-example.md) uses opaque `U8::Byte`, `Words::U32`, and
+`Words::U64` declarations. Raw operations still take fields, while public
+constants, checked maps, word operations, and inline accessors mediate construction
+and representation access. Its circuit widths are unchanged by this boundary.
