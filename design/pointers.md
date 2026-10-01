@@ -53,6 +53,11 @@ length as the location. The source syntax cannot observe these indices.
 including tuple components and call arguments. A load reads the heap after its
 operand has run, so `*&x` works. Inactive match arms do not allocate.
 
+The separate [Rust execution path](execution.md) interns identical typed cells
+and memoizes function queries. Its session-local addresses can therefore be
+shared. It does not replace the fresh-allocation reference evaluator or its
+predicate.
+
 `EvalExpr`, `EvalArgs`, and internal `EvalFn` thread before/after heaps without
 fuel. Public `EvalCall` requires pointer-free parameter types and starts `EvalFn` at
 an empty heap. The executable evaluator and these predicates are proved to

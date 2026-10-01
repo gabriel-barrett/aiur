@@ -138,8 +138,15 @@ without admitted proof steps.
   core circuit and row-checker theorems. Completeness covers both checkers;
   weighted soundness requires an acyclic support graph. See
   [proof status](source-semantics.md).
-- [ ] Provide executable circuit-witness generation, with correctness against
-  the existing row and derivation definitions.
+- [x] Export execution-only register bytecode through FFI and execute it in
+  Rust with memoized queries, integer multiplicities, shared map indexes and
+  interned typed ROM. Preserve structured non-opaque IO descriptions on selected
+  entrypoints. See [Rust execution](execution.md).
+- [ ] Implement the Rust nondeterminism provider; the hint instruction evaluates
+  its key normally, then reaches an explicit `todo!()`.
+- [ ] Provide Rust circuit-witness generation, preserving witness recipes and
+  final column mappings through compiler passes. Test its rows against the
+  existing checker; the generator itself does not require formalization.
 - [x] Prove both directions between the executable unit balance checker and
   closed derivation trees, including static map leaves. Add an exact integer
   provide-weighted checker and prove both directions with memoized graphs,
@@ -250,8 +257,9 @@ Pointers remain opaque. Address extraction (`ptr_val` in ix), pointer equality,
 arithmetic, and casts belong to a possible future unsafe extension. They are not
 part of the safe language backlog or its current soundness guarantee.
 
-Typed nondeterministic values and stateless keyed executor providers are
-[implemented](hints.md). External I/O is not a language or formalization TODO:
+Typed nondeterministic values and the Lean stateless keyed executor interface
+are [implemented](hints.md); the new Rust provider remains an explicit stub.
+External I/O is not a language or formalization TODO:
 typed nondeterministic values already supply the required witness choices.
 Providers, buffers, provider state, and dedicated internal or external hint
 functions concern execution alone. Their implementation may evolve without

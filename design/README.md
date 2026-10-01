@@ -53,6 +53,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   public inputs and hints, and pointer-free static table/map representations.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
+- [Rust execution](execution.md): execution bytecode FFI, memoized query records,
+  interned ROM, structured entry IO, and deferred witness generation.
 - [TODO](todo.md): proposed extensions from the ix comparison, remaining proof
   and backend work, deliberate differences, and deferred decisions.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,

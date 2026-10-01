@@ -44,10 +44,11 @@ pattern names refer to consts. A const body is interpreted in value or pattern
 position, respectively. For example, a pointer template allocates in value
 position and reads in pattern position. It is not a preallocated pointer.
 
-Fresh allocation remains the reference execution for these proofs. A future
-executor may intern equal immutable values and share addresses. That refinement
-will use a correspondence between heaps and pointers; pointer identity is not
-an Aiur equality operation. It is outside this refactor.
+Fresh allocation remains the reference execution for these proofs. The separate
+[Rust executor](execution.md) interns equal typed immutable values and shares
+addresses. It is an untrusted execution implementation; no theorem about its
+particular heap representation is claimed. Pointer identity is not an Aiur
+equality operation, and this optimization does not change the source predicate.
 
 ## Required correctness chain
 

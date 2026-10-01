@@ -20,8 +20,9 @@ instance of an inline declaration is expanded.
 
 The source AST retains the modifier (`Generic.Function.isInline`) and ordinary
 call nodes. The native evaluator and evaluation predicate execute these calls
-using the existing function rules. Inlining does not alter source fuel costs or
-executor debug traces. Its correctness theorem relates fuel-free evaluation,
+using the existing function rules. Inlining does not alter the Lean source
+evaluator's fuel costs or debug traces. The separate Rust bytecode compiler
+reuses the prepared, inlined core program. The inlining theorem relates fuel-free evaluation,
 not equality of the two interpreters' fuel consumption.
 
 ## Cycles

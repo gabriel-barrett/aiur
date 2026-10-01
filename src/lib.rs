@@ -1,14 +1,11 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! Aiur's untrusted execution engine. Lean supplies execution bytecode; Rust
+//! evaluates it and records memoized queries, without generating circuit rows.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod bytecode;
+pub mod execute;
+mod ffi;
+pub mod field;
+pub mod value;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use bytecode::Program;
+pub use execute::{Execution, ExecutionError, QueryInput, QueryOutput};
