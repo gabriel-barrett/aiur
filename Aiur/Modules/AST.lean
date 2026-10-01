@@ -20,6 +20,8 @@ structure TypeMember where
   name : String
   typeParams : List String := []
   definition : Option Generic.Ty := none
+  /-- Withhold input/hint permission; the implementation may still be transparent. -/
+  isOpaque : Bool := false
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 structure Callable where
@@ -43,6 +45,8 @@ structure Definitions (α : Type) where
   constTypes : List (String × Generic.Ty) := []
   /-- Destructuring parameter patterns, before checking their irrefutability. -/
   parameterPatterns : List (String × List (Generic.Pattern α)) := []
+  /-- Declaration-level opacity, retained independently of alias normalization. -/
+  opaqueTypes : List String := []
   deriving Repr, BEq, Inhabited, Lean.ToExpr
 
 inductive Body (α : Type) where
@@ -73,7 +77,8 @@ def Program.append (p q : Program α) : Program α :=
 def Definitions.map (f : α → β) (d : Definitions α) : Definitions β := {
   program := d.program.map f
   constTypes := d.constTypes
-  parameterPatterns := d.parameterPatterns.map fun (n, ps) => (n, ps.map (Generic.Pattern.map f)) }
+  parameterPatterns := d.parameterPatterns.map fun (n, ps) => (n, ps.map (Generic.Pattern.map f))
+  opaqueTypes := d.opaqueTypes }
 
 def Program.map (f : α → β) (p : Program α) : Program β := {
   signatures := p.signatures

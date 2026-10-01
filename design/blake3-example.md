@@ -82,10 +82,13 @@ the ordinary byte interpretation of word addition still assumes byte operands
 and a suitable field. No unconditional equivalence with the old, more
 restrictive helper input contracts is claimed.
 
-`Byte` currently provides a library convention, not an enforced refinement.
-Future opaque types should prevent clients from constructing bytes directly
-and exclude opaque components from entry-input and hint-result types. This is
-separate from the raw interface change; see [input boundaries](input-types.md).
+This benchmark's transparent `Byte` provides a library convention. The language
+also supports `opaque type Byte = Field;` to protect construction and exclude
+opaque components from entry-input and hint-result types. That interface requires
+explicit accessors where word helpers currently rely on transparent alias
+equality. [The opacity example](../Examples/Opacity.lean) demonstrates an opaque
+table result and its representation-preserving circuit layout; see
+[opacity](opacity.md) for the implemented rules.
 
 The source quotation declares empty tables as placeholders. `u8Tables`
 generates all rows as an ordinary Lean value, and `source` installs them before

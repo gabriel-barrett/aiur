@@ -53,9 +53,14 @@ equalities cannot satisfy a stronger contract. Bodies see their own complete
 definitions and only dependency interfaces. Every functor is checked using
 abstract module parameters, including unused functors.
 
-An abstract type is not known to be pointer-free. The checker therefore cannot
-use one in a hint, equality assertion or table requiring that property without
-an exposed concrete definition. This preserves the existing safe boundary rules.
+An ordinary abstract member `type T;` promises recursive input admissibility,
+so generic clients can request well-typed hints of that type. `opaque type T;`
+withholds this permission and accepts either opaque or non-opaque implementations.
+Only the latter form can accept opaque or pointer-containing types. Both forms
+hide the representation. An opaque declaration in a module protects the actual
+type even without a signature annotation; aliases, structs, and enums support
+the `opaque` modifier. See [opacity](opacity.md) for identity, conformance,
+entry selection, and static-table rules.
 
 ## Applications, aliases and recursion
 
@@ -96,7 +101,7 @@ Convert literals with `program.toField F`, then call
 interfaces, assembles the declaration environment and invokes the existing
 generic-source checker. The result provides `run`, `EvalCall`, `EvalFn` and
 `compile`. Entrypoints must be exposed non-generic functions with concrete module
-arguments and the existing pointer-free input types. Different external alias
+arguments and recursively non-opaque input types. Different external alias
 names may select one canonical function; no wrapper function is introduced.
 
 Modules have a static denotation rather than new expression evaluation rules:

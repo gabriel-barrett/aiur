@@ -1,11 +1,13 @@
-# Pointer-free input types
+# Input-admissible types
 
-Status: enforced for public entry inputs, tables, maps, and
-[nondeterministic hint results](hints.md).
+Status: recursively non-opaque types are required for modular public entry
+inputs and [nondeterministic hint results](hints.md). Pointers are intrinsically
+opaque. Static tables/maps retain the separate pointer-free representation
+restriction, allowing module-owned opaque values. See [opacity](opacity.md).
 
-## Shared restriction
+## Pointer-free representation restriction
 
-Public entry inputs, static tables/maps, and nondeterministic inputs must
+As a common baseline, public entry inputs, static tables/maps, and nondeterministic inputs must
 have types containing no pointers anywhere. The check examines the complete
 declared type, including every field of every reachable struct and every constructor of every
 reachable enum, regardless
@@ -108,24 +110,28 @@ tree, and memoized predicates and instantiates completeness for pointer-free enu
 inputs. Evaluator correspondence and all compiler correctness proofs remain
 checked without admitted steps.
 
-## Future opaque-type boundary
+## Opaque-type boundary
 
-The same static approach is planned for opaque types at public entry inputs and
+The same static approach is implemented for opaque types at public entry inputs and
 hint results: reject a type containing any opaque component, including in an
 unused enum variant or a zero-length array. The purpose is to ensure those
 values originate through the defining module's exposed constructors, functions,
 or maps, rather than through an externally supplied representation.
 
-Signature abstraction already prevents clients from inspecting hidden
-representations. The stronger boundary must preserve opaque identity during
-preparation and check entry/hint types before resolving that identity to a
-concrete representation. A hidden representation being pointer-free would not
-make its opaque type an admissible input. This extension is not implemented yet.
+Opaque aliases, structs, and enums hide their representations from other
+modules. Declaration markers remain in the module AST, and the module checker
+checks entry/hint types before alias normalization. A hidden representation
+being pointer-free does not make its opaque type an admissible input, including
+inside its defining module. Ordinary signature members promise admissibility;
+opaque signature members withhold that permission. An opaque signature accepts
+both kinds of implementation, while an ordinary one rejects opaque-containing
+implementations. Generic modules retain their signature's permissions after
+instantiation, including during entry selection.
 
 The restriction concerns external introduction, not ordinary results: a raw
 map such as `raw_xor(Field, Field) -> Byte` must still be able to construct a
 byte by checking its precommitted relation. Module-owned static tables can
 establish such results. Do not extend the opaque-input prohibition to all map
 outputs; the existing pointer prohibition on tables/maps remains unchanged.
-The example's `Byte = Field` is still a transparent alias, so its new raw maps
-and typed inline wrappers do not yet impose an opaque-type invariant.
+The opacity regressions demonstrate module-owned maps with opaque field aliases
+as results, without adding columns to their circuit representation.

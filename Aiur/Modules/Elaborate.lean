@@ -36,6 +36,9 @@ def validate (p : Program α) : Except String Unit := do
   for s in p.signatures do
     if let some n := findDuplicate s.names [] then throw s!"duplicate signature member '{n}'"
     for n in s.names do unless simpleIdentifier n do throw s!"invalid signature member '{n}'"
+    for t in s.types do
+      if t.isOpaque && t.definition.isSome then
+        throw s!"opaque signature member '{s.name}::{t.name}' cannot expose a representation"
   for m in p.modules do
     if let some n := findDuplicate (m.parameters.map Prod.fst) [] then throw s!"duplicate module parameter '{n}'"
     for (n, sig) in m.parameters do
@@ -48,6 +51,9 @@ def validate (p : Program α) : Except String Unit := do
       if let some n := findDuplicate (memberNames d.program) [] then throw s!"duplicate member '{m.name}::{n}'"
       for n in memberNames d.program do
         unless simpleIdentifier n do throw s!"invalid module member '{n}'"
+      if let some n := findDuplicate d.opaqueTypes [] then throw s!"duplicate opaque declaration '{n}'"
+      for n in d.opaqueTypes do
+        unless hasMember d.program .type n do throw s!"unknown opaque type '{m.name}::{n}'"
 
 structure Item (α : Type) where
   key : Ref
@@ -113,6 +119,8 @@ def accessible (p : Program α) : Nat → Ref → Ref → Access → String → 
       match item.decl.body with
       | .definitions d =>
           unless hasMember d.program access name do throw s!"unknown {repr access} '{target.symbol}::{name}'"
+          if owner != target && access == .constructor && d.opaqueTypes.contains name then
+            throw s!"cannot access the representation of opaque type '{target.symbol}::{name}'"
       | .alias _ =>
           let some next := item.target | throw "missing alias target"
           accessible p fuel owner next access name

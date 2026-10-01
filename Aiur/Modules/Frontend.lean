@@ -13,6 +13,7 @@ declare_syntax_cat aiur_signature_member (behavior := symbol)
 declare_syntax_cat aiur_module_parameter (behavior := symbol)
 declare_syntax_cat aiur_root_decl (behavior := symbol)
 declare_syntax_cat aiur_modules (behavior := symbol)
+declare_syntax_cat aiur_module_member (behavior := symbol)
 
 syntax (name := refName) ident : aiur_module_ref
 syntax (name := refApply) ident "::<" sepBy1(aiur_module_ref, ",", ",", allowTrailingSep) ">" : aiur_module_ref
@@ -50,6 +51,8 @@ syntax (name := qualifiedMap) &"map" ident "(" sepBy(aiur_param, ",", ",", allow
 
 syntax (name := sigAbstract) &"type" ident ";" : aiur_signature_member
 syntax (name := sigGenericAbstract) &"type" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">" ";" : aiur_signature_member
+syntax (name := sigOpaqueAbstract) &"opaque" &"type" ident ";" : aiur_signature_member
+syntax (name := sigGenericOpaqueAbstract) &"opaque" &"type" ident "<" sepBy1(ident, ",", ",", allowTrailingSep) ">" ";" : aiur_signature_member
 syntax (name := sigAlias) aiur_alias : aiur_signature_member
 syntax (name := sigConst) &"const" ident ":" aiur_type ";" : aiur_signature_member
 syntax (name := sigTable) &"table" ident ":" aiur_type ";" : aiur_signature_member
@@ -58,9 +61,13 @@ syntax (name := sigGenericFunction) "fn" ident "<" sepBy1(ident, ",", ",", allow
   "(" sepBy(aiur_param, ",", ",", allowTrailingSep) ")" "->" aiur_type ";" : aiur_signature_member
 syntax (name := moduleParameter) ident ":" ident : aiur_module_parameter
 syntax (name := signatureDecl) &"signature" ident "{" aiur_signature_member* "}" : aiur_root_decl
+syntax (name := ordinaryMember) aiur_decl : aiur_module_member
+syntax (name := opaqueAliasMember) &"opaque" aiur_alias : aiur_module_member
+syntax (name := opaqueStructMember) &"opaque" aiur_struct : aiur_module_member
+syntax (name := opaqueEnumMember) &"opaque" aiur_enum : aiur_module_member
 syntax (name := moduleDecl) &"module" ident
   ("<" sepBy1(aiur_module_parameter, ",", ",", allowTrailingSep) ">")? (":" ident)?
-  "{" aiur_decl* "}" : aiur_root_decl
+  "{" aiur_module_member* "}" : aiur_root_decl
 syntax (name := moduleAlias) &"module" ident
   ("<" sepBy1(aiur_module_parameter, ",", ",", allowTrailingSep) ">")? (":" ident)?
   "=" aiur_module_ref ";" : aiur_root_decl
@@ -184,18 +191,21 @@ def readDefinitions (ds : List Syntax) : Except String (Definitions Nat) := do
       let .bind n ← pattern [] p[0] | throw "map parameters must be named bindings"
       return (n, ← type [] p[2])
     return { name := ← readName s[1], params, result := ← type [] s[6], input := ← readName s[8], output := ← readName s[10] : Generic.MapDecl }
-  return ⟨{functions,enums,structs,aliases,consts,tables,maps}, constTypes, parameterPatterns⟩
+  return ⟨{functions,enums,structs,aliases,consts,tables,maps}, constTypes, parameterPatterns, []⟩
 
 def readSignature (s : Syntax) : Except String Signature := do
   let mut result : Signature := {name := ← readName s[1]}
   for m in s[3].getArgs do
     let k := m.getKind
-    if k == ``sigAbstract || k == ``sigGenericAbstract then
-      let params ← if k == ``sigGenericAbstract then m[3].getSepArgs.toList.mapM readName else pure []
-      result := {result with types := result.types ++ [⟨← readName m[1],params,none⟩]}
+    if [``sigAbstract, ``sigGenericAbstract, ``sigOpaqueAbstract, ``sigGenericOpaqueAbstract].contains k then
+      let isOpaque := k == ``sigOpaqueAbstract || k == ``sigGenericOpaqueAbstract
+      let offset := if isOpaque then 1 else 0
+      let generic := k == ``sigGenericAbstract || k == ``sigGenericOpaqueAbstract
+      let params ← if generic then m[3 + offset].getSepArgs.toList.mapM readName else pure []
+      result := {result with types := result.types ++ [⟨← readName m[1 + offset],params,none,isOpaque⟩]}
     else if k == ``sigAlias then
       let d ← lowerAlias m[0]
-      result := {result with types := result.types ++ [⟨d.name,d.typeParams,some d.target⟩]}
+      result := {result with types := result.types ++ [⟨d.name,d.typeParams,some d.target,false⟩]}
     else if k == ``sigConst then
       result := {result with consts := result.consts ++ [(← readName m[1], ← type [] m[3])]}
     else if k == ``sigTable then
@@ -232,11 +242,17 @@ def parse (env : Lean.Environment) (source : String) : Except String (Program Na
         s[2][1].getSepArgs.toList.mapM fun p => return (← readName p[0], ← readName p[2])
       let signature ← if s[3].getArgs.isEmpty then pure none else some <$> readName s[3][1]
       let body ← if s.getKind == ``moduleAlias then Body.alias <$> readRef s[5] else do
-        let ds := s[5].getArgs.toList
+        let members := s[5].getArgs.toList.map nativeChoice
+        let opaqueTypes ← (members.filter (·.getKind != ``ordinaryMember)).mapM
+          (fun m => readName (nativeChoice m[1])[1])
+        let ds := members.map fun m =>
+          if m.getKind == ``ordinaryMember then m[0]
+          else node (if m.getKind == ``opaqueAliasMember then ``aliasDecl
+            else if m.getKind == ``opaqueStructMember then ``structDecl else ``enumDecl) #[m[1]]
         let localTypes ← (ds.filter fun d => [``enumDecl, ``structDecl, ``aliasDecl].contains d.getKind).mapM
           (fun d => readName (nativeChoice d[0])[1])
         let ds ← ds.mapM (normalize (names ++ parameters.map Prod.fst) localTypes)
-        Body.definitions <$> readDefinitions ds
+        pure (Body.definitions { (← readDefinitions ds) with opaqueTypes })
       result := {result with modules := result.modules ++ [⟨← readName s[1],parameters,signature,body⟩]}
   return result
 

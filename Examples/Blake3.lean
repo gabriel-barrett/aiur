@@ -46,7 +46,7 @@ module U8 {
     map raw_sum_byte(sum: Field) -> Byte = sum_inputs => sum_bytes;
 
     // The typed interface delegates to exactly the same lookup after inlining.
-    // Byte remains transparent for now; future opacity will hide its construction.
+    // This benchmark uses transparent bytes; Examples/Opacity shows an opaque API.
     inline fn to_field(byte: Byte) -> Field { byte }
     inline fn xor(a: Byte, b: Byte) -> Byte { raw_xor(to_field(a), to_field(b)) }
     inline fn add(a: Byte, b: Byte) -> Byte { raw_add(to_field(a), to_field(b)) }

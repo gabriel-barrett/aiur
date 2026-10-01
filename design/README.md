@@ -21,6 +21,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   expansion, and entrypoint equivalence.
 - [Modules](modules.md): static signatures, abstract types, module parameters,
   shared applications, qualified names and certified declaration environments.
+- [Opacity](opacity.md): opaque aliases, structs and enums, nominal client
+  identities, recursive input restrictions, and signature permissions.
 - [Type aliases](type-aliases.md): transparent parameterized aliases, type normalization
   during generic inference, constructor qualification, and cycle checks.
 - [Consts](consts.md): complete value/pattern declarations, direct reference semantics,
@@ -47,8 +49,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   function-style calls, static membership rules, and proved correspondence.
 - [Hints and nondeterminism](hints.md): typed private values, dynamic keys,
   executor providers, enum validation, and correctness guarantees.
-- [Pointer-free input types](input-types.md): static restriction on public input,
-  table/map types, and nondeterministic result types.
+- [Input-admissible types](input-types.md): recursive opacity restrictions on
+  public inputs and hints, and pointer-free static table/map representations.
 - [Implementation](implementation.md): Lean modules, the string elaborator,
   field specialization, checking, evaluation defaults, and validation.
 - [TODO](todo.md): proposed extensions from the ix comparison, remaining proof
