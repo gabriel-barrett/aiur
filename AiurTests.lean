@@ -27,6 +27,7 @@ import AiurTests.Diagnostics
 import AiurTests.Assertions
 import AiurTests.OrPatterns
 import AiurTests.Modules
+import AiurTests.Opacity
 import AiurTests.Inlining
 import AiurTests.CircuitStats
 import AiurTests.Optimized
@@ -208,6 +209,7 @@ def main : IO Unit := do
   AiurAssertionTests.run
   AiurOrPatternTests.run
   AiurModuleTests.run
+  AiurOpacityTests.run
   AiurInlineTests.run
   AiurCircuitStatsTests.run
   AiurPropagationTests.run

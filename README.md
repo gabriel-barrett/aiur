@@ -68,6 +68,16 @@ require qualification. Signatures can hide members and type representations,
 and module parameters use `module Algorithm<A: Arithmetic> { ... }`.
 See [modules](design/modules.md) and [the example](Examples/Modules.lean).
 
+Type declarations can be `opaque`: for example, `opaque type Byte = Field;`,
+`opaque struct Secret { value: Field }`, or `opaque enum Token { Value(Field) }`.
+Their module can use the representation; clients use a nominal identity.
+Entry arguments and hint results must contain no opaque types, with pointers
+treated as built-in opaque types. In signatures, `type T;` promises input
+admissibility, while `opaque type T;` withholds that permission and accepts
+either kind of implementation. Module-owned static maps can still return
+pointer-free opaque values. See [opacity](design/opacity.md) and the
+[runnable example](Examples/Opacity.lean).
+
 `Nat` stores literals; `toField F` converts expressions, patterns, and
 table rows to a chosen field. Source arguments and results use `SourceValue F = Value F Nat`;
 field leaves, tuples, nominal constructors, and typed opaque pointers are distinct.

@@ -167,6 +167,7 @@ def prepare [DecidableEq F] (p : Program F) (entries : List String) : Except Str
   checkTemplates p
   let (world,_) ← collect p entries
   checkWorld p world
+  entries.forM (checkEntryInputs p world)
   let assembly ← assemble p world
   match checked : Generic.prepare assembly.program with
   | .error e => throw e

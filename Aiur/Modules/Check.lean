@@ -1,4 +1,4 @@
-import Aiur.Modules.Elaborate
+import Aiur.Modules.Opacity
 
 namespace Aiur.Modules
 
@@ -6,13 +6,14 @@ def stub (f : Callable) : Generic.Function α := {
   name := f.name, typeParams := f.typeParams, params := f.params, result := f.result
   body := .call f.name (some (f.typeParams.map Generic.Ty.param)) (f.params.map fun p => .var p.1) }
 
-/-- An abstract type is deliberately not known pointer-free. The private dummy
-constructor is available only to the checker and never enters executable code. -/
+/-- Ordinary abstract members promise input admissibility. Opaque members
+withhold it. Private constructors occur only in the checking environment. -/
 def interfaceProgram (s : Signature) (aliasTarget : Option String := none) : Generic.Program α := {
   functions := s.functions.map stub
   enums := s.types.filterMap fun t =>
     if t.definition.isSome || aliasTarget.isSome then none
-    else some ⟨t.name, t.typeParams, [⟨"@opaque", [.ptr .field]⟩]⟩
+    else some ⟨t.name, t.typeParams, [⟨"@abstract",
+      if t.isOpaque then [.ptr .field] else t.typeParams.map .param⟩]⟩
   aliases := s.types.filterMap fun t =>
     match t.definition with
     | some type => some ⟨t.name, t.typeParams, type⟩
@@ -49,9 +50,10 @@ def publicView (p : Program α) (w : World α) :
         -- An inferred interface exposes const templates as well as their
         -- inferred types. Context-dependent constructors remain polymorphic;
         -- references into sealed modules still use those modules' interfaces.
-        return ({headers raw with consts := raw.consts}, constants.filter fun (n,_) => raw.consts.any (·.name == n))
+        return (sealTypes {headers raw with consts := raw.consts} item.declaredOpaqueTypes,
+          constants.filter fun (n,_) => raw.consts.any (·.name == n))
 
-def moduleView (p : Program α) (w : World α) (owner : Ref)
+def rawModuleView (p : Program α) (w : World α) (owner : Ref)
     (constants : List (String × Generic.Ty)) : Except String (Generic.Program α × List (String × Generic.Ty)) := do
   let mut result : Generic.Program α := { functions := [] }
   let mut external := []
@@ -62,10 +64,19 @@ def moduleView (p : Program α) (w : World α) (owner : Ref)
       let (view, consts) ← publicView p w 128 item constants
       result := append result view
       external := external ++ consts
+  return (result, external)
+
+def normalizeView (result : Generic.Program α) (external : List (String × Generic.Ty)) :
+    Except String (Generic.Program α × List (String × Generic.Ty)) := do
   let aliases ← Generic.Aliases.resolveDeclarations result
   let expanded ← Generic.Aliases.expandProgram aliases result
   let externalTypes ← external.mapM fun (n,t) => return (n, ← Generic.Aliases.expandType aliases t)
   return ({expanded with aliases},externalTypes)
+
+def moduleView (p : Program α) (w : World α) (owner : Ref)
+    (constants : List (String × Generic.Ty)) : Except String (Generic.Program α × List (String × Generic.Ty)) := do
+  let (raw, external) ← rawModuleView p w owner constants
+  normalizeView raw external
 
 def normalized (view : Generic.Program α) (t : Generic.Ty) := do
   Generic.Aliases.expandType (← Generic.Aliases.resolveDeclarations view) t
@@ -87,7 +98,9 @@ def inferConstants (p : Program α) (w : World α) : Except String (List (String
               let annotation ← (item.constTypes.lookup c.name).mapM (normalized view)
               Generic.inferInterfaceConst view body.value annotation external false
             match checked with
-            | .ok type => if type.concrete then next := (c.name,type) :: next.filter (·.1 != c.name)
+            | .ok type => if type.concrete then
+                let exposed := (item.constTypes.lookup c.name).getD type
+                next := (c.name,exposed) :: next.filter (·.1 != c.name)
             | .error e => failure := s!"in const '{c.name}': {e}"
     if next == constants then break
     constants := next
@@ -107,13 +120,18 @@ def checkContract (p : Program α) (w : World α) (constants : List (String × G
   let some sig := p.findSignature? signature | throw s!"unknown signature '{signature}'"
   let (required, _) ← (qualifySignature p item sig).run w
   let owner := if throughInterface || item.target.isSome then Ref.mk "" [] else item.key
-  let (view, external) ← moduleView p w owner constants
+  let (raw, external) ← rawModuleView p w owner constants
+  -- Conformance must preserve opaque identity in every exposed signature.
+  let (view, external) ← normalizeView (sealTypes raw item.declaredOpaqueTypes) external
   let available ← if throughInterface || item.target.isSome then (publicView p w 128 item constants).map Prod.fst
     else pure (item.qualified.getD {functions := []})
   for t in required.types do
     let arity := (available.nominals.find? (·.name == t.name)).map (·.typeParams.length) |>.orElse fun _ =>
       (available.aliases.find? (·.name == t.name)).map (·.typeParams.length)
     if arity != some t.typeParams.length then throw s!"missing or incompatible type '{t.name}' required by '{signature}'"
+    unless t.isOpaque do
+      checkNonOpaque raw (opaqueNames p w owner)
+        s!"non-opaque signature member '{t.name}'" (.named t.name (t.typeParams.map .param)) t.typeParams
     if let some expected := t.definition then
       let actual ← normalized view (.named t.name (t.typeParams.map .param))
       let expected ← normalized view expected
@@ -139,9 +157,18 @@ def checkContract (p : Program α) (w : World α) (constants : List (String × G
     if (← normalized view table.rowType) != (← normalized view type) then throw s!"table type mismatch for '{name}'"
 
 def checkWorld (p : Program α) (w : World α) : Except String Unit := do
+  -- Sealing must not hide alias cycles spanning several modules. Check the
+  -- complete declaration graph as well as each client's restricted view.
+  let mut declarations : Generic.Program α := {functions := []}
+  for item in w.items do
+    let definition ← if item.target.isNone then pure (item.qualified.getD {functions := []})
+      else (publicView p w 128 item []).map Prod.fst
+    declarations := append declarations definition
+  let _ ← Generic.Aliases.resolveDeclarations declarations
   let constants ← inferConstants p w
   let mut dependencies : List (Generic.Function α) := []
   for item in w.items do
+    let (raw, _) ← rawModuleView p w item.key constants
     let (view, external) ← moduleView p w item.key constants
     -- Validate declarations, including interfaces and unused generic data types.
     let _ ← Generic.elaborate ({ view with functions := [], consts := [], tables := [], maps := [] } : Generic.Program α)
@@ -160,6 +187,8 @@ def checkWorld (p : Program α) (w : World α) : Except String Unit := do
     let own := item.qualified.getD {functions := []}
     let mut checked := []
     for fn in own.functions do
+      for type in hintTypes fn.body do
+        checkNonOpaque raw (opaqueNames p w item.key) s!"hint in '{fn.name}'" type
       let some fn := view.findFunction? fn.name | throw "missing function in module view"
       Generic.checkParams fn.typeParams
       if let some n := findDuplicate (fn.params.map Prod.fst) [] then throw s!"duplicate parameter '{n}'"
@@ -197,12 +226,11 @@ def checkWorld (p : Program α) (w : World α) : Except String Unit := do
 
 def abstractModule (name : String) (sig : Signature) : Module α := {
   name, signature := some sig.name
-  body := .definitions ⟨interfaceProgram sig, [], []⟩ }
+  body := .definitions ⟨interfaceProgram sig, [], [], (sig.types.filter (·.isOpaque)).map (·.name)⟩ }
 
-/-- Check every template once with abstract module arguments. No concrete
-application can make an invalid unused template acceptable. -/
-def checkTemplates (p : Program α) : Except String Unit := do
-  validate p
+/-- Independent abstract arguments preserve each module parameter's permissions,
+even when two parameters are later instantiated with the same concrete module. -/
+def templateContext (p : Program α) : Except String (Program α × List Ref) := do
   let signatureModules := p.signatures.map fun s => abstractModule ("@signature:" ++ s.name) s
   let mut extra := signatureModules
   let mut seeds := []
@@ -215,8 +243,48 @@ def checkTemplates (p : Program α) : Except String Unit := do
       extra := extra ++ [abstractModule name signature]
       args := args ++ [.mk name []]
     seeds := seeds ++ [.mk m.name args]
-  let abstract := {p with modules := p.modules ++ extra}
+  return ({p with modules := p.modules ++ extra}, seeds)
+
+/-- Entry selection uses the externally supplied interface before alias
+normalization. Internal functions may continue to accept opaque values. -/
+def checkEntryInputs (p : Program α) (w : World α) (external : String) : Except String Unit := do
+  let ((target, member), w) ← (locate p (.mk "" []) [] external).run w
+  let constants ← inferConstants p w
+  let (view, _) ← rawModuleView p w (.mk "" []) constants
+  let name := rename target.symbol member
+  let some fn := view.findFunction? name | throw s!"unknown entry function '{external}'"
+  for (_, type) in fn.params do
+    checkNonOpaque view (opaqueNames p w (.mk "" [])) s!"entry '{external}'" type
+  let some item := w.find? target | throw "missing entry module"
+  let some implementation := w.find? item.canonical | throw "missing entry implementation"
+  unless implementation.decl.parameters.isEmpty do
+    let (abstract, seeds) ← templateContext p
+    let (world, _) ← collect abstract [] seeds
+    let key := Ref.mk implementation.decl.name (implementation.decl.parameters.map fun (n, _) =>
+      .mk ("@parameter:" ++ implementation.decl.name ++ ":" ++ n) [])
+    let (view, _) ← rawModuleView abstract world key []
+    let some fn := view.findFunction? (rename key.symbol member) |
+      throw "missing abstract entry implementation"
+    for (_, type) in fn.params do
+      checkNonOpaque view (opaqueNames abstract world key)
+        s!"entry '{external}' under its module signature" type
+
+/-- Check every template once with abstract module arguments. No concrete
+application can make an invalid unused template acceptable. -/
+def checkTemplates (p : Program α) : Except String Unit := do
+  validate p
+  let (abstract, seeds) ← templateContext p
   let (world,_) ← collect abstract [] seeds
   checkWorld abstract world
+  -- Validate the permission promised by manifest members in the signature
+  -- itself; a particular transparent implementation must not justify it.
+  for sig in p.signatures do
+    let owner := Ref.mk ("@signature:" ++ sig.name) []
+    let (view, _) ← rawModuleView abstract world owner []
+    for type in sig.types do
+      unless type.isOpaque do
+        checkNonOpaque view (opaqueNames abstract world owner)
+          s!"non-opaque signature member '{sig.name}::{type.name}'"
+          (.named (rename owner.symbol type.name) (type.typeParams.map .param)) type.typeParams
 
 end Aiur.Modules

@@ -24,6 +24,11 @@ signatures remain explicit. An alias is transparent: `Scalar` and `Field` are
 the same type. Nominal enums remain distinct, even when their shapes agree.
 Singleton tuples retain their distinction from their component type.
 
+Modules also support `opaque type Byte = Field;`. These aliases unfold inside
+their defining module and have nominal identity for clients. Their declaration
+markers survive independently of type normalization, and public inputs and
+hints reject them recursively. See [opaque types](opacity.md).
+
 ## Pipeline
 
 1. Parse the whole source with numeric literals represented by `Nat`.

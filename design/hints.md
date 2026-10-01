@@ -15,11 +15,15 @@ fn square_preimage(h: Field) -> () {
 }
 ```
 
-The result type in `hint::<T>(key)` is explicit and static. It must satisfy the
-same [whole-type pointer-free restriction](input-types.md) as entry inputs and
-tables/maps: every nested component and every reachable enum constructor must
-contain no pointers. Unit, singleton and larger tuples, and nominal enums are
-supported. Unknown types and invalid key expressions are rejected by checking.
+The result type in `hint::<T>(key)` is explicit and static. Like entry inputs,
+it must be [recursively non-opaque](input-types.md): every nested component and
+every reachable enum constructor must contain neither pointers nor opaque
+types. The defining module has the same restriction, even when it knows an
+opaque alias's representation. Static tables/maps separately require pointer-free
+representations and can produce module-owned opaque values. Unit, singleton and
+larger tuples, and nominal enums are supported. Unknown types and invalid key
+expressions are rejected by checking. [Signature permissions](opacity.md)
+determine whether abstract module parameter types may be hinted.
 
 The key is a dynamic, ordinary Aiur expression, evaluated once before requesting
 the result. It can use arguments, locals, tuples, constructors, projections,
