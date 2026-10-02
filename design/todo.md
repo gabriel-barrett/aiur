@@ -142,8 +142,12 @@ without admitted proof steps.
   Rust with memoized queries, integer multiplicities, shared map indexes and
   interned typed ROM. Preserve structured non-opaque IO descriptions on selected
   entrypoints. See [Rust execution](execution.md).
-- [ ] Implement the Rust nondeterminism provider; the hint instruction evaluates
-  its key normally, then reaches an explicit `todo!()`.
+- [x] Define structured hint data in Lean, validate and flatten it for Rust's
+  per-execution typed map, and retain consumed answers in memoized query records.
+  Keys evaluate normally; missing entries and conflicting duplicates are errors.
+- [ ] Add dedicated computational hint operations when needed. The executor
+  computes them; the source predicate and circuit treat results as ordinary
+  well-formed nondeterministic inputs. Stateful hint channels remain deferred.
 - [ ] Provide Rust circuit-witness generation, preserving witness recipes and
   final column mappings through compiler passes. Test its rows against the
   existing checker; the generator itself does not require formalization.
@@ -258,7 +262,8 @@ arithmetic, and casts belong to a possible future unsafe extension. They are not
 part of the safe language backlog or its current soundness guarantee.
 
 Typed nondeterministic values and the Lean stateless keyed executor interface
-are [implemented](hints.md); the new Rust provider remains an explicit stub.
+are [implemented](hints.md). Rust consumes a typed data map prepared in Lean and
+records the answers needed for later witness generation; see [execution](execution.md).
 External I/O is not a language or formalization TODO:
 typed nondeterministic values already supply the required witness choices.
 Providers, buffers, provider state, and dedicated internal or external hint

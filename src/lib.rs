@@ -5,6 +5,7 @@ pub mod bytecode;
 pub mod execute;
 mod ffi;
 pub mod field;
+pub mod hints;
 pub mod value;
 
 pub use bytecode::Program;

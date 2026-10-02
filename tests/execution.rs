@@ -285,8 +285,7 @@ fn inactive_failures_are_not_evaluated() {
 }
 
 #[test]
-#[should_panic(expected = "keyed nondeterminism provider")]
-fn nondeterminism_is_explicitly_todo() {
+fn missing_nondeterministic_data_is_an_error() {
     let p = program(
         vec![function(
             "hint",
@@ -305,7 +304,9 @@ fn nondeterminism_is_explicitly_todo() {
     )
     .check()
     .unwrap();
-    let _ = p.execute("main", vec![1]);
+    let error = p.execute("main", vec![1]).unwrap_err();
+    assert_eq!(error.instruction, 0);
+    assert!(error.message.contains("missing hint"));
 }
 
 #[test]

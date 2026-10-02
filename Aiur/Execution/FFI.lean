@@ -7,12 +7,25 @@ open Lean
 @[extern "aiur_lean_execute"]
 private opaque executeJson (request : @& String) : IO String
 
+structure HintAnswer where
+  instruction : Nat
+  type : Json
+  key_type : Json
+  key : Array Nat
+  output : Array Nat
+  deriving Inhabited, FromJson
+
+instance : Repr HintAnswer where
+  reprPrec answer _ := repr (answer.instruction, answer.type.compress,
+    answer.key_type.compress, answer.key, answer.output)
+
 structure Query where
   function : Nat
   name : String
   args : Array Nat
   output : Array Nat
   multiplicity : Nat
+  hints : Array HintAnswer
   deriving Repr, FromJson
 
 structure MemoryEntry where
@@ -28,9 +41,10 @@ structure Result where
   instructions : Nat
   deriving FromJson
 
-private def executeRequest (program : Json) (entry : String) (key : String) (args : Json) :
+private def executeRequest (program : Json) (entry : String) (key : String) (args hints : Json) :
     IO (Except String Result) := do
-  let response ← executeJson (Json.mkObj [("program", program), ("entry", toJson entry), (key, args)]).compress
+  let response ← executeJson (Json.mkObj [("program", program), ("entry", toJson entry),
+    (key, args), ("hints", hints)]).compress
   return do
     let json ← Json.parse response
     if let .ok error := json.getObjValAs? String "error" then throw error
@@ -39,17 +53,25 @@ private def executeRequest (program : Json) (entry : String) (key : String) (arg
 /-- Structured JSON arguments are interpreted using the selected entry's source
 types. Tuples/arrays use JSON arrays; structs use named objects; enum values use
 single-constructor objects such as {"Some": [7]}. -/
-def Export.run (exported : Export (ZMod p)) [NeZero p] (entry : String) (args : Array Json) :
+def Export.run (exported : Export (ZMod p)) [NeZero p] (entry : String) (args : Array Json)
+    (hints : Array (HintEntry (ZMod p)) := #[]) :
     IO (Except String Result) := do
-  match exported.toJson p ZMod.val with
+  match (do
+    let program ← exported.toJson p ZMod.val
+    let hints ← exported.prepareHints hints
+    return (program, Lean.toJson (hints.map (FlatHintEntry.toJson ZMod.val)))) with
   | .error error => return .error error
-  | .ok program => executeRequest program entry "args" (Lean.toJson args)
+  | .ok (program, hints) => executeRequest program entry "args" (Lean.toJson args) hints
 
 /-- Low-level entry IO still checks canonical fields, enum tags and padding. -/
-def Export.runFlat (exported : Export (ZMod p)) [NeZero p] (entry : String) (args : Array Nat) :
+def Export.runFlat (exported : Export (ZMod p)) [NeZero p] (entry : String) (args : Array Nat)
+    (hints : Array (HintEntry (ZMod p)) := #[]) :
     IO (Except String Result) := do
-  match exported.toJson p ZMod.val with
+  match (do
+    let program ← exported.toJson p ZMod.val
+    let hints ← exported.prepareHints hints
+    return (program, Lean.toJson (hints.map (FlatHintEntry.toJson ZMod.val)))) with
   | .error error => return .error error
-  | .ok program => executeRequest program entry "flat_args" (Lean.toJson args)
+  | .ok (program, hints) => executeRequest program entry "flat_args" (Lean.toJson args) hints
 
 end Aiur.Execution

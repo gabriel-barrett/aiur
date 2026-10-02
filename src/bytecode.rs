@@ -206,7 +206,7 @@ impl Layout {
 }
 
 impl Type {
-    fn layout(&self, enums: &[Enum], path: &mut Vec<String>) -> Result<Layout, String> {
+    pub(crate) fn layout(&self, enums: &[Enum], path: &mut Vec<String>) -> Result<Layout, String> {
         match self {
             Self::Field => Ok(Layout::Field),
             Self::Ptr { .. } => Ok(Layout::Pointer),

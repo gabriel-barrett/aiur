@@ -1,4 +1,4 @@
-import Aiur.Execution.Interface
+import Aiur.Execution.Hints
 import Lean
 
 namespace Aiur.Execution
@@ -64,6 +64,10 @@ def instructionJson (encode : F → Nat) : Instruction F → Json
       [("left", Lean.toJson left), ("right", Lean.toJson right), ("message", Lean.toJson message)]
   | .ret value => tagged "op" "ret" [("value", Lean.toJson value)]
   | .fail message => tagged "op" "fail" [("message", Lean.toJson message)]
+
+def FlatHintEntry.toJson (encode : F → Nat) (entry : FlatHintEntry F) : Json :=
+  Json.mkObj [("type", typeJson entry.type), ("key_type", typeJson entry.keyType),
+    ("key", Lean.toJson (entry.key.map encode)), ("output", Lean.toJson (entry.output.map encode))]
 
 /-- Versioned data transported by the FFI. The initial Rust field backend
 supports primes fitting UInt64; the bytecode compiler itself is field-generic. -/

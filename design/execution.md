@@ -46,7 +46,7 @@ can be added independently.
 Each execution session owns:
 
 ```
-HashMap<QueryInput { function, args }, QueryOutput { output, multiplicity }>
+HashMap<QueryInput { function, args }, QueryOutput { output, multiplicity, hints }>
 ```
 
 Arguments and outputs are flat field words; the callable ID fixes argument
@@ -72,20 +72,76 @@ an address. Allocations check that addresses fit the selected field. This is an
 executor optimization; it does not change the fresh-allocation source evaluator
 or assert equality between its addresses and circuit addresses.
 
-`hint::<T>(key)` evaluates its key using ordinary bytecode. Resolving the hint
-is deliberately `todo!("keyed nondeterminism provider")` in Rust. A reached
-hint currently panics, and the FFI catches the panic and returns an error rather
-than unwinding into Lean. Unselected branches do not resolve hints. The future
-provider must account for the chosen execution policy: the first completed
-answer to a function/input query is reused within that session. This policy
-does not claim that the nondeterministic semantic predicate is functional.
+`hint::<T>(key)` evaluates its key using ordinary bytecode, including any
+calls, allocations, loads or earlier hints. It then reads the per-execution
+hint data described below. The first completed answer to a function/input
+query is reused within that session. This execution policy does not claim
+that the nondeterministic semantic predicate is functional.
+
+## Lean-defined hint data
+
+`Execution.HintEntry F` is a structured triple of expected source result type,
+key and output. `Execution.DataValue F` supports fields, tuples, homogeneous
+arrays, named structs and qualified enum constructors. Array values include an
+element type, including empty arrays; nominal values include their type and
+generic arguments. Field values can be generated with ordinary Lean code.
+`HintEntry.map` converts field leaves, for example from `Nat` to `ZMod p`.
+
+`Export.run` and `Export.runFlat` accept an optional array of these triples.
+The data belongs to that execution, so a compiled program can be run again
+with a different private witness. No Rust callback or circuit table is created.
+
+`Export.prepareHints` checks the triples in Lean using type declarations retained
+by the execution export. Transparent aliases and generic arguments are resolved
+against the program. Every component of a supplied value's type must have a
+public, non-opaque representation, including inactive enum variants and empty
+arrays. This applies to both keys and outputs. Struct fields are checked for
+missing/extra/duplicate names and arranged in declaration order. The existing
+`Layout.encode` supplies constructor tags and canonical padding, including
+tagless single-constructor enums and zero-width values. The host never supplies
+numeric constructor tags or padding in this interface.
+
+The FFI carries only concrete types and flat words. Rust validates widths,
+canonical field values, all active nested tags and zero padding, then builds:
+
+```
+HashMap<(result_type, key_type, key_words), output_words>
+```
+
+Types are structural identities with nominal enum/struct instance names, not
+layout widths. `7`, `(7,)`, and a tagless nominal wrapper containing `7` can
+share the words `[7]` while remaining different keys. Result types also
+distinguish requests. Arrays use the existing semantic tuple representation;
+transparent aliases resolve to their targets. Conflicting duplicate map keys
+are rejected, including collisions after natural literals are cast into the
+field. Identical duplicate rows are harmless and coalesce. All supplied rows
+are checked, including unused ones. A missing reached request is an execution
+error with the function and instruction site; inactive branches make no request.
+
+This static input interface cannot supply pointer-containing keys. The language
+still permits arbitrary ordinary key expressions, but a reached pointer key
+has no matching supplied row. Stateful or heap-aware providers are not part
+of this implementation. Existing source hint semantics and circuit constraints
+are unchanged.
+
+Every consumed answer is saved in its query's `hints` list, with the bytecode
+instruction, concrete result/key types, flat key and flat output. The query's
+function ID identifies the enclosing body; list order identifies consumption
+order. A cache hit increments multiplicity without adding answers. Separate
+callees own their answers; inlined hints belong to their caller. Even a
+zero-width answer has a record. A failed execution publishes no query record.
+
+Run `lake exe aiur_hints` for a structured preimage example. The same preimage
+query is requested twice, while its hint is consumed and recorded once.
 
 ## Entrypoint IO
 
-Only selected entrypoints retain source-facing IO descriptions. These are
+Only selected entrypoints retain callable source-facing IO descriptions. These are
 captured from retained declarations before type aliases, array shapes and
 struct field names are lost. Internal queries use IDs and flat words, so future
 internal deduplication does not affect the public IO description.
+Lean additionally retains type declarations to check structured hint data;
+these declarations are not serialized as internal callable IO interfaces.
 
 The Rust `Value` interface distinguishes fields, tuples, arrays, structs and
 enum constructors. `IoType.flatten` validates structured values and encodes
@@ -110,11 +166,15 @@ Query records are not circuit witnesses. The following work remains separate:
 - Export executable recipes for selectors, inverses and other auxiliary values,
   keeping substitutions and final column mappings through the circuit passes.
 - Match query IDs with final deduplicated chip representatives and construct
-  physical rows. Retain hint answers or equivalent evidence once hints exist.
+  physical rows, relating saved hint instruction sites to witness recipes.
+  Replay saved answers; never invoke a fresh provider during trace generation.
 - Preserve executor diagnostic messages if execution needs source debug traces;
   the current core lowering preserves debug operand effects but erases emission.
-- Choose a nondeterminism provider, then optimize the execution implementation
-  based on measurements (register reuse, batching, generated code).
+- Add dedicated computational hint operations if needed: their algorithms run
+  in the executor, while the predicate and circuit permit arbitrary well-formed
+  results. Such operations must record answers just like supplied hint data.
+- Optimize execution based on measurements (register reuse, batching, generated
+  code). Stateful channels/cursors remain future work.
 
 The agreed padding strategy needs no inactive-row selector. Unused chips have
 empty traces. Nonempty traces repeat a valid row with provide multiplicity zero.

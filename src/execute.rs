@@ -1,6 +1,7 @@
 //! Memoized evaluation. A query is (callable ID, flat arguments); its first
 //! completed output is reused. Counts are integers, never field elements.
 use crate::bytecode::{Binary as BinOp, CheckedProgram, Instruction, Type};
+use crate::hints::{HintAnswer, HintEntry, HintKey};
 use crate::value::Value;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -15,6 +16,7 @@ pub struct QueryInput {
 pub struct QueryOutput {
     pub output: Vec<u64>,
     pub multiplicity: u64,
+    pub hints: Vec<HintAnswer>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct Cell {
@@ -56,6 +58,7 @@ struct Frame {
     registers: Vec<u64>,
     pc: usize,
     destination: Vec<usize>,
+    hints: Vec<HintAnswer>,
 }
 struct Machine<'a> {
     program: &'a CheckedProgram,
@@ -63,6 +66,7 @@ struct Machine<'a> {
     pending: HashSet<QueryInput>,
     record: Execution,
     memory_index: HashMap<Cell, u64>,
+    hints: HashMap<HintKey, Vec<u64>>,
 }
 impl Frame {
     fn read(&self, regs: &[usize]) -> Vec<u64> {
@@ -78,6 +82,17 @@ impl Frame {
 impl CheckedProgram {
     /// A fresh execution session. No cache or pointer can leak across sessions.
     pub fn execute(&self, entry: &str, args: Vec<u64>) -> Result<Execution, ExecutionError> {
+        self.execute_with_hints(entry, args, &[])
+    }
+
+    /// Witness data and query caches belong to this invocation alone. Supplied
+    /// data is validated before execution, including unused rows and conflicts.
+    pub fn execute_with_hints(
+        &self,
+        entry: &str,
+        args: Vec<u64>,
+        hints: &[HintEntry],
+    ) -> Result<Execution, ExecutionError> {
         let error = |message| ExecutionError {
             function: entry.into(),
             instruction: 0,
@@ -87,11 +102,13 @@ impl CheckedProgram {
         self.inputs[selected.function]
             .validate(&args, self.field)
             .map_err(error)?;
+        let hints = crate::hints::prepare(self, hints).map_err(error)?;
         Machine {
             program: self,
             frames: vec![],
             pending: HashSet::new(),
             memory_index: HashMap::new(),
+            hints,
             record: Execution {
                 output: vec![],
                 queries: HashMap::new(),
@@ -106,6 +123,15 @@ impl CheckedProgram {
     }
 
     pub fn execute_values(&self, entry: &str, args: &[Value]) -> Result<Execution, ExecutionError> {
+        self.execute_values_with_hints(entry, args, &[])
+    }
+
+    pub fn execute_values_with_hints(
+        &self,
+        entry: &str,
+        args: &[Value],
+        hints: &[HintEntry],
+    ) -> Result<Execution, ExecutionError> {
         let error = |message| ExecutionError {
             function: entry.into(),
             instruction: 0,
@@ -119,7 +145,7 @@ impl CheckedProgram {
         for (value, ty) in args.iter().zip(&selected.inputs) {
             flat.extend(ty.flatten(value, self.field).map_err(error)?);
         }
-        self.execute(entry, flat)
+        self.execute_with_hints(entry, flat, hints)
     }
 
     pub fn output_value(&self, entry: &str, result: &Execution) -> Result<Value, String> {
@@ -187,6 +213,7 @@ impl Machine<'_> {
                 QueryOutput {
                     output: output.clone(),
                     multiplicity: 1,
+                    hints: vec![],
                 },
             );
             return Ok(Some(output));
@@ -200,6 +227,7 @@ impl Machine<'_> {
             registers,
             pc: 0,
             destination,
+            hints: vec![],
         });
         Ok(None)
     }
@@ -355,10 +383,27 @@ impl Machine<'_> {
                     r#type,
                     key_type,
                     key,
-                    ..
+                    dest,
                 } => {
-                    let key = frame.read(key);
-                    resolve_hint(r#type, key_type, &key);
+                    let request = HintKey {
+                        r#type: r#type.clone(),
+                        key_type: key_type.clone(),
+                        key: frame.read(key),
+                    };
+                    let Some(output) = self.hints.get(&request) else {
+                        return Err(self.error(format!(
+                            "missing hint for result {:?}, key type {:?}, key {:?}",
+                            request.r#type, request.key_type, request.key
+                        )));
+                    };
+                    frame.write(dest, output);
+                    frame.hints.push(HintAnswer {
+                        instruction: frame.pc,
+                        r#type: request.r#type,
+                        key_type: request.key_type,
+                        key: request.key,
+                        output: output.clone(),
+                    });
                 }
                 AssertEq {
                     left,
@@ -383,6 +428,7 @@ impl Machine<'_> {
                         QueryOutput {
                             output: output.clone(),
                             multiplicity: 1,
+                            hints: frame.hints,
                         },
                     );
                     if let Some(parent) = self.frames.last_mut() {
@@ -398,11 +444,4 @@ impl Machine<'_> {
         }
         Ok(self.record)
     }
-}
-
-/// Key computation is ordinary bytecode execution. Provider policy, including
-/// how a future provider interacts with query memoization, is deliberately open.
-fn resolve_hint(expected_type: &Type, key_type: &Type, key: &[u64]) -> ! {
-    let _ = (expected_type, key_type, key);
-    todo!("keyed nondeterminism provider")
 }

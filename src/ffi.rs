@@ -1,6 +1,7 @@
 //! A small C ABI transports versioned execution bytecode, never circuit data.
 //! Lean's object ABI is confined to c/execution.c; Rust owns all execution state.
 use crate::bytecode::Program;
+use crate::hints::HintEntry;
 use serde::Deserialize;
 use serde_json::{Value as Json, json};
 use std::ffi::{CString, c_char};
@@ -11,6 +12,8 @@ struct Request {
     entry: String,
     args: Option<Vec<Json>>,
     flat_args: Option<Vec<u64>>,
+    #[serde(default)]
+    hints: Vec<HintEntry>,
 }
 fn execute_request(bytes: &[u8]) -> Result<Json, String> {
     let request: Request =
@@ -28,9 +31,9 @@ fn execute_request(bytes: &[u8]) -> Result<Json, String> {
                 .zip(&args)
                 .map(|(t, v)| t.read_json(v))
                 .collect::<Result<Vec<_>, _>>()?;
-            program.execute_values(&request.entry, &values)
+            program.execute_values_with_hints(&request.entry, &values, &request.hints)
         }
-        (None, Some(args)) => program.execute(&request.entry, args),
+        (None, Some(args)) => program.execute_with_hints(&request.entry, args, &request.hints),
         _ => return Err("supply exactly one of args and flat_args".into()),
     }
     .map_err(|e| e.to_string())?;
@@ -48,6 +51,7 @@ fn execute_request(bytes: &[u8]) -> Result<Json, String> {
             json!({
                 "function": input.function, "name": program.callable_name(input.function),
                 "args": input.args, "output": output.output, "multiplicity": output.multiplicity,
+                "hints": output.hints,
             })
         })
         .collect::<Vec<_>>();
@@ -115,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn hint_panic_is_an_error_at_the_ffi_boundary() {
+    fn missing_hint_is_an_error_at_the_ffi_boundary() {
         let field = json!({"kind":"field"});
         let response = call(&json!({
             "program": {
@@ -127,12 +131,7 @@ mod tests {
             },
             "entry":"main", "args":[7]
         }));
-        assert!(
-            response["error"]
-                .as_str()
-                .unwrap()
-                .contains("keyed nondeterminism provider")
-        );
+        assert!(response["error"].as_str().unwrap().contains("missing hint"));
     }
 
     #[test]

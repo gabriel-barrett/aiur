@@ -46,3 +46,7 @@ lean_exe aiur_execution where
 lean_exe execution_tests where
   root := `Examples.ExecutionChecks
   moreLinkObjs := #[execution_o, aiur_rs]
+
+lean_exe aiur_hints where
+  root := `Examples.ExecutionHints
+  moreLinkObjs := #[execution_o, aiur_rs]

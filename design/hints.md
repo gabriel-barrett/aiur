@@ -5,6 +5,13 @@ tree soundness, and acyclic memoized soundness. Provider state and dedicated
 internal or external hint functions remain future executor work. A separate
 external-I/O feature is not needed for the language formalization.
 
+The Rust executor now consumes [Lean-defined hint data](execution.md#lean-defined-hint-data):
+an array of structured `(expected type, key, output)` triples, checked and
+flattened in Lean, then indexed in Rust for a single execution. Consumed answers
+are retained in query records. This data interface does not change the source
+predicate or introduce committed circuit tables. Dedicated computational hint
+operations and stateful channels remain future work.
+
 ## Source syntax and typing
 
 ```rust

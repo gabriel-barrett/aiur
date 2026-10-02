@@ -1,5 +1,6 @@
 import Aiur.Modules.Frontend
 import Aiur.Execution
+import AiurTests.ExecutionHints
 import Mathlib.Algebra.Field.ZMod
 
 open Aiur
@@ -157,6 +158,7 @@ def run : IO Unit := do
   check (big.output == #[18446744069414584320]) "UInt64 FFI value was rounded"
   let squared ← IO.ofExcept (← large.runFlat "Large::square" #[18446744069414584320])
   check (squared.output == #[1]) "Goldilocks field multiplication"
+  AiurExecutionHintTests.run
   IO.println "Passed execution bytecode, Rust FFI, memoization, ROM, maps, structured IO and native comparison checks."
 
 end AiurExecutionTests

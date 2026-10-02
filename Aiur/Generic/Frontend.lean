@@ -187,8 +187,11 @@ partial def expr (params : List String) (s : Syntax) : Except String (Expr Nat) 
   if k == `choice then
     -- A let followed by a trailing statement has both an expression parse
     -- and a statement parse. Preserve the lexical let scope in the latter.
-    let selected := s.getArgs.find? fun child =>
-      child.getKind == ``bodyLet || child.getKind == ``bodyLetTyped || child.getKind == ``bodySequence
+    -- Prefer the binding before a sequence whose first expression might itself
+    -- be a shorter let. Otherwise `let x = ...; check(x); x` loses x's scope.
+    let selected := (s.getArgs.find? fun child =>
+      child.getKind == ``bodyLet || child.getKind == ``bodyLetTyped).orElse fun _ =>
+        s.getArgs.find? (·.getKind == ``bodySequence)
     expr params (selected.getD (nativeChoice s))
   else if k == ``bodyTail then expr params s[0]
   else if k == ``bodyEnd then

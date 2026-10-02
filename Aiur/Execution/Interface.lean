@@ -1,4 +1,5 @@
 import Aiur.Execution.Compile
+import Aiur.Execution.Data
 
 namespace Aiur.Execution
 
@@ -61,6 +62,7 @@ def IOType.ofSource (p : Generic.Program α) (opaqueNames : List String) :
 structure Export (F : Type) where
   bytecode : Bytecode F
   interfaces : List Interface
+  dataTypes : DataTypes := {}
   deriving Repr, BEq
 
 end Aiur.Execution
@@ -81,6 +83,6 @@ def Prepared.exportExecution [NatCast F] [Zero F] [DecidableEq F]
         s!"entry {entry.external} has no public IO representation"
     let output := Execution.IOType.ofSource source opaqueNames 1024 fn.result
     return { name := entry.external, inputs, output : Execution.Interface }
-  return ⟨code, interfaces⟩
+  return ⟨code, interfaces, Execution.DataTypes.ofSource source opaqueNames⟩
 
 end Aiur.Modules
