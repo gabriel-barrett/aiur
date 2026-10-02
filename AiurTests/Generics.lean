@@ -129,6 +129,23 @@ def cacheRejected (roots : List String) : Bool :=
   let s ← Generic.prepare (cached.toField Rat)
   return (← Generic.specialize s ["first"]).program.functions.length).toOption.isNone
 
+-- An ordinary bridge must not hide a change of generic arguments. The check
+-- starts at every generic root, even when no public entry reaches that root.
+def ordinaryBridge : Generic.Program Nat := { functions := [
+  { name := "poly", typeParams := ["T"], params := [], result := .field,
+    body := .call "bridge" (some []) [] },
+  { name := "bridge", params := [], result := .field,
+    body := .call "poly" (some [.field]) [] }] }
+#guard (Generic.checkGenericCycles ordinaryBridge).toOption.isNone
+
+-- Regression for IxVM's large monomorphic call graph: repeated call sites
+-- create exponentially many paths, but cannot change any type argument.
+def ordinaryFanout : Generic.Program Nat := { functions := (List.range 32).map fun i =>
+  { name := s!"f{i}", params := [], result := .field,
+    body := .binary .add (.call s!"f{(i+1)%32}" (some []) [])
+      (.call s!"f{(i+1)%32}" (some []) []) } }
+#guard Generic.checkGenericCycles ordinaryFanout == .ok ()
+
 def mapped : Generic.Program Nat := aiur% "
 enum Box<T> { New(T) }
 table keys: (Box<Field>,) { (Box::New(1),), (Box::New(2),) }

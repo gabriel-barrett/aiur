@@ -567,7 +567,11 @@ def checkGenericCycles (p : Program α) : Except String Unit := do
           return
         let types ← arguments fn.typeParams key.types
         (sourceCalls types fn.body).forM (visit fuel (key :: path))
-  p.functions.forM fun fn =>
+  -- Only a generic function can be revisited with different type arguments.
+  -- Every such function is checked from its own symbolic root, including paths
+  -- through ordinary functions. Starting again at every ordinary function adds
+  -- no check, but enumerates exponentially many paths in large recursive code.
+  (p.functions.filter (fun fn => !fn.typeParams.isEmpty)).forM fun fn =>
     visit (p.functions.length + 1) [] ⟨fn.name, fn.typeParams.map Ty.param⟩
 
 /-- Only edges between mandatory-inline functions participate in this check.
