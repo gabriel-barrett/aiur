@@ -59,7 +59,7 @@ def Export.run (exported : Export (ZMod p)) [NeZero p] (entry : String) (args : 
   match (do
     let program ← exported.toJson p ZMod.val
     let hints ← exported.prepareHints hints
-    return (program, Lean.toJson (hints.map (FlatHintEntry.toJson ZMod.val)))) with
+    return (program, hintsJson ZMod.val hints)) with
   | .error error => return .error error
   | .ok (program, hints) => executeRequest program entry "args" (Lean.toJson args) hints
 
@@ -70,7 +70,7 @@ def Export.runFlat (exported : Export (ZMod p)) [NeZero p] (entry : String) (arg
   match (do
     let program ← exported.toJson p ZMod.val
     let hints ← exported.prepareHints hints
-    return (program, Lean.toJson (hints.map (FlatHintEntry.toJson ZMod.val)))) with
+    return (program, hintsJson ZMod.val hints)) with
   | .error error => return .error error
   | .ok (program, hints) => executeRequest program entry "flat_args" (Lean.toJson args) hints
 

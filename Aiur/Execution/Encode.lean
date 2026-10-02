@@ -69,6 +69,11 @@ def FlatHintEntry.toJson (encode : F → Nat) (entry : FlatHintEntry F) : Json :
   Json.mkObj [("type", typeJson entry.type), ("key_type", typeJson entry.keyType),
     ("key", Lean.toJson (entry.key.map encode)), ("output", Lean.toJson (entry.output.map encode))]
 
+/-- Large witness datasets must not rely on specialization of Array.map's
+generic monadic implementation. Build the JSON array with a direct fold. -/
+def hintsJson (encode : F → Nat) (entries : Array (FlatHintEntry F)) : Json :=
+  .arr (entries.foldl (fun out entry => out.push (entry.toJson encode)) #[])
+
 /-- Versioned data transported by the FFI. The initial Rust field backend
 supports primes fitting UInt64; the bytecode compiler itself is field-generic. -/
 def Export.toJson (exported : Export F) (modulus : Nat) (encode : F → Nat) : Except String Json := do

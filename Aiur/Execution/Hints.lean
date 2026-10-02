@@ -76,19 +76,30 @@ decreasing_by
 
 end DataTypes
 
+private def Export.prepareHint [NatCast F] [Zero F] (exported : Export F)
+    (entry : HintEntry F) : Except String (FlatHintEntry F) := do
+  let expected ← exported.dataTypes.inputType entry.type
+  let (keyType, key) ← exported.dataTypes.value entry.key
+  let (actual, output) ← exported.dataTypes.value entry.output
+  if expected != actual then throw "hint output type mismatch"
+  let keyLayout ← (exported.bytecode.enums.layout keyType.toCore).mapError reprStr
+  let outputLayout ← (exported.bytecode.enums.layout expected.toCore).mapError reprStr
+  let key ← Compiler.need (keyLayout.encode key.toValue) "cannot encode hint key"
+  let output ← Compiler.need (outputLayout.encode output.toValue) "cannot encode hint output"
+  return ⟨expected.toCore, keyType.toCore, key, output⟩
+
 /-- Prepare per-execution witness data in Lean. Rust validates the transport
-again and builds the index, coalescing identical rows and rejecting conflicts. -/
+again and builds the index, coalescing identical rows and rejecting conflicts.
+Use an explicit tail loop: the generic Array.mapM implementation can retain a
+native continuation frame per row when invoked through the polymorphic FFI. -/
 def Export.prepareHints [NatCast F] [Zero F] (exported : Export F)
-    (entries : Array (HintEntry F)) : Except String (Array (FlatHintEntry F)) := do
-  entries.mapM fun entry => do
-    let expected ← exported.dataTypes.inputType entry.type
-    let (keyType, key) ← exported.dataTypes.value entry.key
-    let (actual, output) ← exported.dataTypes.value entry.output
-    if expected != actual then throw "hint output type mismatch"
-    let keyLayout ← (exported.bytecode.enums.layout keyType.toCore).mapError reprStr
-    let outputLayout ← (exported.bytecode.enums.layout expected.toCore).mapError reprStr
-    let key ← Compiler.need (keyLayout.encode key.toValue) "cannot encode hint key"
-    let output ← Compiler.need (outputLayout.encode output.toValue) "cannot encode hint output"
-    return ⟨expected.toCore, keyType.toCore, key, output⟩
+    (entries : Array (HintEntry F)) : Except String (Array (FlatHintEntry F)) :=
+  let rec go : List (HintEntry F) → Array (FlatHintEntry F) → Except String (Array (FlatHintEntry F))
+    | [], acc => .ok acc
+    | entry :: rest, acc =>
+      match exported.prepareHint entry with
+      | .error error => .error error
+      | .ok value => go rest (acc.push value)
+  go entries.toList #[]
 
 end Aiur.Execution

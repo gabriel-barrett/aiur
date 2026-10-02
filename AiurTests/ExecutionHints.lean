@@ -77,6 +77,11 @@ def run : IO Unit := do
   expectError (← exported.runFlat "Witness::repeated" #[49] #[⟨.field, 49, 8⟩]) "incorrect preimage"
   let duplicate ← IO.ofExcept (← exported.runFlat "Witness::repeated" #[49] (data ++ data))
   check (duplicate.output == #[14]) "identical hint rows rejected"
+  -- A serialized IxVM fixture has more than 100,000 hint rows. Preparing the
+  -- dataset must not consume one native stack frame per entry.
+  let many : Array (Execution.HintEntry F) := Array.replicate 110000 ⟨.field, 49, 7⟩
+  let large ← IO.ofExcept (← exported.runFlat "Witness::repeated" #[49] many)
+  check (large.output == #[14]) "large hint dataset"
   expectError (← exported.runFlat "Witness::repeated" #[49] (data.push ⟨.field, 49, 90⟩)) "conflicting hint"
 
   let keys : Array (Execution.HintEntry F) := #[
