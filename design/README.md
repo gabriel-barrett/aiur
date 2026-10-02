@@ -55,6 +55,8 @@ design, and keep proposals and unanswered questions explicitly separate.
   field specialization, checking, evaluation defaults, and validation.
 - [Rust execution](execution.md): execution bytecode FFI, Lean-defined hint data, memoized query records,
   interned ROM, structured entry IO, and deferred witness generation.
+- [IxVM stage-one experiment](ixvm-stage1.md): ported checker, serialized
+  `Nat.add_comm` fixture, hash-bound typed hints, and execution/rejection tests.
 - [TODO](todo.md): proposed extensions from the ix comparison, remaining proof
   and backend work, deliberate differences, and deferred decisions.
 - [Circuits](circuits.md): chips, polynomial equations, selector constraints,

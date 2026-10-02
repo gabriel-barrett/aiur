@@ -145,6 +145,10 @@ without admitted proof steps.
 - [x] Define structured hint data in Lean, validate and flatten it for Rust's
   per-execution typed map, and retain consumed answers in memoized query records.
   Keys evaluate normally; missing entries and conflicting duplicates are errors.
+- [x] Exercise the executor with an [IxVM stage-one port](ixvm-stage1.md):
+  verify a serialized `Nat.add_comm` and its transitive constant dependencies,
+  using Lean-defined data hints and ordinary calls/allocations. Check rejection
+  of corrupted bytes, wrong hashes, absent hints, and a correctly hashed bad proof.
 - [ ] Add dedicated computational hint operations when needed. The executor
   computes them; the source predicate and circuit treat results as ordinary
   well-formed nondeterministic inputs. Stateful hint channels remain deferred.

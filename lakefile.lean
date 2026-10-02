@@ -50,3 +50,8 @@ lean_exe execution_tests where
 lean_exe aiur_hints where
   root := `Examples.ExecutionHints
   moreLinkObjs := #[execution_o, aiur_rs]
+
+lean_exe ixvm_stage1 where
+  root := `Examples.IxVM
+  supportInterpreter := true
+  moreLinkObjs := #[execution_o, aiur_rs]
