@@ -1,7 +1,7 @@
 //! Memoized evaluation. A query is (callable ID, flat arguments); its first
 //! completed output is reused. Counts are integers, never field elements.
 use crate::bytecode::{Binary as BinOp, CheckedProgram, Instruction, Type};
-use crate::hints::{HintAnswer, HintEntry, HintKey};
+use crate::hints::{HintAnswer, HintEntry, HintKey, PreparedHints};
 use crate::value::Value;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -66,7 +66,7 @@ struct Machine<'a> {
     pending: HashSet<QueryInput>,
     record: Execution,
     memory_index: HashMap<Cell, u64>,
-    hints: HashMap<HintKey, Vec<u64>>,
+    hints: &'a HashMap<HintKey, Vec<u64>>,
 }
 impl Frame {
     fn read(&self, regs: &[usize]) -> Vec<u64> {
@@ -102,24 +102,8 @@ impl CheckedProgram {
         self.inputs[selected.function]
             .validate(&args, self.field)
             .map_err(error)?;
-        let hints = crate::hints::prepare(self, hints).map_err(error)?;
-        Machine {
-            program: self,
-            frames: vec![],
-            pending: HashSet::new(),
-            memory_index: HashMap::new(),
-            hints,
-            record: Execution {
-                output: vec![],
-                queries: HashMap::new(),
-                memory: vec![],
-                instructions: 0,
-            },
-        }
-        .run(QueryInput {
-            function: selected.function,
-            args,
-        })
+        let hints = self.prepare_hints(hints).map_err(error)?;
+        hints.execute(entry, args)
     }
 
     pub fn execute_values(&self, entry: &str, args: &[Value]) -> Result<Execution, ExecutionError> {
@@ -155,6 +139,38 @@ impl CheckedProgram {
             .as_ref()
             .ok_or("entry result contains opaque types or pointers")?;
         ty.unflatten(&result.output, self.field)
+    }
+}
+
+impl PreparedHints<'_> {
+    /// Execute with previously validated hints and a fresh query record/ROM.
+    pub fn execute(&self, entry: &str, args: Vec<u64>) -> Result<Execution, ExecutionError> {
+        let error = |message| ExecutionError {
+            function: entry.into(),
+            instruction: 0,
+            message,
+        };
+        let selected = self.program.entry(entry).map_err(error)?;
+        self.program.inputs[selected.function]
+            .validate(&args, self.program.field)
+            .map_err(error)?;
+        Machine {
+            program: self.program,
+            frames: vec![],
+            pending: HashSet::new(),
+            memory_index: HashMap::new(),
+            hints: &self.index,
+            record: Execution {
+                output: vec![],
+                queries: HashMap::new(),
+                memory: vec![],
+                instructions: 0,
+            },
+        }
+        .run(QueryInput {
+            function: selected.function,
+            args,
+        })
     }
 }
 impl Machine<'_> {

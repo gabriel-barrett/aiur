@@ -34,6 +34,34 @@ lake exe ixvm_stage1 transitive
 The Rust runner also accepts `primitives`, `serde`, `constant`, `transitive`, or
 `negative` in place of `all`.
 
+## Execution benchmark
+
+To compare execution against sibling Ix, using the same fixture and transitive
+entrypoint (no claim envelope):
+
+```sh
+# Export /tmp/ixvm.json once using the command above.
+AIUR_BENCH_CPU=2 bash tools/ixvm/benchmark.sh /tmp/ixvm.json 20
+```
+
+Choose an available CPU, or omit `AIUR_BENCH_CPU` to let the OS schedule the
+processes. The script uses Rust 1.98.1, release optimization and thin LTO for
+both runtimes. It builds Ix's bytecode and generated native code from the same
+Lean export without modifying the sibling checkout. Both old backends and the
+new VM return `()`; the old backends also compare per-function and per-memory
+query counts/multiplicities after every run.
+
+There are three warmups followed by the requested number of measured runs.
+Every run has fresh query caches and ROM. Timing includes execution and query
+collection, but excludes loading/validating programs, preparing hint indexes,
+printing/counting results, and dropping the returned record. No circuit traces
+or proofs are generated. Raw samples are saved in the printed output directory.
+
+For just the new executor, `ixvm_stage1 PACKAGE.json bench 20` prints JSON
+samples. It prepares hints once through `CheckedProgram::prepare_hints`; the
+resulting immutable data is bound to its program and can start independent
+executions without sharing query caches or pointer addresses.
+
 ## Fixture and adaptation
 
 `fixtures/nat-add-comm.json` is checked in, so normal builds do not depend on

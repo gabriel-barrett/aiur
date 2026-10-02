@@ -19,6 +19,22 @@ pub(crate) struct HintKey {
     pub key: Vec<u64>,
 }
 
+/// Immutable, validated witness data tied to the program that defines its
+/// layouts and field. Reusing it never reuses execution caches or ROM pointers.
+pub struct PreparedHints<'a> {
+    pub(crate) program: &'a CheckedProgram,
+    pub(crate) index: HashMap<HintKey, Vec<u64>>,
+}
+
+impl CheckedProgram {
+    pub fn prepare_hints(&self, entries: &[HintEntry]) -> Result<PreparedHints<'_>, String> {
+        Ok(PreparedHints {
+            program: self,
+            index: prepare(self, entries)?,
+        })
+    }
+}
+
 /// An answer actually consumed by this query's first successful execution.
 /// The query's function ID and this instruction identify its bytecode site.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

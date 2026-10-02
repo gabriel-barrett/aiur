@@ -1,0 +1,19 @@
+[package]
+name = "ixvm-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Standalone: the old executor is not a dependency of the new Aiur runtime.
+[workspace]
+
+[dependencies]
+aiur = { path = "../../../ix/crates/aiur" }
+multi-stark = { git = "https://github.com/argumentcomputer/multi-stark.git", rev = "9a90612286625b6cec59516532d4501677cf468c" }
+serde = "1"
+serde_json = { version = "1", features = ["unbounded_depth"] }
+stacker = "0.1"
+
+[profile.release]
+lto = "thin"
+panic = "abort"

@@ -79,6 +79,15 @@ fn dynamic_keys_and_consumed_answers_belong_to_cached_queries() {
     let entries = [row(4, 5), row(5, 6), row(6, 7)];
     let result = p.execute_with_hints("main", vec![4], &entries).unwrap();
     assert_eq!(result.output, vec![7]);
+    // Reusing validated advice must not warm the query cache. Each invocation
+    // still executes the same instructions and records its own multiplicities.
+    let prepared = p.prepare_hints(&entries).unwrap();
+    for _ in 0..2 {
+        let repeated = prepared.execute("main", vec![4]).unwrap();
+        assert_eq!(repeated.output, result.output);
+        assert_eq!(repeated.queries, result.queries);
+        assert_eq!(repeated.instructions, result.instructions);
+    }
     let child = &result.queries[&QueryInput {
         function: 0,
         args: vec![4],

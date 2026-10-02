@@ -126,3 +126,60 @@ The polymorphic FFI path also retained native stack frames while processing a
 large hint array. Hint preparation now uses an explicit tail loop, and hint JSON
 uses a direct array fold. A 110,000-row regression exercises the ordinary FFI
 API. The direct Lean run and package replay produce identical execution counts.
+
+## Execution-only comparison
+
+`tools/ixvm/benchmark.sh` compares the new VM with both Ix execution backends.
+`ExportBenchmark.lean`, run under Ix's toolchain, adds a bytecode wrapper taking
+32 digest bytes, storing them, and calling `run_check_transitive`. This is the
+same entry behavior as the new port. Neither side checks the production claim
+envelope. Ix's bytecode interpreter and native Rust generator consume that same
+export; the standalone `tools/ixvm-bench` harness uses the actual Ix runtime.
+
+Inputs are the checked-in `Nat.add_comm` fixture, including its transitive
+dependencies. The benchmark prepares programs and read-only hint data before
+timing. Each sample starts with a fresh query record and ROM, and ends when the
+executor returns its result and query record. Results checks, statistics,
+printing, and dropping that record happen afterward. There is no circuit
+compilation, trace generation, proving, or FFI transport in the measured region.
+
+The new runtime exposes `CheckedProgram::prepare_hints` to separate validation
+and indexing of static advice from execution. `PreparedHints` retains a borrow
+of the specific checked program, so it cannot be used with another program's
+field or layouts. Sharing this immutable input does not share execution state;
+a regression checks that repeated runs execute the same instruction count and
+produce the same query multiplicities.
+
+Measured 2026-10-02 on an AMD Ryzen 7 8845HS, pinned to CPU 2. Both harnesses
+use Rust 1.98.1, release optimization, thin LTO and `panic=abort`. Each engine
+has three warmups followed by 20 fresh executions; the two Ix engines alternate
+order. Builds finish before measurement starts.
+
+| Engine | Median | Minimum–maximum |
+| --- | ---: | ---: |
+| Ix, generated native Rust | 196.39 ms | 196.07–205.36 ms |
+| Ix, bytecode interpreter | 214.05 ms | 213.56–215.04 ms |
+| New Aiur, bytecode interpreter | 347.87 ms | 345.18–355.77 ms |
+
+The new executor takes about 1.77 times the native Ix time, or 1.63 times its
+bytecode interpreter time, for this fixture. A preceding independent batch
+gave medians of 195.63, 213.57, and 345.60 ms respectively. These are current
+implementation comparisons, not a controlled isolation of interpreter overhead:
+the port replaces unconstrained helpers and pointer shortcuts with ordinary
+Aiur code and uses generic maps for byte operations.
+
+Both Ix backends agree on per-function/per-memory query counts and
+multiplicities: 67,115 function queries and 23,068 ROM cells. The new port
+records 206,930 function queries, 101,048 map queries, and 23,134 ROM cells,
+with 4,961,300 instructions and 8,671 saved hint answers. Ix's byte gadget
+queries are separate from its function queries, so those query totals should
+not be compared as the same unit. New Aiur's hint preparation took 39.17 ms
+in this batch and is excluded from the table.
+
+The [raw samples and metadata](benchmarks/ixvm-stage1-execution.json) record
+the input hashes and compiler settings. Reproduce with:
+
+```sh
+lake exe ixvm_stage1 export /tmp/ixvm.json
+AIUR_BENCH_CPU=2 bash tools/ixvm/benchmark.sh /tmp/ixvm.json 20
+```
