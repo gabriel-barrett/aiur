@@ -183,3 +183,8 @@ the input hashes and compiler settings. Reproduce with:
 lake exe ixvm_stage1 export /tmp/ixvm.json
 AIUR_BENCH_CPU=2 bash tools/ixvm/benchmark.sh /tmp/ixvm.json 20
 ```
+
+The follow-up [execution profile](ixvm-execution-profile.md) identifies query
+hashing and repeated field inversion as major costs in the new executor. It
+also finds substantial sensitivity to transparent huge pages in Ix's arena
+allocator; the timings above describe this host's default allocation policy.

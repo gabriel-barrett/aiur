@@ -62,6 +62,11 @@ samples. It prepares hints once through `CheckedProgram::prepare_hints`; the
 resulting immutable data is bound to its program and can start independent
 executions without sharing query caches or pointer addresses.
 
+The [execution profile](../../design/ixvm-execution-profile.md) breaks down
+query bookkeeping and arithmetic costs, records isolated optimization
+experiments, and explains how to enable the optional CPU sampler. Profiling
+covers the same execution interval as this benchmark.
+
 ## Fixture and adaptation
 
 `fixtures/nat-add-comm.json` is checked in, so normal builds do not depend on

@@ -1,0 +1,99 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -9,6 +9,7 @@
+ # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+ [dependencies]
++rustc-hash = "=2.1.2"
+ serde = { version = "1", features = ["derive"] }
+ serde_json = "1"
+
+@@ -17,6 +18,9 @@
+
+ [features]
+ default = []
++fx-query-hash = []
++fx-pending-hash = []
++memo-inverses = []
+
+ # Similar to `release`, but preserves debug info
+ [profile.dev-ci]
+--- a/src/execute.rs
++++ b/src/execute.rs
+@@ -4,8 +4,17 @@
+ use crate::hints::{HintAnswer, HintEntry, HintKey, PreparedHints};
+ use crate::value::Value;
+ use serde::Serialize;
+-use std::collections::{HashMap, HashSet};
++use std::collections::HashMap;
+ use std::fmt;
++
++#[cfg(feature = "fx-query-hash")]
++type CompletedQueries = rustc_hash::FxHashMap<QueryInput, QueryOutput>;
++#[cfg(not(feature = "fx-query-hash"))]
++type CompletedQueries = HashMap<QueryInput, QueryOutput>;
++#[cfg(feature = "fx-pending-hash")]
++type PendingQueries = rustc_hash::FxHashSet<QueryInput>;
++#[cfg(not(feature = "fx-pending-hash"))]
++type PendingQueries = std::collections::HashSet<QueryInput>;
+
+ #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+ pub struct QueryInput {
+@@ -31,7 +40,7 @@
+ #[derive(Clone, Debug)]
+ pub struct Execution {
+     pub output: Vec<u64>,
+-    pub queries: HashMap<QueryInput, QueryOutput>,
++    pub queries: CompletedQueries,
+     /// Addresses are indices in this heterogeneous, interned ROM.
+     pub memory: Vec<MemoryEntry>,
+     pub instructions: u64,
+@@ -63,9 +72,11 @@
+ struct Machine<'a> {
+     program: &'a CheckedProgram,
+     frames: Vec<Frame>,
+-    pending: HashSet<QueryInput>,
++    pending: PendingQueries,
+     record: Execution,
+     memory_index: HashMap<Cell, u64>,
++    #[cfg(feature = "memo-inverses")]
++    inverses: HashMap<u64, Option<u64>>,
+     hints: &'a HashMap<HintKey, Vec<u64>>,
+ }
+ impl Frame {
+@@ -157,12 +168,14 @@
+         Machine {
+             program: self.program,
+             frames: vec![],
+-            pending: HashSet::new(),
++            pending: PendingQueries::default(),
+             memory_index: HashMap::new(),
++            #[cfg(feature = "memo-inverses")]
++            inverses: HashMap::new(),
+             hints: &self.index,
+             record: Execution {
+                 output: vec![],
+-                queries: HashMap::new(),
++                queries: CompletedQueries::default(),
+                 memory: vec![],
+                 instructions: 0,
+             },
+@@ -283,9 +296,15 @@
+                         BinOp::Add => program.field.add(a, b),
+                         BinOp::Sub => program.field.sub(a, b),
+                         BinOp::Mul => program.field.mul(a, b),
+-                        BinOp::Div => match program.field.inverse(b) {
+-                            Some(inv) => program.field.mul(a, inv),
+-                            None => return Err(self.error("division by zero")),
++                        BinOp::Div => {
++                            #[cfg(feature = "memo-inverses")]
++                            let inverse = *self.inverses.entry(b).or_insert_with(|| program.field.inverse(b));
++                            #[cfg(not(feature = "memo-inverses"))]
++                            let inverse = program.field.inverse(b);
++                            match inverse {
++                                Some(inv) => program.field.mul(a, inv),
++                                None => return Err(self.error("division by zero")),
++                            }
+                         },
+                     };
+                     frame.registers[*dest] = result;

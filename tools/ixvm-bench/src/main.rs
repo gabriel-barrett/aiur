@@ -10,6 +10,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{error::Error, time::Instant};
 
+#[path = "../../ixvm/profile.rs"]
+mod profile;
+
 include!(concat!(env!("OUT_DIR"), "/native_module.rs"));
 
 fn n(v: &Value) -> usize {
@@ -191,6 +194,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let entry = n(&data["entry"]);
     let args = gs(&fixture["address"]);
     let mut io = witness(&fixture);
+    let profiler = profile::Profiler::from_env()?;
     let mut times = [vec![], vec![]];
     let mut expected = None;
     let mut query_counts = Value::Null;
@@ -198,6 +202,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Alternate order to reduce systematic warm-cache/order bias.
         for mode in [i % 2, 1 - i % 2] {
             let args = args.clone();
+            let profile = if i >= 3 {
+                profiler
+                    .as_ref()
+                    .map(|p| {
+                        p.start(
+                            if mode == 0 {
+                                "ix-native"
+                            } else {
+                                "ix-bytecode"
+                            },
+                            i - 3,
+                        )
+                    })
+                    .transpose()?
+            } else {
+                None
+            };
             let start = Instant::now();
             let (record, output) = if mode == 0 {
                 let mut record = QueryRecord::new(&program);
@@ -207,6 +228,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 program.execute(entry, args, &mut io)?
             };
             let seconds = start.elapsed().as_secs_f64();
+            drop(profile);
             assert!(output.is_empty());
             let observed = counts(&record);
             if let Some(expected) = &expected {

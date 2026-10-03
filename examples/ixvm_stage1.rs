@@ -4,6 +4,9 @@ use aiur::{Program, bytecode::CheckedProgram, execute::Execution, hints::HintEnt
 use serde::Deserialize;
 use std::{error::Error, time::Instant};
 
+#[path = "../tools/ixvm/profile.rs"]
+mod profile;
+
 #[derive(Deserialize)]
 struct Package {
     program: Program,
@@ -50,13 +53,23 @@ fn benchmark(
     let start = Instant::now();
     let hints = program.prepare_hints(&package.hints)?;
     let preparation_seconds = start.elapsed().as_secs_f64();
+    let profiler = profile::Profiler::from_env()?;
     let mut times = Vec::with_capacity(samples);
     let mut counts = None;
     for i in 0..samples + 3 {
         let args = package.address.clone();
+        let profile = if i >= 3 {
+            profiler
+                .as_ref()
+                .map(|p| p.start("new-aiur", i - 3))
+                .transpose()?
+        } else {
+            None
+        };
         let start = Instant::now();
         let result = hints.execute("IxVM::verify_transitive", args)?;
         let seconds = start.elapsed().as_secs_f64();
+        drop(profile);
         assert!(result.output.is_empty());
         let observed = (
             result.instructions,

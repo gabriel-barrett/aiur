@@ -1,0 +1,1316 @@
+{
+  "recorded_utc": "2026-10-03T12:28:47.511784+00:00",
+  "runtime_commit": "1dc8b7c1fe1ee5ac44d45fde8a9e2699f9edf4bc",
+  "ix_commit": "a1c6badfae6ddbb5e7afff53bb3e67bf3f753b4f",
+  "cpu": "AMD Ryzen 7 8845HS",
+  "pinned_cpu": 2,
+  "rust": "1.98.1",
+  "release": {
+    "opt_level": 3,
+    "lto": "thin",
+    "panic": "abort"
+  },
+  "profile_build_extra": {
+    "debug": 2,
+    "force_frame_pointers": true
+  },
+  "gperftools": "2.15",
+  "requested_sampling_hz": 1000,
+  "profile_runs_per_engine": 50,
+  "fixture_sha256": "c21969db668c131fa3c06cd52c05691cf0b1382d70340ef5bfac5a74a7c7b634",
+  "execution_package_sha256": "2ea98511ab485085706bbd7833ad4b525484da9dbe8f268d1a1ca6e19501d6ad",
+  "profile": {
+    "samples": 4392,
+    "exclusive": {
+      "completed_query_map": {
+        "samples": 1247,
+        "percent": 28.392531876138435
+      },
+      "field_inverse": {
+        "samples": 927,
+        "percent": 21.10655737704918
+      },
+      "hint_lookup": {
+        "samples": 18,
+        "percent": 0.4098360655737705
+      },
+      "layout_validation": {
+        "samples": 126,
+        "percent": 2.8688524590163933
+      },
+      "other": {
+        "samples": 1312,
+        "percent": 29.872495446265937
+      },
+      "pending_query_set": {
+        "samples": 315,
+        "percent": 7.172131147540983
+      },
+      "rom_interner": {
+        "samples": 139,
+        "percent": 3.1648451730418943
+      },
+      "static_table_lookup": {
+        "samples": 308,
+        "percent": 7.012750455373406
+      }
+    },
+    "inclusive_overlaps_exclusive": {
+      "allocator": {
+        "samples": 564,
+        "percent": 12.841530054644808
+      },
+      "query_key_hashing": {
+        "samples": 1008,
+        "percent": 22.950819672131146
+      }
+    }
+  },
+  "ix_profile": {
+    "native_samples": 2464,
+    "bytecode_samples": 2684,
+    "native_query_insert_inclusive_samples": 2271
+  },
+  "experiments": {
+    "query_hasher": {
+      "summary": [
+        {
+          "variant": "baseline",
+          "samples": 30,
+          "median_ms": 361.819137,
+          "min_ms": 344.412507,
+          "max_ms": 437.508575
+        },
+        {
+          "variant": "fx_query",
+          "samples": 30,
+          "median_ms": 303.636173,
+          "min_ms": 299.121933,
+          "max_ms": 370.093825
+        },
+        {
+          "variant": "fx_both",
+          "samples": 30,
+          "median_ms": 300.3648835,
+          "min_ms": 286.27919499999996,
+          "max_ms": 324.11253
+        }
+      ],
+      "runs": [
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.04493404,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.358096909,
+            0.350309154,
+            0.349556606,
+            0.409888293,
+            0.406334218,
+            0.437508575,
+            0.409745929,
+            0.35894197,
+            0.365308503,
+            0.35003698
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.04451976,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.319973847,
+            0.35096823,
+            0.323646341,
+            0.333886283,
+            0.300374351,
+            0.346250572,
+            0.370093825,
+            0.310941529,
+            0.299833025,
+            0.299429393
+          ],
+          "warmups": 3,
+          "variant": "fx_query",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.040788154,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.291761363,
+            0.309864189,
+            0.297014115,
+            0.313338694,
+            0.307690086,
+            0.297829862,
+            0.306129507,
+            0.295168716,
+            0.286279195,
+            0.310347195
+          ],
+          "warmups": 3,
+          "variant": "fx_both",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.046782136,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.301401289,
+            0.299973857,
+            0.311610594,
+            0.312314673,
+            0.302215773,
+            0.305015406,
+            0.30075591,
+            0.294882854,
+            0.299213302,
+            0.293050098
+          ],
+          "warmups": 3,
+          "variant": "fx_both",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.037444753,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.34791672,
+            0.355316762,
+            0.352435907,
+            0.369842868,
+            0.361989544,
+            0.36164873,
+            0.3590382,
+            0.376440021,
+            0.371418587,
+            0.382888675
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.038014951,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.324885425,
+            0.318145229,
+            0.316566725,
+            0.299121933,
+            0.302061636,
+            0.305145979,
+            0.301247175,
+            0.303201034,
+            0.311778847,
+            0.323258622
+          ],
+          "warmups": 3,
+          "variant": "fx_query",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.040343649,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.302696958,
+            0.302082476,
+            0.300176816,
+            0.301315129,
+            0.306785236,
+            0.304071312,
+            0.299275109,
+            0.299699406,
+            0.300137842,
+            0.300973695
+          ],
+          "warmups": 3,
+          "variant": "fx_query",
+          "batch": 2
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.038618513,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.32411253,
+            0.286918084,
+            0.296265726,
+            0.295924631,
+            0.289758311,
+            0.295723849,
+            0.301056799,
+            0.29829068,
+            0.30610342,
+            0.30369779
+          ],
+          "warmups": 3,
+          "variant": "fx_both",
+          "batch": 2
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.038742915,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.369412671,
+            0.344412507,
+            0.360168521,
+            0.347562291,
+            0.357028835,
+            0.347653801,
+            0.368258947,
+            0.378784138,
+            0.406373092,
+            0.379222734
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 2
+        }
+      ]
+    },
+    "inverse_cache": {
+      "summary": [
+        {
+          "variant": "baseline",
+          "samples": 30,
+          "median_ms": 435.60305099999994,
+          "min_ms": 416.748577,
+          "max_ms": 455.004183
+        },
+        {
+          "variant": "inverse_cache",
+          "samples": 30,
+          "median_ms": 348.6795255,
+          "min_ms": 329.28682599999996,
+          "max_ms": 365.248153
+        },
+        {
+          "variant": "fx_and_inverse",
+          "samples": 30,
+          "median_ms": 263.666859,
+          "min_ms": 253.20007300000003,
+          "max_ms": 274.74247099999997
+        }
+      ],
+      "runs": [
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.043782271,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.434905137,
+            0.439932409,
+            0.439528822,
+            0.455004183,
+            0.439013691,
+            0.439107407,
+            0.445711871,
+            0.431341544,
+            0.45286708,
+            0.43443942
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.051540385,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.358497455,
+            0.344130032,
+            0.34939359,
+            0.34365203,
+            0.35000768,
+            0.342252627,
+            0.351517151,
+            0.339316665,
+            0.362861607,
+            0.332070746
+          ],
+          "warmups": 3,
+          "variant": "inverse_cache",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.047516139,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.260394251,
+            0.265475723,
+            0.274372386,
+            0.27405059,
+            0.269239665,
+            0.268571455,
+            0.260330237,
+            0.263304281,
+            0.270854979,
+            0.256670486
+          ],
+          "warmups": 3,
+          "variant": "fx_and_inverse",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.047034397,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.253200073,
+            0.268588125,
+            0.26189743,
+            0.260844569,
+            0.263083561,
+            0.257953,
+            0.263854973,
+            0.263478745,
+            0.258804699,
+            0.253472215
+          ],
+          "warmups": 3,
+          "variant": "fx_and_inverse",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.045882864,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.425871686,
+            0.435543597,
+            0.433887689,
+            0.431562431,
+            0.437878371,
+            0.423770449,
+            0.426297677,
+            0.429110201,
+            0.436929086,
+            0.43711784
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.049140625,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.346058756,
+            0.348655911,
+            0.337239627,
+            0.34870314,
+            0.329286826,
+            0.363700808,
+            0.35211095,
+            0.361983539,
+            0.341562929,
+            0.349268195
+          ],
+          "warmups": 3,
+          "variant": "inverse_cache",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.045116325,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.333201694,
+            0.351225731,
+            0.353887457,
+            0.349846224,
+            0.349313831,
+            0.365248153,
+            0.338770286,
+            0.331165253,
+            0.346718713,
+            0.346863311
+          ],
+          "warmups": 3,
+          "variant": "inverse_cache",
+          "batch": 2
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.051201571,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.274742471,
+            0.259319323,
+            0.260448428,
+            0.272416479,
+            0.268811405,
+            0.268350273,
+            0.257422842,
+            0.266873323,
+            0.27252234,
+            0.271278252
+          ],
+          "warmups": 3,
+          "variant": "fx_and_inverse",
+          "batch": 2
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.053894626,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.416748577,
+            0.429748958,
+            0.451182231,
+            0.435662505,
+            0.435724694,
+            0.427952634,
+            0.439723091,
+            0.424528128,
+            0.420638188,
+            0.438985365
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 2
+        }
+      ]
+    },
+    "all_variants": {
+      "summary": [
+        {
+          "variant": "baseline",
+          "samples": 20,
+          "median_ms": 486.895136,
+          "min_ms": 463.841797,
+          "max_ms": 510.365392
+        },
+        {
+          "variant": "fx_query",
+          "samples": 20,
+          "median_ms": 416.824715,
+          "min_ms": 393.328182,
+          "max_ms": 441.29396199999996
+        },
+        {
+          "variant": "inverse_cache",
+          "samples": 20,
+          "median_ms": 438.22950849999995,
+          "min_ms": 393.97621399999997,
+          "max_ms": 504.39803800000004
+        },
+        {
+          "variant": "fx_both",
+          "samples": 20,
+          "median_ms": 394.505847,
+          "min_ms": 379.900439,
+          "max_ms": 433.88735899999995
+        },
+        {
+          "variant": "fx_and_inverse",
+          "samples": 20,
+          "median_ms": 303.35775600000005,
+          "min_ms": 277.819059,
+          "max_ms": 331.792716
+        }
+      ],
+      "runs": [
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.064312977,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.4925004,
+            0.487637857,
+            0.471473966,
+            0.49547925,
+            0.502568678,
+            0.486152415,
+            0.485259782,
+            0.499195863,
+            0.504476312,
+            0.493322737
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.055114631,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.409903576,
+            0.429889224,
+            0.415529717,
+            0.422162557,
+            0.430740634,
+            0.42804245,
+            0.426978416,
+            0.404543415,
+            0.409271219,
+            0.426534906
+          ],
+          "warmups": 3,
+          "variant": "fx_query",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.064134902,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.489434571,
+            0.504398038,
+            0.487410386,
+            0.477670073,
+            0.473278524,
+            0.496117996,
+            0.480899778,
+            0.469272715,
+            0.494737139,
+            0.463560986
+          ],
+          "warmups": 3,
+          "variant": "inverse_cache",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.059984112,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.393315738,
+            0.381564182,
+            0.391808233,
+            0.433887359,
+            0.391249217,
+            0.400096455,
+            0.4119388,
+            0.414963615,
+            0.379900439,
+            0.402399541
+          ],
+          "warmups": 3,
+          "variant": "fx_both",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.049126695,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.284762745,
+            0.293714186,
+            0.311612363,
+            0.292237539,
+            0.27977402,
+            0.302063764,
+            0.306401643,
+            0.308147272,
+            0.315493757,
+            0.306383092
+          ],
+          "warmups": 3,
+          "variant": "fx_and_inverse",
+          "batch": 0
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.064796735,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.331792716,
+            0.314648272,
+            0.292377364,
+            0.277819059,
+            0.303822393,
+            0.302893119,
+            0.315671955,
+            0.308221869,
+            0.302094239,
+            0.302686045
+          ],
+          "warmups": 3,
+          "variant": "fx_and_inverse",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.062794421,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.388264061,
+            0.4111438,
+            0.396950452,
+            0.391226981,
+            0.390002971,
+            0.38223695,
+            0.401923493,
+            0.395695956,
+            0.39942048,
+            0.38887977
+          ],
+          "warmups": 3,
+          "variant": "fx_both",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.058397203,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.398492241,
+            0.411540929,
+            0.403913222,
+            0.397603243,
+            0.394026858,
+            0.393976214,
+            0.400613985,
+            0.408613098,
+            0.404868059,
+            0.412898031
+          ],
+          "warmups": 3,
+          "variant": "inverse_cache",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.064780448,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.441293962,
+            0.419078546,
+            0.406956041,
+            0.420557903,
+            0.411885009,
+            0.402190079,
+            0.393328182,
+            0.396174133,
+            0.418119713,
+            0.404882938
+          ],
+          "warmups": 3,
+          "variant": "fx_query",
+          "batch": 1
+        },
+        {
+          "engine": "new-aiur-bytecode",
+          "function_queries": 206930,
+          "hint_preparation_seconds": 0.049020354,
+          "instructions": 4961300,
+          "map_queries": 101048,
+          "queries": 307978,
+          "query_uses": 708726,
+          "rom_cells": 23134,
+          "saved_hints": 8671,
+          "seconds": [
+            0.464158226,
+            0.483616879,
+            0.480594772,
+            0.510365392,
+            0.506606006,
+            0.481538655,
+            0.468165047,
+            0.482459418,
+            0.463841797,
+            0.493275152
+          ],
+          "warmups": 3,
+          "variant": "baseline",
+          "batch": 1
+        }
+      ]
+    }
+  },
+  "huge_pages": {
+    "default_policy": "always",
+    "method": "LD_PRELOAD library calling prctl(PR_SET_THP_DISABLE,1,0,0,0) in the benchmark process only",
+    "summary": [
+      {
+        "engine": "new-aiur-bytecode",
+        "thp": "default",
+        "samples": 16,
+        "median_ms": 492.1054285,
+        "min_ms": 480.987353,
+        "max_ms": 535.647216
+      },
+      {
+        "engine": "new-aiur-bytecode",
+        "thp": "disabled",
+        "samples": 16,
+        "median_ms": 511.8167025,
+        "min_ms": 475.625785,
+        "max_ms": 523.2654490000001
+      },
+      {
+        "engine": "ix-native",
+        "thp": "default",
+        "samples": 16,
+        "median_ms": 680.6786195,
+        "min_ms": 568.883765,
+        "max_ms": 749.109933
+      },
+      {
+        "engine": "ix-bytecode",
+        "thp": "default",
+        "samples": 16,
+        "median_ms": 692.688791,
+        "min_ms": 586.1656429999999,
+        "max_ms": 763.4616199999999
+      },
+      {
+        "engine": "ix-native",
+        "thp": "disabled",
+        "samples": 16,
+        "median_ms": 29.9947355,
+        "min_ms": 25.086902000000002,
+        "max_ms": 37.984622
+      },
+      {
+        "engine": "ix-bytecode",
+        "thp": "disabled",
+        "samples": 16,
+        "median_ms": 50.541461,
+        "min_ms": 46.449328,
+        "max_ms": 58.466863000000004
+      }
+    ],
+    "runs": [
+      {
+        "engine": "new-aiur-bytecode",
+        "function_queries": 206930,
+        "hint_preparation_seconds": 0.066028601,
+        "instructions": 4961300,
+        "map_queries": 101048,
+        "queries": 307978,
+        "query_uses": 708726,
+        "rom_cells": 23134,
+        "saved_hints": 8671,
+        "seconds": [
+          0.492148278,
+          0.480987353,
+          0.51337458,
+          0.535647216,
+          0.518935065,
+          0.526332981,
+          0.492655381,
+          0.493661699
+        ],
+        "warmups": 3,
+        "batch": 0,
+        "thp": "default"
+      },
+      {
+        "engine": "new-aiur-bytecode",
+        "function_queries": 206930,
+        "hint_preparation_seconds": 0.070813307,
+        "instructions": 4961300,
+        "map_queries": 101048,
+        "queries": 307978,
+        "query_uses": 708726,
+        "rom_cells": 23134,
+        "saved_hints": 8671,
+        "seconds": [
+          0.503224229,
+          0.523265449,
+          0.507842313,
+          0.51468545,
+          0.475625785,
+          0.500726172,
+          0.518001741,
+          0.522869518
+        ],
+        "warmups": 3,
+        "batch": 0,
+        "thp": "disabled"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-native",
+        "seconds": [
+          0.593982468,
+          0.611071409,
+          0.621374892,
+          0.582804133,
+          0.698207238,
+          0.692533355,
+          0.687261889,
+          0.5983745
+        ],
+        "warmups": 3,
+        "batch": 0,
+        "thp": "default"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-bytecode",
+        "seconds": [
+          0.636257214,
+          0.76346162,
+          0.706421217,
+          0.603555377,
+          0.618985327,
+          0.678956365,
+          0.73748875,
+          0.606808934
+        ],
+        "warmups": 3,
+        "batch": 0,
+        "thp": "default"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-native",
+        "seconds": [
+          0.027588347,
+          0.035022071,
+          0.025993945,
+          0.037984622,
+          0.031573035,
+          0.030860053,
+          0.027135425,
+          0.026214686
+        ],
+        "warmups": 3,
+        "batch": 0,
+        "thp": "disabled"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-bytecode",
+        "seconds": [
+          0.047955395,
+          0.055755719,
+          0.046449328,
+          0.058466863,
+          0.049206028,
+          0.050664926,
+          0.050417996,
+          0.052937324
+        ],
+        "warmups": 3,
+        "batch": 0,
+        "thp": "disabled"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-native",
+        "seconds": [
+          0.030224431,
+          0.034143991,
+          0.028193981,
+          0.033758414,
+          0.0251883,
+          0.025086902,
+          0.02976504,
+          0.030750288
+        ],
+        "warmups": 3,
+        "batch": 1,
+        "thp": "disabled"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-bytecode",
+        "seconds": [
+          0.047301371,
+          0.047582743,
+          0.048231588,
+          0.051318621,
+          0.055975818,
+          0.054020647,
+          0.052823875,
+          0.048418907
+        ],
+        "warmups": 3,
+        "batch": 1,
+        "thp": "disabled"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-native",
+        "seconds": [
+          0.67409535,
+          0.605831724,
+          0.723120634,
+          0.749109933,
+          0.706273234,
+          0.699181627,
+          0.742440935,
+          0.568883765
+        ],
+        "warmups": 3,
+        "batch": 1,
+        "thp": "default"
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-bytecode",
+        "seconds": [
+          0.709261187,
+          0.740796975,
+          0.726402297,
+          0.599102581,
+          0.742485633,
+          0.609493038,
+          0.586165643,
+          0.733055579
+        ],
+        "warmups": 3,
+        "batch": 1,
+        "thp": "default"
+      },
+      {
+        "engine": "new-aiur-bytecode",
+        "function_queries": 206930,
+        "hint_preparation_seconds": 0.065327184,
+        "instructions": 4961300,
+        "map_queries": 101048,
+        "queries": 307978,
+        "query_uses": 708726,
+        "rom_cells": 23134,
+        "saved_hints": 8671,
+        "seconds": [
+          0.522009019,
+          0.512168675,
+          0.499360152,
+          0.510812208,
+          0.518267323,
+          0.51146473,
+          0.504465676,
+          0.51239527
+        ],
+        "warmups": 3,
+        "batch": 1,
+        "thp": "disabled"
+      },
+      {
+        "engine": "new-aiur-bytecode",
+        "function_queries": 206930,
+        "hint_preparation_seconds": 0.052838695,
+        "instructions": 4961300,
+        "map_queries": 101048,
+        "queries": 307978,
+        "query_uses": 708726,
+        "rom_cells": 23134,
+        "saved_hints": 8671,
+        "seconds": [
+          0.497262142,
+          0.488219602,
+          0.486546154,
+          0.487259689,
+          0.483459494,
+          0.482555666,
+          0.48241285,
+          0.492062579
+        ],
+        "warmups": 3,
+        "batch": 1,
+        "thp": "default"
+      }
+    ]
+  },
+  "earlier_huge_page_diagnostics": {
+    "ix": [
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-native",
+        "seconds": [
+          0.033531148,
+          0.031340992,
+          0.029249217,
+          0.03249658,
+          0.03149758,
+          0.030442047,
+          0.0321498,
+          0.03066551,
+          0.031065149,
+          0.029718957,
+          0.027308302,
+          0.025294464,
+          0.024345967,
+          0.028317692,
+          0.025765678,
+          0.034766345,
+          0.026440046,
+          0.032902875,
+          0.02798787,
+          0.032096709
+        ],
+        "warmups": 3
+      },
+      {
+        "counts": {
+          "function_queries": 67115,
+          "rom_cells": 23068
+        },
+        "engine": "ix-bytecode",
+        "seconds": [
+          0.053395634,
+          0.046822221,
+          0.05324689,
+          0.050723086,
+          0.054513705,
+          0.060027817,
+          0.044620904,
+          0.047568082,
+          0.045960215,
+          0.04806922,
+          0.045824604,
+          0.045413813,
+          0.043467568,
+          0.047871985,
+          0.050439119,
+          0.04918573,
+          0.047147014,
+          0.051833823,
+          0.048857229,
+          0.047815801
+        ],
+        "warmups": 3
+      }
+    ],
+    "new": {
+      "engine": "new-aiur-bytecode",
+      "function_queries": 206930,
+      "hint_preparation_seconds": 0.052122747,
+      "instructions": 4961300,
+      "map_queries": 101048,
+      "queries": 307978,
+      "query_uses": 708726,
+      "rom_cells": 23134,
+      "saved_hints": 8671,
+      "seconds": [
+        0.512395377,
+        0.484469695,
+        0.479569256,
+        0.481480309,
+        0.466528911,
+        0.478120769,
+        0.466720933,
+        0.481117326,
+        0.468942795,
+        0.478397279,
+        0.48825964,
+        0.480070464,
+        0.482991391,
+        0.479624954,
+        0.492117049,
+        0.478537995,
+        0.472888777,
+        0.485200758,
+        0.456831232,
+        0.454906787
+      ],
+      "warmups": 3
+    },
+    "caveat": "Earlier new-VM diagnostic overlapped an 11-second Clippy build; do not use it as a controlled comparison. The paired final runs had no concurrent builds."
+  },
+  "limitations": [
+    "Absolute timings drifted considerably between experiment series; use within-series comparisons and retain all batches.",
+    "Default huge-page policy is particularly unstable for the old Ix arena allocator on this host.",
+    "CPU samples estimate work attribution; no hardware performance counters were available.",
+    "Optimization variants preserve measured results and work counts but are experiments in an isolated copy, not production changes."
+  ]
+}
